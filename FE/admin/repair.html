@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Sửa chữa – Admin GPS Việt</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .quick-tabs{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+  .quick-tabs button{padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:#fff;cursor:pointer;font-size:13px}
+  .quick-tabs button.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .pill.purple{background:#ede9fe;color:#6d28d9}
+  .pill.cyan{background:#cffafe;color:#155e75}
+  .pill.orange{background:#ffedd5;color:#9a3412}
+  .pill.indigo{background:#e0e7ff;color:#3730a3}
+  .pill.pink{background:#fce7f3;color:#9d174d}
+  .imei-mono{font-family:monospace;font-size:12.5px}
+  .action-bar{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .ro-detail-section{margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)}
+  .ro-detail-section h4{margin-bottom:8px;font-size:14px;color:#475569}
+  .ro-photo{display:inline-block;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#f8fafc}
+  .ro-photo img{display:block;max-width:160px;max-height:120px;object-fit:cover}
+  .ro-money{font-size:18px;font-weight:700;color:#0f172a}
+  .ro-money.debt{color:#dc2626}
+  .stock-row{display:grid;grid-template-columns:2fr 80px 1fr 30px;gap:6px;align-items:center;margin-bottom:6px}
+  .item-row{display:grid;grid-template-columns:2fr 70px 130px 1fr 30px;gap:6px;align-items:center;margin-bottom:6px}
+  .charge-row{display:grid;grid-template-columns:120px 1fr 130px 30px;gap:6px;align-items:center;margin-bottom:6px}
+  .lock-banner{background:#fef3c7;border:1px solid #fde68a;color:#92400e;padding:8px 10px;border-radius:6px;font-size:13px;margin:8px 0}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topnav">
+      <h2 class="topnav-title">Sửa chữa</h2>
+      <div id="topnav-user" class="row" style="gap:10px"></div>
+    </div>
+    <div class="content flex-page">
+      <div class="toolbar">
+        <button class="btn sm" id="btnAdd">+ Tạo đơn sửa chữa</button>
+      </div>
+      <div class="quick-tabs" id="quickTabs">
+        <button data-status="" class="on">Tất cả</button>
+        <button data-status="pending">Chờ tiếp nhận</button>
+        <button data-status="assigned">Đã gán KTV</button>
+        <button data-status="diagnosing">Đang chẩn đoán</button>
+        <button data-status="quoted">Có báo giá</button>
+        <button data-status="awaiting_customer">Chờ khách duyệt</button>
+        <button data-status="approved">Khách đã duyệt</button>
+        <button data-status="rejected">Khách từ chối</button>
+        <button data-status="repairing">Đang sửa</button>
+        <button data-status="done">Đã sửa xong</button>
+        <button data-status="delivering">Đang trả khách</button>
+        <button data-status="completed">Hoàn tất</button>
+        <button data-status="cancelled">Huỷ</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data" id="tbl">
+          <thead>
+            <tr>
+              <th style="width:120px">Mã SC</th>
+              <th>Khách hàng</th>
+              <th style="width:110px">Biển số</th>
+              <th style="width:140px">Thiết bị / IMEI</th>
+              <th>Lỗi</th>
+              <th style="width:90px">Ngày tạo</th>
+              <th style="width:110px">KTV</th>
+              <th style="width:110px">Tổng/Đã thu</th>
+              <th style="width:130px">Trạng thái</th>
+              <th style="width:90px"></th>
+            </tr>
+            <tr class="filter-row">
+              <th><input data-filter="q" placeholder="Lọc mã/biển/IMEI/khách"></th>
+              <th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+              <th>
+                <select data-filter="status">
+                  <option value="">Tất cả</option>
+                  <option value="pending">Chờ tiếp nhận</option>
+                  <option value="assigned">Đã gán KTV</option>
+                  <option value="diagnosing">Đang chẩn đoán</option>
+                  <option value="quoted">Có báo giá</option>
+                  <option value="awaiting_customer">Chờ khách duyệt</option>
+                  <option value="approved">Khách đã duyệt</option>
+                  <option value="rejected">Khách từ chối</option>
+                  <option value="repairing">Đang sửa</option>
+                  <option value="done">Đã sửa xong</option>
+                  <option value="delivering">Đang trả khách</option>
+                  <option value="completed">Hoàn tất</option>
+                  <option value="cancelled">Huỷ</option>
+                </select>
+              </th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <button id="prevPage">« Trước</button>
+        <span id="pageInfo">Trang 1</span>
+        <button id="nextPage">Sau »</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal tao/sua don SC -->
+<div id="modal" class="modal-bg">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-head">
+      <h3 id="modalTitle">Tạo đơn sửa chữa</h3>
+      <button type="button" class="modal-close" id="modalClose" aria-label="Đóng">×</button>
+    </div>
+    <form id="frm" style="display:contents">
+      <div class="modal-body">
+        <input type="hidden" id="f_id">
+        <div class="field">
+          <label>Khách hàng / Đại lý *</label>
+          <select id="f_customer" class="select" required></select>
+        </div>
+        <div class="grid cols-2">
+          <div class="field">
+            <label>Biển số xe</label>
+            <input type="text" id="f_plate" class="input" placeholder="VD: 51H-123.45">
+          </div>
+          <div class="field">
+            <label>Tên thiết bị</label>
+            <input type="text" id="f_device" class="input" placeholder="VD: VT-02 Pro">
+          </div>
+        </div>
+        <div class="field">
+          <label>IMEI (tham khảo)</label>
+          <input type="text" id="f_imei" class="input imei-mono">
+        </div>
+        <div class="field">
+          <label>Mô tả lỗi *</label>
+          <textarea id="f_reason" class="textarea" required placeholder="VD: Mất kết nối, không lên nguồn..."></textarea>
+        </div>
+        <div class="field">
+          <label>Địa chỉ thu hồi</label>
+          <textarea id="f_address" class="textarea"></textarea>
+        </div>
+        <div class="field">
+          <label>Ghi chú nội bộ</label>
+          <textarea id="f_note" class="textarea"></textarea>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="btnCancel">Hủy</button>
+        <button type="submit" class="btn" id="btnSave">Lưu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal chi tiet -->
+<div id="detailModal" class="modal-bg">
+  <div class="modal" style="max-width:840px">
+    <div class="modal-head">
+      <h3 id="detailTitle">Chi tiết đơn</h3>
+      <button type="button" class="modal-close" id="detailClose" aria-label="Đóng">×</button>
+    </div>
+    <div class="modal-body" id="detailBody"></div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="detailCloseBtn">Đóng</button>
+      <button type="button" class="btn ghost" id="btnEdit">Sửa metadata</button>
+      <button type="button" class="btn ghost" id="btnDelete" style="color:var(--danger)">Xoá</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal gan KTV -->
+<div id="assignModal" class="modal-bg">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-head">
+      <h3>Gán kỹ thuật viên</h3>
+      <button type="button" class="modal-close" id="assignClose">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Chọn KTV</label>
+        <select id="assign_staff" class="select"></select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="assignCancel">Hủy</button>
+      <button type="button" class="btn" id="assignSave">Gán</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal sua bao gia: items + charges + service_fee -->
+<div id="quoteModal" class="modal-bg">
+  <div class="modal" style="max-width:760px">
+    <div class="modal-head">
+      <h3>Sửa báo giá</h3>
+      <button type="button" class="modal-close" id="quoteClose">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Công sửa (VND)</label>
+        <input type="number" id="q_service_fee" class="input" min="0" step="1000" value="0">
+      </div>
+      <div class="ro-detail-section" style="margin-top:8px;border-top:none;padding-top:0">
+        <h4>📦 Vật tư thay</h4>
+        <div id="qItems"></div>
+        <button type="button" class="btn ghost sm" id="qAddItem">+ Thêm vật tư</button>
+      </div>
+      <div class="ro-detail-section">
+        <h4>💼 Phí khác / giảm giá</h4>
+        <p class="help">Giảm giá nhập số âm. Không nhập "Công sửa" tại đây — dùng ô trên.</p>
+        <div id="qCharges"></div>
+        <button type="button" class="btn ghost sm" id="qAddCharge">+ Thêm phí</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="quoteCancel">Hủy</button>
+      <button type="button" class="btn" id="quoteSave">Lưu báo giá</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal xuat kho -->
+<div id="releaseModal" class="modal-bg">
+  <div class="modal" style="max-width:580px">
+    <div class="modal-head">
+      <h3>Xuất kho vật tư + Bắt đầu sửa</h3>
+      <button type="button" class="modal-close" id="releaseClose">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="help">Xuất kho vật tư khách đã duyệt. Đơn sẽ chuyển sang "Đang sửa". Có thể bỏ trống nếu không cần thay vật tư.</p>
+      <div id="stockLines"></div>
+      <button type="button" class="btn ghost sm" id="addStockLine">+ Thêm sản phẩm</button>
+      <div class="field" style="margin-top:10px">
+        <label>Ghi chú phiếu</label>
+        <input type="text" id="release_note" class="input" placeholder="VD: Thay GPS chính">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="releaseCancel">Hủy</button>
+      <button type="button" class="btn" id="releaseSave">Xuất kho + Bắt đầu sửa</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal hoan tat (nhap thu tien) -->
+<div id="completeModal" class="modal-bg">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-head">
+      <h3>Hoàn tất đơn sửa chữa</h3>
+      <button type="button" class="modal-close" id="completeClose">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Đã thu (VND)</label>
+        <input type="number" id="cm_paid" class="input" min="0" step="1000" value="0">
+        <p class="help">Phần chênh sẽ được tính vào công nợ của khách.</p>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="completeCancel">Hủy</button>
+      <button type="button" class="btn" id="completeSave">Hoàn tất</button>
+    </div>
+  </div>
+</div>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/admin-shell.js"></script>
+<script src="/admin/repair.js"></script>
+</body>
+</html>

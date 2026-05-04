@@ -1,0 +1,520 @@
+:root{
+  --primary:#1f6feb;
+  --primary-dark:#1357c7;
+  --primary-soft:#e8f1ff;
+  --accent:#ff7a00;
+  --success:#16a34a;
+  --warning:#d97706;
+  --danger:#dc2626;
+  --bg:#f5f7fb;
+  --panel:#ffffff;
+  --text:#0f172a;
+  --muted:#64748b;
+  --border:#e2e8f0;
+  --shadow:0 2px 10px rgba(15,23,42,.06);
+  --shadow-lg:0 10px 30px rgba(15,23,42,.10);
+  --radius:12px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;color:var(--text);background:var(--bg);line-height:1.5}
+a{color:var(--primary);text-decoration:none}
+a:hover{text-decoration:underline}
+img{max-width:100%;display:block}
+h1,h2,h3,h4{margin:0 0 .5rem;line-height:1.25}
+p{margin:0 0 .5rem}
+
+/* ---------- LAYOUT ---------- */
+.container{max-width:1200px;margin:0 auto;padding:0 20px}
+.grid{display:grid;gap:20px}
+.grid.cols-2{grid-template-columns:repeat(2,1fr)}
+.grid.cols-3{grid-template-columns:repeat(3,1fr)}
+.grid.cols-4{grid-template-columns:repeat(4,1fr)}
+@media (max-width:900px){
+  .grid.cols-2,.grid.cols-3,.grid.cols-4{grid-template-columns:1fr}
+}
+.row{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+.spread{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+
+/* ---------- HEADER (CUSTOMER) ---------- */
+.topbar{background:#0b1a33;color:#cbd5e1;font-size:13px}
+.topbar .container{display:flex;justify-content:space-between;padding:8px 20px}
+.topbar a{color:#cbd5e1}
+header.site{background:#fff;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50}
+header.site .container{display:flex;align-items:center;gap:24px;padding:14px 20px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;color:var(--text)}
+.logo-mark{width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,var(--primary),#3b82f6);color:#fff;display:grid;place-items:center;font-weight:800}
+nav.main{display:flex;flex-direction:row;gap:22px;margin-left:8px}
+nav.main a{color:#334155;font-weight:500;white-space:nowrap}
+nav.main a.active,nav.main a:hover{color:var(--primary)}
+.header-actions{margin-left:auto;display:flex;align-items:center;gap:10px}
+.nav-toggle{display:none;background:none;border:1px solid var(--border);border-radius:8px;font-size:20px;line-height:1;cursor:pointer;padding:6px 10px;color:var(--text)}
+
+/* ---------- MOBILE HEADER (CUSTOMER) ---------- */
+@media (max-width:960px){
+  .topbar .container{flex-direction:column;gap:4px;text-align:center;padding:8px 16px}
+  header.site .container{flex-wrap:wrap;gap:12px;padding:12px 16px}
+  .logo{font-size:16px}
+  .logo-mark{width:30px;height:30px}
+  .nav-toggle{display:inline-flex;align-items:center;justify-content:center;order:2;margin-left:auto}
+  .header-actions{order:3;width:100%;margin-left:0;gap:8px;flex-wrap:wrap}
+  .header-actions .btn{flex:1;justify-content:center}
+  nav.main{order:4;flex-basis:100%;flex-direction:column;gap:0;margin-left:0;display:none;border-top:1px solid var(--border);padding-top:4px}
+  nav.main.open{display:flex}
+  nav.main a{padding:12px 4px;border-bottom:1px solid var(--border)}
+  nav.main a:last-child{border-bottom:none}
+  .hero{padding:40px 0}
+  .hero h1{font-size:28px}
+  .hero p.lead{font-size:16px}
+  .hero .container.spread > div:last-child{display:none}
+  .section{padding:32px 0}
+  .section h2{font-size:22px}
+}
+
+/* ---------- BUTTONS ---------- */
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;font-weight:600;cursor:pointer;border:1px solid transparent;background:var(--primary);color:#fff;transition:.15s;font-size:14px}
+.btn:hover{background:var(--primary-dark);text-decoration:none;color:#fff}
+.btn.ghost{background:#fff;color:var(--text);border-color:var(--border)}
+.btn.ghost:hover{background:#f1f5f9}
+.btn.accent{background:var(--accent)}
+.btn.accent:hover{background:#e06c00}
+.btn.success{background:var(--success)}
+.btn.danger{background:var(--danger)}
+.btn.sm{padding:6px 10px;font-size:13px}
+.btn.block{width:100%;justify-content:center}
+
+/* ---------- HERO ---------- */
+.hero{background:linear-gradient(135deg,#0b1a33 0%,#173466 100%);color:#fff;padding:64px 0}
+.hero h1{font-size:40px;margin-bottom:16px}
+.hero p.lead{font-size:18px;color:#c9d4e6;max-width:600px;margin-bottom:24px}
+.hero .chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
+.chip{background:rgba(255,255,255,.1);padding:6px 12px;border-radius:999px;font-size:13px;color:#e2e8f0}
+
+/* ---------- CARDS ---------- */
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
+.card.hover:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px);transition:.2s}
+.card h3{margin-top:0}
+.section{padding:50px 0}
+.section h2{font-size:28px;margin-bottom:8px;text-align:center}
+.section .subtitle{text-align:center;color:var(--muted);margin-bottom:30px}
+
+/* ---------- PRODUCT CARD ---------- */
+.product{background:#fff;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column;height:100%;text-decoration:none;color:inherit;transition:.2s}
+.product,.product:hover,.product:focus,.product:active{text-decoration:none}
+.product:hover{box-shadow:var(--shadow-lg);transform:translateY(-3px)}
+.product:hover h4{text-decoration:underline;text-underline-offset:2px;color:var(--primary)}
+.product .thumb{aspect-ratio:1/1;background:#fff;position:relative;overflow:hidden;flex:0 0 auto}
+.product .thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
+.product .thumb-icon{position:absolute;inset:0;display:grid;place-items:center;font-size:64px;color:#4338ca;background:linear-gradient(135deg,#e0e7ff,#c7d2fe)}
+.product .body{padding:14px;flex:1 1 auto;display:flex;flex-direction:column;gap:6px;min-width:0}
+.product h4{margin:0;font-size:15px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:42px}
+.product .price{color:var(--primary);font-weight:700;font-size:18px;margin:0;min-height:24px}
+.product .meta{color:var(--muted);font-size:13px;margin:0;flex:1 1 auto}
+.product .actions{display:flex;gap:8px;margin-top:auto;padding-top:10px}
+.product .actions .btn{width:100%;justify-content:center}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:#e0f2fe;color:#075985}
+.badge.new{background:#dcfce7;color:#166534}
+.badge.hot{background:#fee2e2;color:#991b1b}
+.badge.warn{background:#fef3c7;color:#92400e}
+
+/* ---------- FORMS ---------- */
+.field{margin-bottom:14px}
+.field label{display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:#334155}
+.input,.select,.textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;font-size:14px;font-family:inherit}
+.input:focus,.select:focus,.textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(31,111,235,.15)}
+.textarea{min-height:80px;resize:vertical}
+.help{font-size:12px;color:var(--muted);margin-top:4px}
+.radio-group,.check-group{display:flex;gap:14px;flex-wrap:wrap}
+.radio-group label,.check-group label{display:flex;gap:6px;align-items:center;font-weight:500;cursor:pointer}
+
+/* ---------- TABLE ---------- */
+.table-wrap{overflow-x:auto;background:#fff;border:1px solid var(--border);border-radius:var(--radius)}
+table.data{width:100%;border-collapse:collapse;font-size:14px}
+table.data th,table.data td{padding:12px;text-align:left;border-bottom:1px solid var(--border)}
+table.data thead th{background:#f8fafc;font-size:13px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.03em}
+table.data tbody tr:hover{background:#f8fafc}
+/* Filter row duoi header — input nho gon, focus border xanh */
+table.data thead tr.filter-row th{background:#fff;padding:6px 8px;font-weight:400;text-transform:none;letter-spacing:0;border-bottom:1px solid var(--border)}
+table.data thead tr.filter-row input,
+table.data thead tr.filter-row select{width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;font-size:13px;font-family:inherit}
+table.data thead tr.filter-row input:focus,
+table.data thead tr.filter-row select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 2px rgba(31,111,235,.15)}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600}
+.pill.green{background:#dcfce7;color:#166534}
+.pill.blue{background:#dbeafe;color:#1e40af}
+.pill.amber{background:#fef3c7;color:#92400e}
+.pill.red{background:#fee2e2;color:#991b1b}
+.pill.gray{background:#f1f5f9;color:#475569}
+
+/* ---------- STAT CARD ---------- */
+.stat{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:18px;display:flex;gap:14px;align-items:center}
+.stat .icon{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;font-size:22px;background:var(--primary-soft);color:var(--primary)}
+.stat .icon.green{background:#dcfce7;color:#16a34a}
+.stat .icon.amber{background:#fef3c7;color:#d97706}
+.stat .icon.red{background:#fee2e2;color:#dc2626}
+.stat .label{color:var(--muted);font-size:13px;margin-bottom:2px}
+.stat .value{font-size:22px;font-weight:700}
+.stat .trend{font-size:12px;color:var(--success);margin-top:3px}
+.stat .trend.down{color:var(--danger)}
+
+/* ---------- FOOTER ---------- */
+footer.site{background:#0b1a33;color:#94a3b8;margin-top:60px;padding:40px 0 20px}
+footer.site h4{color:#fff;font-size:15px;margin-bottom:12px}
+footer.site a{color:#cbd5e1;display:block;padding:3px 0}
+footer.site .bottom{text-align:center;border-top:1px solid #1f2e4f;padding-top:16px;margin-top:20px;font-size:13px}
+
+/* ---------- CHAT WIDGET ---------- */
+.chat-fab{position:fixed;right:20px;bottom:20px;background:var(--primary);color:#fff;width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font-size:24px;cursor:pointer;box-shadow:var(--shadow-lg);z-index:100;border:none}
+.chat-box{position:fixed;right:20px;bottom:90px;width:340px;max-height:460px;background:#fff;border-radius:var(--radius);box-shadow:var(--shadow-lg);display:none;flex-direction:column;z-index:100;overflow:hidden;border:1px solid var(--border)}
+.chat-box.open{display:flex}
+.chat-head{background:var(--primary);color:#fff;padding:12px 14px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.chat-head .close{cursor:pointer;font-size:18px}
+.chat-msgs{flex:1;overflow-y:auto;padding:12px;background:#f8fafc;min-height:260px;display:flex;flex-direction:column;gap:8px}
+.msg{max-width:80%;padding:8px 12px;border-radius:14px;font-size:13.5px}
+.msg.me{align-self:flex-end;background:var(--primary);color:#fff;border-bottom-right-radius:4px}
+.msg.them{align-self:flex-start;background:#fff;border:1px solid var(--border);border-bottom-left-radius:4px}
+.msg .time{display:block;font-size:10px;opacity:.7;margin-top:2px}
+.chat-quick{padding:6px 12px;display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid var(--border);background:#fff}
+.chat-quick button{background:#e8f1ff;color:var(--primary);border:none;border-radius:999px;padding:4px 10px;font-size:12px;cursor:pointer}
+.chat-quick button:hover{background:#d5e4ff}
+.chat-input{display:flex;padding:8px;border-top:1px solid var(--border);gap:6px;background:#fff}
+.chat-input input{flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px}
+.chat-input button{background:var(--primary);color:#fff;border:none;border-radius:6px;padding:0 14px;cursor:pointer}
+
+/* ---------- ADMIN / TECH SHELL ----------
+   Layout khoa o viewport: shell = 100vh, sidebar va main scroll RIENG.
+   Trang nao co bang lon thi them class .flex-page vao .content de
+   page-head cung dinh, chi tbody cuon (xem block .flex-page ben duoi).
+*/
+.shell{display:grid;grid-template-columns:240px 1fr;height:100vh;overflow:hidden}
+.sidebar{background:#0b1a33;color:#cbd5e1;padding:18px 0;overflow-y:auto;height:100%}
+.sidebar .brand{display:flex;align-items:center;gap:10px;padding:4px 18px 18px;border-bottom:1px solid #1f2e4f;margin-bottom:12px;color:#fff;font-weight:700}
+.sidebar a{display:flex;align-items:center;gap:10px;color:#cbd5e1;padding:10px 18px;font-size:14px}
+.sidebar a:hover{background:#132746;color:#fff;text-decoration:none}
+.sidebar a.active{background:var(--primary);color:#fff}
+.sidebar a.is-disabled{opacity:.5;cursor:not-allowed}
+.sidebar a.is-disabled:hover{background:transparent;color:#cbd5e1}
+.sidebar .sep{font-size:11px;text-transform:uppercase;color:#64748b;padding:12px 18px 4px;letter-spacing:.05em}
+.main{padding:0;background:var(--bg);display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.main .topnav{background:#fff;border-bottom:1px solid var(--border);padding:10px 24px;display:flex;align-items:center;gap:16px;flex-shrink:0}
+.main .topnav .topnav-title{font-size:17px;font-weight:700;margin:0;flex:1;min-width:0;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.main .topnav .topnav-title small{font-weight:400;color:var(--muted);font-size:13px;margin-left:8px}
+.main .content{padding:18px 24px;flex:1;overflow:auto;min-height:0}
+
+/* Trang co bang lon: toolbar (cac nut action cua bang) + pager dinh,
+   chi .table-wrap cuon */
+.content.flex-page{overflow:hidden;display:flex;flex-direction:column}
+.content.flex-page .page-head,
+.content.flex-page .toolbar{flex-shrink:0;margin-bottom:12px}
+.content.flex-page .table-wrap{flex:1;overflow:auto;min-height:0;border-radius:var(--radius)}
+.content.flex-page .pager{flex-shrink:0;margin-top:12px}
+/* Sticky thead — 2 row (header chinh + filter row).
+   Doi border-collapse de sticky hoat dong on dinh; ke vach bang box-shadow.
+   Top cua filter row dung CSS var --th-row1-h (set boi JS de chinh xac). */
+.content.flex-page table.data{border-collapse:separate;border-spacing:0}
+.content.flex-page table.data th,
+.content.flex-page table.data td{border-bottom:none;box-shadow:0 1px 0 var(--border)}
+.content.flex-page table.data thead th{position:sticky;background:#f8fafc;z-index:2}
+.content.flex-page table.data thead tr:first-child th{top:0;z-index:3}
+.content.flex-page table.data thead tr.filter-row th{top:var(--th-row1-h, 42px);background:#fff}
+.main .page-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:12px;flex-wrap:wrap}
+.main .page-head h1{font-size:22px;margin:0}
+.search{display:flex;align-items:center;background:#f1f5f9;border-radius:8px;padding:6px 10px;gap:6px;width:280px;max-width:100%}
+.search input{background:transparent;border:none;outline:none;font-size:13px;flex:1}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px}
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{display:none}
+}
+
+/* ---------- TABS ---------- */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:18px;overflow-x:auto}
+.tabs button{background:transparent;border:none;padding:10px 16px;cursor:pointer;color:#475569;font-weight:600;font-size:14px;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs button.active{color:var(--primary);border-bottom-color:var(--primary)}
+
+/* ---------- STEPS ---------- */
+.steps{display:flex;gap:6px;margin-bottom:24px;flex-wrap:wrap}
+.steps .step{flex:1;min-width:140px;background:#f1f5f9;padding:10px 12px;border-radius:8px;font-size:13px;color:#64748b;position:relative}
+.steps .step.active{background:var(--primary);color:#fff}
+.steps .step.done{background:#dcfce7;color:#166534}
+.steps .step b{display:block;font-size:15px}
+
+/* ---------- MODAL ----------
+   Quy uoc: header (.modal-head) va footer (.modal-foot) DINH co dinh,
+   chi co .modal-body cuon doc. Moi modal them/sua/dialog phai theo pattern:
+   <div class="modal-bg"><div class="modal">
+     <div class="modal-head"><h3>Tieu de</h3><button class="modal-close">×</button></div>
+     <div class="modal-body">... noi dung dai cuon o day ...</div>
+     <div class="modal-foot">... nut Huy / Luu ...</div>
+   </div></div>
+*/
+.modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.5);display:none;align-items:flex-start;justify-content:center;z-index:200;padding:40px 20px;overflow-y:auto}
+.modal-bg.open{display:flex}
+.modal{background:#fff;border-radius:var(--radius);max-width:520px;width:100%;box-shadow:var(--shadow-lg);max-height:calc(100vh - 80px);display:flex;flex-direction:column;overflow:hidden}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border);background:#fff;flex-shrink:0}
+.modal-head h3{margin:0;font-size:17px}
+.modal-close{background:none;border:none;font-size:22px;line-height:1;color:#64748b;cursor:pointer;padding:4px 8px;border-radius:6px}
+.modal-close:hover{background:#f1f5f9;color:var(--text)}
+.modal-body{padding:20px;overflow-y:auto;flex:1;min-height:0}
+.modal-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--border);background:#f8fafc;flex-shrink:0}
+/* Backward-compat: form cu dung .actions (sap bo dan) */
+.modal .actions{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--border);background:#f8fafc;margin:0 -20px -20px}
+
+/* ---------- UTIL ---------- */
+.mt-0{margin-top:0}.mt-1{margin-top:8px}.mt-2{margin-top:16px}.mt-3{margin-top:24px}
+.mb-0{margin-bottom:0}.mb-1{margin-bottom:8px}.mb-2{margin-bottom:16px}.mb-3{margin-bottom:24px}
+.text-muted{color:var(--muted)}
+.text-right{text-align:right}
+.text-center{text-align:center}
+.w-100{width:100%}
+.flex{display:flex}
+.gap-1{gap:8px}.gap-2{gap:16px}
+.mono{font-family:ui-monospace,Consolas,monospace}
+.hide{display:none}
+.divider{height:1px;background:var(--border);margin:16px 0}
+
+/* ---------- LOGIN ---------- */
+.login-bg{background:linear-gradient(135deg,#0b1a33,#1f6feb);min-height:100vh;display:grid;place-items:center;padding:20px}
+.login-card{background:#fff;border-radius:16px;padding:28px;max-width:440px;width:100%;box-shadow:var(--shadow-lg)}
+.help-card{background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:12px;font-size:13px;color:#075985;margin-top:12px}
+.help-card.warn{background:#fefce8;border-color:#fde68a;color:#854d0e}
+.help-card.muted{background:#f1f5f9;border-color:#e2e8f0;color:#475569}
+.help-card code{background:#fff;padding:1px 6px;border-radius:4px}
+
+/* ---------- PORTAL LANDING ---------- */
+.portal-wrap{max-width:1100px;width:100%;text-align:center;color:#fff}
+.portal-wrap .logo-mark{width:72px;height:72px;font-size:28px;margin:0 auto 16px}
+.portal-wrap h1{font-size:36px;margin-bottom:8px}
+.portal-wrap p.lead{color:#cbd5e1;margin-bottom:40px;font-size:16px}
+.portals{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+@media (max-width:900px){.portals{grid-template-columns:1fr}}
+.portal{background:#fff;color:var(--text);padding:30px 24px;border-radius:16px;text-align:center;transition:.2s;cursor:pointer;display:block;text-decoration:none;border:1px solid var(--border)}
+.portal:hover{transform:translateY(-4px);box-shadow:0 20px 40px rgba(0,0,0,.25);text-decoration:none}
+.portal .emoji{font-size:54px;margin-bottom:10px}
+.portal h3{color:var(--text);margin:0 0 8px;font-size:20px}
+.portal p{color:var(--muted);font-size:14px;margin-bottom:14px}
+.portal .tag{background:var(--primary-soft);color:var(--primary);padding:4px 12px;border-radius:999px;font-size:12px;font-weight:600}
+.portal-note{margin-top:32px;font-size:13px;color:#94a3b8}
+
+/* ---------- AVATAR / TABLE EXTRAS ---------- */
+.avatar-cell{width:40px;height:40px;border-radius:50%;object-fit:cover;background:#e5e7eb;display:block}
+.avatar-placeholder{width:40px;height:40px;border-radius:50%;background:#e5e7eb;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:13px;font-weight:700}
+.avatar-pick{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.avatar-preview{width:140px;height:140px;border-radius:8px;object-fit:cover;background:#f3f4f6;border:1px solid var(--border)}
+.avatar-preview[src=""],.avatar-preview:not([src]){background:#f3f4f6 url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%239ca3af'><path d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/></svg>") center/60% no-repeat}
+
+/* Khoi rieng cho dealer trong form */
+.dealer-block{border:1px solid #fbbf24;background:#fffbeb;border-radius:8px;padding:12px 16px;margin-top:12px}
+.dealer-block legend{padding:0 6px;font-weight:600;color:#92400e}
+.dealer-block.hide{display:none}
+
+/* Toolbar admin */
+.toolbar{display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.toolbar .search-box{flex:1;min-width:240px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:#fff}
+.toolbar .search-box:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(31,111,235,.15)}
+
+/* Pagination */
+.pager{display:flex;gap:12px;align-items:center;justify-content:center;margin-top:16px}
+.pager button{padding:6px 12px;border:1px solid var(--border);background:#fff;border-radius:8px;cursor:pointer}
+.pager button:disabled{opacity:.4;cursor:not-allowed}
+
+/* Toast (stack 1 cot top-right) */
+.toast-container{position:fixed;top:16px;right:16px;z-index:400;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast-container .toast{position:static;animation:toast-in .25s ease;transition:opacity .25s ease;pointer-events:auto;max-width:420px}
+.toast{position:fixed;top:16px;right:16px;background:#1e293b;color:#fff;padding:10px 16px;border-radius:8px;box-shadow:var(--shadow-lg);font-size:14px;line-height:1.4}
+.toast.err{background:#dc2626}
+.toast.ok{background:#16a34a}
+.toast.warn{background:#d97706}
+@keyframes toast-in{from{transform:translateY(-10px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* ---------- UI DIALOG (alert / confirm / loginDialog) ----------
+   Layout: header (title + close) sticky, body cuon, footer (actions) sticky.
+*/
+.ui-dialog-bg{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;z-index:500;padding:40px 20px;overflow-y:auto;animation:dialog-in .15s ease}
+.ui-dialog{background:#fff;border-radius:12px;max-width:440px;width:100%;box-shadow:var(--shadow-lg);max-height:calc(100vh - 80px);display:flex;flex-direction:column;overflow:hidden;animation:dialog-pop .2s ease}
+.ui-dialog-head{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0}
+.ui-dialog-title{font-weight:700;font-size:16px;color:var(--text);margin:0}
+.ui-dialog-body{padding:16px 20px;overflow-y:auto;flex:1;min-height:0}
+.ui-dialog-msg{color:#334155;line-height:1.5;font-size:14px;white-space:pre-wrap}
+.ui-dialog-actions{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;background:#f8fafc;border-top:1px solid var(--border);flex-shrink:0}
+.ui-dialog-error   .ui-dialog-title{color:#b91c1c}
+.ui-dialog-warning .ui-dialog-title{color:#92400e}
+.ui-dialog-success .ui-dialog-title{color:#166534}
+.ui-dialog-info    .ui-dialog-title{color:var(--primary)}
+.ui-dialog-error   .ui-dialog-title{color:#b91c1c}
+.ui-dialog-warning .ui-dialog-title{color:#92400e}
+.ui-dialog-success .ui-dialog-title{color:#166534}
+.ui-dialog-info    .ui-dialog-title{color:var(--primary)}
+@keyframes dialog-in {from{opacity:0}to{opacity:1}}
+@keyframes dialog-pop{from{transform:scale(.96);opacity:0}to{transform:scale(1);opacity:1}}
+
+/* ---------- LOADING OVERLAY ---------- */
+.ui-loading{position:fixed;inset:0;background:rgba(15,23,42,.35);display:flex;align-items:center;justify-content:center;z-index:600}
+.ui-spinner{width:48px;height:48px;border:4px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Status line */
+.status-line{color:var(--muted);font-style:italic;margin:8px 0;min-height:20px}
+.status-line.err{color:var(--danger);font-style:normal}
+
+/* ---------- PRODUCT TIMELINE (FE customer) ---------- */
+.product-timeline{display:flex;flex-direction:column;gap:18px;max-width:840px;margin:0 auto}
+.product-timeline .tl-block{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.product-timeline .tl-text{padding:16px 20px;line-height:1.65;color:#1f2937;font-size:15px;white-space:pre-wrap}
+.product-timeline .tl-image,
+.product-timeline .tl-video{margin:0;padding:0}
+.product-timeline .tl-image img,
+.product-timeline .tl-video video{display:block;width:100%;height:auto;background:#f3f4f6}
+.product-timeline figcaption{padding:8px 16px;font-size:13px;color:var(--muted);text-align:center;background:#f8fafc}
+
+/* ---------- TIMELINE EDITOR (admin) ---------- */
+.tl-editor{display:flex;flex-direction:column;gap:10px}
+.tl-item{border:1px solid var(--border);border-radius:10px;background:#fff;padding:10px 12px}
+.tl-item-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.tl-item-head .tl-num{width:24px;height:24px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700}
+.tl-item-head select{padding:4px 8px;font-size:13px}
+.tl-item-head .spacer{flex:1}
+.tl-item-body textarea{width:100%;min-height:60px;font-family:inherit}
+.tl-item-body input[type="text"]{width:100%}
+.tl-item-preview{max-width:240px;max-height:140px;border-radius:6px;border:1px solid var(--border);object-fit:contain;background:#f8fafc;display:block;margin-top:6px}
+.tl-add-bar{display:flex;gap:6px;flex-wrap:wrap;padding:10px;border:1px dashed var(--border);border-radius:10px;background:#f8fafc;justify-content:center}
+
+/* ========== MOBILE TECH SHELL ==========
+   Layout cho trang ky thuat (body.tech) tren mobile (<=900px):
+   - Sidebar an mac dinh, mo dang drawer khi an hamburger
+   - Topnav co nut hamburger + title rut gon, an avatar/ten user (van con nut Logout)
+   - Bottom navigation 5 muc chinh dinh duoi cung
+   - Content padding nho, chua bottom nav co padding-bottom
+*/
+
+/* Hamburger nut va bottom nav an tren desktop */
+.tech-hamburger{display:none}
+.tech-bottom-nav{display:none}
+.tech-drawer-bg{display:none}
+
+@media (max-width:900px){
+  body.tech .shell{display:flex;flex-direction:column;height:100vh}
+  body.tech .main{flex:1;min-height:0;display:flex;flex-direction:column}
+  body.tech .main .topnav{padding:8px 12px;gap:8px}
+  body.tech .main .topnav .topnav-title{font-size:16px;font-weight:600}
+  body.tech .main .content{padding:12px;padding-bottom:80px}
+  body.tech .content.flex-page{padding-bottom:80px}
+
+  /* Topnav rut gon: an khoi user info text, chi giu avatar + nut logout nho */
+  body.tech .main .topnav .topnav-userinfo{display:none}
+  body.tech .main .topnav #topnav-user .avatar{width:30px;height:30px;font-size:12px}
+  body.tech .main .topnav #topnav-user .btn{padding:5px 8px;font-size:12px}
+
+  /* Hamburger button hien thi */
+  body.tech .tech-hamburger{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:38px;height:38px;border:1px solid var(--border);border-radius:8px;
+    background:#fff;font-size:20px;line-height:1;cursor:pointer;color:var(--text);
+    flex-shrink:0;padding:0;
+  }
+
+  /* Sidebar dang drawer */
+  body.tech .sidebar{
+    display:block;position:fixed;top:0;left:0;bottom:0;width:260px;
+    z-index:301;transform:translateX(-100%);transition:transform .25s ease;
+    box-shadow:0 0 30px rgba(0,0,0,.3);
+  }
+  body.tech .shell.menu-open .sidebar{transform:translateX(0)}
+  body.tech .tech-drawer-bg{
+    display:block;position:fixed;inset:0;background:rgba(15,23,42,.5);
+    z-index:300;opacity:0;pointer-events:none;transition:opacity .2s ease;
+  }
+  body.tech .shell.menu-open .tech-drawer-bg{opacity:1;pointer-events:auto}
+
+  /* Bottom navigation */
+  body.tech .tech-bottom-nav{
+    display:flex;position:fixed;left:0;right:0;bottom:0;background:#fff;
+    border-top:1px solid var(--border);z-index:90;
+    padding:4px 0 calc(4px + env(safe-area-inset-bottom));
+    box-shadow:0 -2px 10px rgba(15,23,42,.06);
+  }
+  body.tech .tech-bottom-nav a{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:2px;padding:6px 4px;color:#64748b;font-size:11px;text-decoration:none;
+    min-height:54px;
+  }
+  body.tech .tech-bottom-nav a .ic{font-size:20px;line-height:1}
+  body.tech .tech-bottom-nav a.active{color:var(--primary)}
+  body.tech .tech-bottom-nav a:hover{text-decoration:none;background:#f8fafc}
+
+  /* Modal toan man hinh tren mobile */
+  body.tech .modal-bg{padding:0;align-items:stretch}
+  body.tech .modal{max-height:100vh;max-width:100%;border-radius:0;height:100vh}
+  body.tech .modal-body{padding:14px}
+  body.tech .modal-foot{padding:10px 12px;flex-wrap:wrap}
+  body.tech .modal-foot .btn{flex:1 1 calc(50% - 4px);min-width:0;justify-content:center}
+
+  /* Stat-grid 2 cot tren mobile (gon hon) */
+  body.tech .stat-grid{grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
+  body.tech .stat{padding:10px;gap:8px}
+  body.tech .stat .icon{width:36px;height:36px;font-size:18px;border-radius:8px}
+  body.tech .stat .label{font-size:11px}
+  body.tech .stat .value{font-size:16px}
+
+  /* Toolbar wrap on mobile */
+  body.tech .toolbar{gap:8px}
+  body.tech .toolbar .input,
+  body.tech .toolbar .select,
+  body.tech .toolbar .btn{flex:1 1 calc(50% - 4px);min-width:0}
+
+  /* Tabs scroll ngang */
+  body.tech .tabs{margin-bottom:12px}
+  body.tech .tabs button{padding:8px 12px;font-size:13px}
+
+  /* Card padding nho hon */
+  body.tech .card{padding:14px}
+  body.tech .card h3{font-size:16px}
+
+  /* Login dialog tren tech mobile */
+  body.tech .ui-dialog-bg{padding:20px}
+
+  /* Tat flex-page tren mobile: bang da bien thanh cards, khong can sticky thead */
+  body.tech .content.flex-page{overflow:visible;display:block;padding-bottom:80px}
+  body.tech .content.flex-page .table-wrap{
+    flex:none;overflow:visible;background:transparent;border:none;border-radius:0;
+  }
+  body.tech .content.flex-page table.data{border-collapse:collapse;border-spacing:0}
+  body.tech .content.flex-page table.data th,
+  body.tech .content.flex-page table.data td{box-shadow:none}
+  body.tech .content.flex-page table.data thead th{position:static}
+
+  /* Bien moi table.data thanh card list tren mobile (TD can co data-label) */
+  body.tech .table-wrap{border:none;background:transparent;overflow:visible}
+  body.tech table.data,
+  body.tech table.data thead,
+  body.tech table.data tbody,
+  body.tech table.data tr,
+  body.tech table.data td{display:block;width:100%}
+  body.tech table.data thead{display:none}
+  body.tech table.data tr{
+    background:#fff;border:1px solid var(--border);border-radius:10px;
+    padding:10px 12px;margin-bottom:10px;box-shadow:var(--shadow);
+  }
+  body.tech table.data tr.stale{background:#fef3c7 !important;border-color:#f59e0b}
+  body.tech table.data td{
+    padding:4px 0;border:none;display:flex;justify-content:space-between;
+    align-items:center;gap:8px;font-size:13.5px;text-align:right;
+  }
+  body.tech table.data td:before{
+    content:attr(data-label);font-weight:600;color:var(--muted);
+    font-size:11.5px;text-transform:uppercase;flex:0 0 auto;text-align:left;
+  }
+  /* TD khong co data-label (vd: cell action) → khong show label */
+  body.tech table.data td:not([data-label]):before{display:none}
+  /* Cell hanh dong: stack buttons */
+  body.tech table.data td[data-label="Hành động"]{
+    flex-direction:column;align-items:stretch;border-top:1px solid var(--border);
+    margin-top:6px;padding-top:8px;
+  }
+  body.tech table.data td[data-label="Hành động"]:before{display:none}
+  body.tech table.data td[data-label="Hành động"] .btn{
+    width:100%;justify-content:center;margin:2px 0;
+  }
+  /* Empty row colspan tren mobile */
+  body.tech table.data td[colspan]{display:block;text-align:center}
+  body.tech table.data td[colspan]:before{display:none}
+}

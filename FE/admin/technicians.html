@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Kỹ thuật – Admin GPS Việt</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .ktv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+  .ktv-card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:10px;box-shadow:var(--shadow);transition:.15s}
+  .ktv-card:hover{box-shadow:var(--shadow-lg)}
+  .ktv-head{display:flex;align-items:center;gap:12px}
+  .ktv-avatar{width:52px;height:52px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:20px;font-weight:700;flex-shrink:0;object-fit:cover}
+  .ktv-name{font-size:16px;font-weight:700}
+  .ktv-username{color:var(--muted);font-size:12px}
+  .ktv-meta{display:flex;gap:8px;flex-wrap:wrap;font-size:13px;color:#475569}
+  .ktv-meta b{color:var(--text)}
+  .ktv-stats{display:flex;gap:14px;padding:8px 0;border-top:1px dashed var(--border);border-bottom:1px dashed var(--border);font-size:13px}
+  .ktv-stats .stat-num{font-size:18px;font-weight:700;color:var(--primary);display:block}
+  .ktv-actions{display:flex;gap:6px;flex-wrap:wrap}
+  .online-dot{width:8px;height:8px;border-radius:50%;background:#16a34a;display:inline-block;margin-right:4px}
+  .online-dot.off{background:#94a3b8}
+  .filter-task-row{padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:#f8fafc;cursor:pointer;transition:.1s}
+  .filter-task-row:hover{background:#e0f2fe;border-color:var(--primary)}
+  .filter-task-row.disabled{opacity:.5;cursor:not-allowed}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topnav">
+      <h2 class="topnav-title">Kỹ thuật &amp; phân công</h2>
+      <div id="topnav-user" class="row" style="gap:10px"></div>
+    </div>
+    <div class="content">
+      <div class="toolbar">
+        <input type="text" id="searchBox" class="search-box" placeholder="Tìm theo tên, username, SĐT, khu vực...">
+        <select id="filterRole" class="select" style="width:160px">
+          <option value="">Tất cả vai trò</option>
+          <option value="kithuat">Kỹ thuật</option>
+          <option value="admin">Quản trị</option>
+        </select>
+        <button class="btn" id="btnAdd">+ Thêm KTV</button>
+      </div>
+      <div id="ktvGrid" class="ktv-grid"></div>
+      <p id="emptyMsg" class="text-muted text-center mt-3 hide">Không có nhân viên nào.</p>
+    </div>
+  </main>
+</div>
+
+<!-- Modal them/sua KTV -->
+<div id="modal" class="modal-bg">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-head">
+      <h3 id="modalTitle">Thêm kỹ thuật</h3>
+      <button type="button" class="modal-close" id="modalClose" aria-label="Đóng">×</button>
+    </div>
+    <form id="frm" style="display:contents">
+      <div class="modal-body">
+        <input type="hidden" id="f_id">
+        <div class="grid cols-2">
+          <div class="field">
+            <label>Username *</label>
+            <input type="text" id="f_username" class="input" required placeholder="VD: ktv01">
+          </div>
+          <div class="field">
+            <label>Vai trò *</label>
+            <select id="f_role" class="select" required>
+              <option value="kithuat">Kỹ thuật</option>
+              <option value="admin">Quản trị viên</option>
+            </select>
+          </div>
+        </div>
+        <div class="field"><label>Họ tên *</label><input type="text" id="f_full_name" class="input" required></div>
+        <div class="grid cols-2">
+          <div class="field"><label>SĐT</label><input type="text" id="f_phone" class="input"></div>
+          <div class="field"><label>CCCD</label><input type="text" id="f_cccd" class="input"></div>
+        </div>
+        <div class="grid cols-2">
+          <div class="field"><label>Email</label><input type="email" id="f_email" class="input"></div>
+          <div class="field"><label>Khu vực phụ trách</label><input type="text" id="f_area" class="input" placeholder="VD: Quận 1"></div>
+        </div>
+        <div class="field" id="pwField">
+          <label id="pwLabel">Mật khẩu *</label>
+          <input type="text" id="f_password" class="input" placeholder="Tối thiểu 4 ký tự">
+          <p class="help" id="pwHelp">Hiển thị plaintext để dễ chia sẻ. DB lưu bcrypt.</p>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="btnCancel">Hủy</button>
+        <button type="submit" class="btn" id="btnSave">Lưu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal phan cong don -->
+<div id="assignModal" class="modal-bg">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-head">
+      <h3>Phân đơn cho <span id="assignKtvName"></span></h3>
+      <button type="button" class="modal-close" id="assignClose" aria-label="Đóng">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="text-muted mb-2">Chọn 1 task chưa có KTV để phân công cho người này.</p>
+      <div id="assignList"></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="assignCancelBtn">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/admin-shell.js"></script>
+<script src="/admin/technicians.js"></script>
+</body>
+</html>

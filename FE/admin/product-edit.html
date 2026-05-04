@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Chỉnh sản phẩm – Admin GPS Việt</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .pe-grid{display:grid;grid-template-columns:340px 1fr;gap:20px}
+  @media (max-width:1100px){.pe-grid{grid-template-columns:1fr}}
+  .pe-image-frame{position:relative;width:100%;height:240px;border-radius:8px;background:#f1f5f9;border:1px solid #e2e8f0;overflow:hidden}
+  .pe-image-frame img{display:block;width:100%;height:100%;object-fit:cover}
+  .pe-image-frame.is-empty img{display:none}
+  .pe-image-frame .pe-empty{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:#94a3b8;font-size:14px;text-align:center;pointer-events:none}
+  .pe-image-frame.is-empty .pe-empty{display:flex}
+  .pe-section{background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+  .pe-section h3{margin:0 0 10px;font-size:15px}
+  .dyn-row{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px}
+  .dyn-row .input,.dyn-row .select{padding:7px 10px;font-size:13px}
+  .dyn-row .btn-del{background:#fee2e2;color:#991b1b;border:1px solid #fecaca;border-radius:8px;padding:6px 10px;cursor:pointer;font-weight:700}
+  .dyn-row .btn-del:hover{background:#fecaca}
+
+  /* Bảng giá: custom row đẹp hơn */
+  .price-row{display:grid;grid-template-columns:120px 1fr 32px;gap:6px;align-items:stretch;margin-bottom:8px}
+  .price-tier{position:relative;min-width:0}
+  .price-tier select{
+    width:100%;height:38px;padding:0 24px 0 10px;
+    border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;
+    font-size:13px;font-weight:600;color:#0f172a;cursor:pointer;
+    appearance:none;-webkit-appearance:none;-moz-appearance:none;
+    text-overflow:ellipsis;
+  }
+  .price-tier select:hover{border-color:#cbd5e1;background:#fff}
+  .price-tier select:focus{outline:none;border-color:#2563eb;background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+  .price-tier::after{
+    content:'▾';position:absolute;right:8px;top:50%;transform:translateY(-50%);
+    color:#64748b;font-size:11px;pointer-events:none;
+  }
+  .price-amount{
+    position:relative;display:flex;align-items:center;min-width:0;
+    border:1px solid #e2e8f0;border-radius:8px;background:#fff;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  .price-amount:focus-within{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+  .price-amount input{
+    flex:1;min-width:0;width:100%;height:36px;border:0;outline:none;background:transparent;
+    padding:0 4px 0 10px;font-size:14px;font-weight:600;color:#0f172a;
+    text-align:right;letter-spacing:.3px;
+  }
+  .price-amount input::placeholder{color:#cbd5e1;font-weight:400}
+  .price-amount input::-webkit-outer-spin-button,
+  .price-amount input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .price-amount .price-suffix{
+    padding:0 10px 0 2px;color:#64748b;font-size:13px;font-weight:600;user-select:none;
+  }
+  .price-row .btn-del{
+    width:32px;height:38px;display:flex;align-items:center;justify-content:center;
+    background:transparent;color:#94a3b8;border:1px dashed #e2e8f0;border-radius:8px;
+    cursor:pointer;font-size:16px;line-height:1;font-weight:400;padding:0;
+    transition:all .15s;
+  }
+  .price-row .btn-del:hover{background:#fef2f2;border-color:#fecaca;border-style:solid;color:#dc2626}
+
+  /* Help text dưới bảng giá */
+  .price-help{
+    margin-top:10px;padding:8px 10px;background:#f8fafc;border-radius:6px;
+    font-size:12px;color:#64748b;line-height:1.5;
+  }
+  .price-help b{color:#0f172a}
+
+  /* Nhóm 2 nút thêm */
+  .price-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+  .price-actions .btn{font-size:13px}
+
+  /* Giá riêng theo đại lý: layout card 2 dòng */
+  .cpp-row{
+    border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px;
+    background:#fff;transition:border-color .15s, box-shadow .15s;
+  }
+  .cpp-row:hover{border-color:#cbd5e1}
+  .cpp-row.is-dirty{border-color:#fbbf24;background:#fffbeb}
+  .cpp-row.is-saved{border-color:#86efac;background:#f0fdf4}
+  .cpp-head{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px}
+  .cpp-info{flex:1;min-width:0}
+  .cpp-name{font-weight:600;font-size:13.5px;line-height:1.3;color:#0f172a;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cpp-sub{font-size:11.5px;color:#64748b;line-height:1.35;margin-top:2px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cpp-del{
+    width:26px;height:26px;display:flex;align-items:center;justify-content:center;
+    background:transparent;color:#94a3b8;border:1px solid transparent;border-radius:6px;
+    cursor:pointer;font-size:18px;line-height:1;flex-shrink:0;padding:0;
+    transition:all .15s;
+  }
+  .cpp-del:hover{background:#fef2f2;color:#dc2626;border-color:#fecaca}
+  .cpp-body{display:flex;gap:6px;align-items:stretch}
+  .cpp-body .price-amount{flex:1;min-width:0}
+  .cpp-status{font-size:11px;color:#64748b;font-weight:500;margin-left:auto;
+    align-self:center;white-space:nowrap}
+  .cpp-status.is-saved{color:#16a34a}
+  .cpp-status.is-dirty{color:#d97706}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topnav">
+      <a class="btn ghost sm" href="/admin/products.html">← Danh sách</a>
+      <h2 id="pageTitle" style="font-size:17px;font-weight:700;margin:0;flex:1;min-width:0;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Chỉnh sản phẩm</h2>
+      <button class="btn ghost" id="btnDiscard">Huỷ thay đổi</button>
+      <button class="btn" id="btnSave">💾 Lưu tất cả</button>
+    </div>
+    <div class="content">
+      <div class="pe-grid">
+        <!-- Cot trai: thong tin co ban + anh -->
+        <div>
+          <div class="pe-section">
+            <h3>Ảnh sản phẩm</h3>
+            <div class="pe-image-frame is-empty" id="pImageFrame">
+              <img id="pImagePreview" alt="">
+              <div class="pe-empty">📷 Chưa có ảnh</div>
+            </div>
+            <div class="row mt-2" style="gap:6px">
+              <input type="file" id="pImageFile" accept="image/*" style="flex:1">
+              <button type="button" class="btn ghost sm" id="pImageClear">Xoá ảnh</button>
+            </div>
+            <input type="hidden" id="pImageUrl">
+            <input type="hidden" id="pThumbnailUrl">
+          </div>
+
+          <div class="pe-section">
+            <h3>Thông tin chung</h3>
+            <div class="field"><label>Mã thiết bị *</label>
+              <input type="text" id="pCode" class="input" required>
+            </div>
+            <div class="field"><label>Tên sản phẩm *</label>
+              <input type="text" id="pName" class="input" required>
+            </div>
+            <div class="field"><label>Danh mục</label>
+              <select id="pCategory" class="select">
+                <option value="">— Chưa phân loại —</option>
+              </select>
+            </div>
+            <div class="grid cols-2">
+              <div class="field"><label>Bảo hành (tháng)</label>
+                <input type="number" id="pWarranty" class="input" min="0" value="12">
+              </div>
+              <div class="field"><label>Giá vốn (VND)</label>
+                <input type="number" id="pCost" class="input" min="0" step="1000">
+              </div>
+            </div>
+            <div class="field"><label>Mô tả ngắn</label>
+              <textarea id="pDesc" class="textarea" rows="2"></textarea>
+            </div>
+          </div>
+
+          <div class="pe-section">
+            <h3>Bảng giá</h3>
+            <div id="pricesRows"></div>
+            <div class="price-actions">
+              <button type="button" class="btn ghost sm" id="btnAddPrice">+ Thêm mức giá</button>
+              <button type="button" class="btn ghost sm" id="btnManageTiers" title="Quản lý các loại mức giá dùng chung">⚙ Quản lý mức giá</button>
+            </div>
+            <div class="price-help">
+              💡 Các mức giá dùng chung giữa mọi sản phẩm. Khách public + khách chưa được gán riêng sẽ thấy giá theo mức <b>Mặc định</b>.
+              Mỗi đại lý có thể được gán mức giá riêng ở trang <b>Khách hàng</b>.
+            </div>
+          </div>
+
+          <div class="pe-section">
+            <h3>Giá riêng theo đại lý</h3>
+            <p class="text-muted" style="font-size:12.5px;margin:0 0 10px">
+              Đại lý nào có cấu hình ở đây sẽ <b>luôn lấy giá ở đây</b> cho sản phẩm này, bỏ qua giá theo cấp.
+            </p>
+            <div id="custPriceRows"></div>
+            <button type="button" class="btn ghost sm" id="btnAddCustPrice">+ Thêm đại lý</button>
+          </div>
+        </div>
+
+        <!-- Cot phai: thong so 2 nhom + timeline -->
+        <div>
+          <div class="pe-section">
+            <h3>Thông số CƠ BẢN <small class="text-muted" style="font-weight:400">(hiển thị bên cạnh ảnh chính trên trang khách)</small></h3>
+            <div id="topAttrsRows"></div>
+            <button type="button" class="btn ghost sm" data-add-attr="top">+ Thêm thông số cơ bản</button>
+          </div>
+
+          <div class="pe-section">
+            <h3>Nội dung sản phẩm (timeline) <small class="text-muted" style="font-weight:400">— text/ảnh/video xen kẽ theo thứ tự</small></h3>
+            <div id="blocksList" class="tl-editor"></div>
+            <div class="tl-add-bar mt-2">
+              <button type="button" class="btn sm" data-add-block="text">+ Thêm đoạn văn</button>
+              <button type="button" class="btn sm" data-add-block="image">+ Thêm ảnh</button>
+              <button type="button" class="btn sm" data-add-block="video">+ Thêm video</button>
+            </div>
+            <p class="help mt-1">💡 Trang khách sẽ hiển thị các block này lần lượt, đan xen với thông số. Dùng nút ↑ ↓ để sắp xếp.</p>
+          </div>
+
+          <div class="pe-section">
+            <h3>Thông số CHI TIẾT <small class="text-muted" style="font-weight:400">(hiển thị cuối trang khách, sau timeline)</small></h3>
+            <div id="bottomAttrsRows"></div>
+            <button type="button" class="btn ghost sm" data-add-attr="bottom">+ Thêm thông số chi tiết</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal: Quan ly muc gia (price_tiers) -->
+<div class="modal-bg" id="tierModal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-head">
+      <h3>Quản lý mức giá</h3>
+      <button type="button" class="modal-close" id="tierModalClose">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="text-muted" style="font-size:13px;margin:0 0 12px">
+        Các mức giá dùng chung giữa mọi sản phẩm. Mức được đánh dấu ⭐ là <b>Mặc định</b> — hiển thị cho khách public và làm fallback khi khách/đại lý chưa được gán mức riêng.
+      </p>
+
+      <table class="table" id="tierTable" style="width:100%;font-size:13px">
+        <thead>
+          <tr>
+            <th style="text-align:left">Tên mức giá</th>
+            <th style="text-align:left">Code</th>
+            <th style="text-align:center;width:60px">Mặc định</th>
+            <th style="text-align:right;width:200px">Hành động</th>
+          </tr>
+        </thead>
+        <tbody id="tierTableBody"></tbody>
+      </table>
+
+      <div class="divider"></div>
+
+      <h4 style="margin:0 0 8px;font-size:14px">+ Thêm mức giá mới</h4>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <div class="field" style="flex:1;margin:0">
+          <label style="font-size:12px">Tên</label>
+          <input type="text" id="tierNewName" class="input" placeholder="VD: Đại lý cấp 1">
+        </div>
+        <div class="field" style="width:90px;margin:0">
+          <label style="font-size:12px">Sort order</label>
+          <input type="number" id="tierNewOrder" class="input" value="0">
+        </div>
+        <button type="button" class="btn" id="tierNewSave">Thêm</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="tierModalDone">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal chon dai ly de gan gia rieng -->
+<div class="modal-bg" id="dealerPickerModal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-head">
+      <h3>Chọn đại lý để gán giá riêng</h3>
+      <button type="button" class="modal-close" id="dealerPickerClose">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="text" id="dealerSearch" class="input" placeholder="🔍 Tìm tên / mã / SĐT đại lý..." autocomplete="off" style="margin-bottom:10px">
+      <div id="dealerResults" style="display:flex;flex-direction:column;gap:6px;max-height:380px;overflow:auto"></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="dealerPickerCancel">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/admin-shell.js"></script>
+<script src="/admin/product-edit.js"></script>
+</body>
+</html>

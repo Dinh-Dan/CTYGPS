@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Dashboard – Kỹ thuật GPS Việt</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:18px}
+  .task-mini{padding:12px;border:1px solid var(--border);border-radius:10px;background:#fff;margin-bottom:8px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
+  .task-mini .info b{font-size:14px}
+  .task-mini .text-muted{font-size:13px}
+  .empty{text-align:center;padding:24px;color:var(--muted)}
+  @media (max-width:900px){
+    .task-mini{padding:10px;gap:8px}
+    .task-mini .info{font-size:13px}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topnav">
+      <h2 class="topnav-title">Dashboard</h2>
+      <div id="topnav-user" class="row" style="gap:10px"></div>
+    </div>
+    <div class="content">
+      <div class="stat-grid">
+        <a class="stat" href="/kithuat/tasks.html?today=1" style="color:inherit;text-decoration:none"><div class="icon">📋</div><div><div class="label">Công việc hôm nay</div><div class="value" id="s_today">0</div></div></a>
+        <a class="stat" href="/kithuat/tasks.html?status=done" style="color:inherit;text-decoration:none"><div class="icon green">✓</div><div><div class="label">Hoàn thành tháng</div><div class="value" id="s_done">0</div></div></a>
+        <a class="stat" href="/kithuat/inventory.html" style="color:inherit;text-decoration:none"><div class="icon amber">📦</div><div><div class="label">Thiết bị đang giữ</div><div class="value" id="s_holding">0</div></div></a>
+        <a class="stat" href="/kithuat/tasks.html?payment=unpaid" style="color:inherit;text-decoration:none"><div class="icon red">💰</div><div><div class="label">Tiền chưa nộp</div><div class="value" id="s_unremitted">0đ</div></div></a>
+      </div>
+
+      <div class="grid cols-2">
+        <div class="card">
+          <h3>Công việc hôm nay</h3>
+          <div id="todayList"></div>
+        </div>
+        <div class="card">
+          <h3>Tin nhắn chưa đọc</h3>
+          <div id="msgList"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/tech-shell.js"></script>
+<script src="/kithuat/index.js"></script>
+</body>
+</html>

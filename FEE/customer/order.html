@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Đặt dịch vụ – GPS Việt</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+</head>
+<body>
+<div class="topbar"><div class="container"><div>☎ Hotline: 1900 2045</div><div id="topbarRight"></div></div></div>
+<header class="site">
+  <div class="container">
+    <a class="logo" href="index.html"><span class="logo-mark">GV</span> GPS VIỆT</a>
+    <button class="nav-toggle" aria-label="Mở menu" onclick="this.nextElementSibling.classList.toggle('open')">☰</button>
+    <nav class="main">
+      <a href="index.html">Trang chủ</a>
+      <a href="products.html">Sản phẩm</a>
+      <a href="order.html" class="active">Đặt dịch vụ</a>
+      <a href="warranty.html">Bảo hành</a>
+      <a href="compliance.html">Nghị định 10</a>
+      <a href="guide.html">Hướng dẫn</a>
+      <a href="about.html">Về chúng tôi</a>
+    </nav>
+  </div>
+</header>
+
+<div class="container" style="padding:30px 20px;max-width:900px">
+  <h1>Đặt dịch vụ</h1>
+  <p class="text-muted">Chọn loại dịch vụ, nhập thông tin – kỹ thuật sẽ liên hệ trong 15 phút.</p>
+
+  <div class="tabs" id="tabs">
+    <button data-type="new" class="active">🛠️ Lắp mới</button>
+    <button data-type="renew">🔄 Gia hạn</button>
+    <button data-type="repair">🔧 Sửa chữa</button>
+    <button data-type="warranty">🛡️ Bảo hành</button>
+    <button data-type="badge">🪪 Làm phù hiệu xe</button>
+  </div>
+
+  <div class="steps">
+    <div class="step active"><b>1.</b> Thông tin</div>
+    <div class="step"><b>2.</b> Xác nhận</div>
+    <div class="step"><b>3.</b> Hoàn tất</div>
+  </div>
+
+  <div class="grid cols-2">
+    <div class="card">
+      <h3 id="form-title">Thông tin lắp mới</h3>
+      <p class="text-muted" id="form-desc">Điền thông tin xe và địa chỉ, kỹ thuật sẽ đến lắp tận nơi.</p>
+
+      <div class="field"><label>Họ tên *</label><input class="input" id="customer-name" placeholder="Nguyễn Văn A" /></div>
+      <div class="field"><label>Số điện thoại *</label><input class="input" id="customer-phone" placeholder="09xx xxx xxx" /></div>
+
+      <div id="field-product" class="field">
+        <label>Thiết bị *</label>
+        <div id="picked-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+        <button type="button" class="btn ghost sm" id="btnPickProduct">+ Thêm thiết bị</button>
+      </div>
+
+      <div id="field-plate" class="field"><label>Biển số xe</label><input class="input" id="vehicle-plate" placeholder="51H-123.45" /></div>
+      <div id="field-account" class="field"><label>Tài khoản app (nếu đã có)</label><input class="input" id="subscription-account" placeholder="demoxetai" /></div>
+
+      <div id="field-address" class="field"><label>Địa chỉ lắp đặt *</label><textarea class="textarea" id="address" placeholder="Số nhà, đường, quận/huyện, tỉnh/thành"></textarea></div>
+
+      <!-- Gia hạn: chọn số năm -->
+      <div id="field-plan" class="field hide">
+        <label>Số năm gia hạn</label>
+        <div class="radio-group">
+          <label><input type="radio" name="plan" value="1" checked /> 1 năm</label>
+          <label><input type="radio" name="plan" value="2" /> 2 năm (tiết kiệm 10%)</label>
+          <label><input type="radio" name="plan" value="3" /> 3 năm (tiết kiệm 20%)</label>
+        </div>
+        <p class="help">Phí gia hạn tuỳ thiết bị, sẽ hiển thị bên cột Tóm tắt.</p>
+      </div>
+
+      <!-- Sửa chữa / Bảo hành: mô tả sự cố, không có giá -->
+      <div id="field-issue" class="field hide">
+        <label>Mô tả sự cố / thiết bị *</label>
+        <textarea class="textarea" id="issue-desc" placeholder="VD: thiết bị mất tín hiệu, đèn báo lỗi, sau khi rửa xe không lên nguồn..."></textarea>
+        <p class="help">Kỹ thuật đến kiểm tra, báo giá trực tiếp với bạn trước khi sửa.</p>
+      </div>
+
+      <!-- ========== PHÙ HIỆU XE ========== -->
+      <div id="field-badge-docs" class="field hide">
+        <label>Hồ sơ kèm theo</label>
+        <div style="background:#f8fafc;padding:12px;border-radius:8px;border:1px dashed var(--border)">
+          <p class="help mt-0 mb-2">📎 Có thể đính kèm các tệp ảnh: giấy đăng ký xe, giấy phép kinh doanh, giấy chứng nhận GPS hợp chuẩn, CCCD chủ xe... hoặc bất kỳ tệp nào liên quan.</p>
+          <div id="badge-uploads" style="display:flex;flex-direction:column;gap:8px"></div>
+          <div class="row" style="gap:8px;margin-top:10px;align-items:center">
+            <input type="file" id="badge-file-input" accept="image/*" multiple style="display:none">
+            <button type="button" class="btn ghost sm" id="btnBadgeAddFile">+ Thêm tệp</button>
+            <span class="text-muted" style="font-size:12px">Tối đa 5MB / tệp. Chỉ hỗ trợ ảnh.</span>
+          </div>
+        </div>
+        <p class="help mt-1">💡 Chưa có thiết bị GPS hợp chuẩn? <a href="products.html">Xem bảng giá lắp GPS</a> – chúng tôi lắp đặt + làm phù hiệu trọn gói.</p>
+      </div>
+
+      <div class="field"><label>Ghi chú thêm</label><textarea class="textarea" id="note-extra" placeholder="Lịch hẹn, hướng dẫn đường..."></textarea></div>
+
+      <button class="btn block" onclick="submitOrder()">Gửi yêu cầu →</button>
+    </div>
+
+    <div>
+      <div class="card mb-2">
+        <h3>Tóm tắt</h3>
+        <div class="spread"><span class="text-muted">Dịch vụ</span><b id="sum-type">Lắp mới</b></div>
+        <div class="spread" id="row-product"><span class="text-muted">Thiết bị</span><b id="sum-product">—</b></div>
+        <div class="spread" id="row-price"><span class="text-muted">Đơn giá</span><b id="sum-price">0₫</b></div>
+        <div class="spread" id="row-labor"><span class="text-muted">Công lắp</span><b style="color:#92400e">Báo giá sau</b></div>
+        <div class="spread hide" id="row-years"><span class="text-muted">Số năm</span><b id="sum-years">1</b></div>
+        <div class="spread hide" id="row-badge"><span class="text-muted">Phí mỗi xe</span><b id="sum-badge">0₫</b></div>
+        <div class="spread hide" id="row-qty"><span class="text-muted">Số xe</span><b id="sum-qty">1</b></div>
+        <div class="spread hide" id="row-eta"><span class="text-muted">Dự kiến có</span><b id="sum-eta">—</b></div>
+        <div class="divider"></div>
+        <div class="spread"><b>Tổng tạm tính</b><b style="color:var(--primary);font-size:18px" id="sum-total">0₫</b></div>
+
+        <!-- Khối báo giá sau (sửa chữa, bảo hành) -->
+        <div id="quote-later" class="hide" style="background:#fefce8;border:1px dashed #fcd34d;padding:12px;border-radius:8px;margin-top:10px">
+          <b>⏳ Kỹ thuật sẽ báo giá sau khi khảo sát</b>
+          <p class="text-muted mt-1 mb-0" style="font-size:13px">Với yêu cầu <b id="quote-kind">sửa chữa</b>, kỹ thuật đến nơi kiểm tra, báo chi phí cụ thể trước khi xử lý. Bạn đồng ý rồi mới tiến hành – không mất phí nếu không sửa.</p>
+        </div>
+      </div>
+
+      <div class="card" style="background:var(--primary-soft);border-color:#bfdbfe">
+        <b>📞 Cần tư vấn?</b>
+        <p class="text-muted mt-1 mb-2" style="font-size:13px">Liên hệ ngay với CSKH để được hỗ trợ:</p>
+        <a href="tel:19002045" class="btn block" style="margin-bottom:8px">📞 Gọi 1900 2045</a>
+        <button type="button" class="btn ghost block" id="btnOpenChat">💬 Mở chat với CSKH</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal chon thiet bi (multi-pick) -->
+<div id="productPickerModal" class="modal-bg">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-head">
+      <h3>+ Thêm thiết bị vào yêu cầu</h3>
+      <button type="button" class="modal-close" id="ppClose" aria-label="Đóng">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="text" id="pp_search" class="input" placeholder="Tìm tên / mã thiết bị..." autocomplete="off" style="margin-bottom:10px">
+      <div id="pp_results" style="display:flex;flex-direction:column;gap:6px;max-height:420px;overflow:auto"></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="ppCancel">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<footer class="site"><div class="container bottom">© 2025 GPS Việt</div></footer>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/customer-topbar.js"></script>
+<script src="/shared/js/chat-with-admin.js"></script>
+<script src="/shared/js/imgbb.js"></script>
+<script src="/shared/js/app.js"></script>
+<script>
+const tabs = document.querySelectorAll('#tabs button');
+const ALL_FIELDS = ['field-product','field-plate','field-account','field-address','field-plan','field-issue',
+                    'field-badge-docs'];
+const TYPE_MAP = {
+  new:    {title:'Thông tin lắp mới', desc:'Điền địa chỉ lắp đặt – kỹ thuật sẽ đến lắp tận nơi. Đơn giá hiển thị theo cấu hình tài khoản của bạn.',
+           label:'Lắp mới', show:['field-product','field-address']},
+  renew:  {title:'Thông tin gia hạn',  desc:'Nhập biển số hoặc tài khoản để tra và chọn số năm gia hạn. Phí tuỳ thiết bị.',
+           label:'Gia hạn', show:['field-product','field-plate','field-account','field-plan']},
+  repair: {title:'Yêu cầu sửa chữa',   desc:'Mô tả sự cố – kỹ thuật đến khảo sát, báo giá cụ thể trước khi sửa.',
+           label:'Sửa chữa', show:['field-plate','field-account','field-address','field-issue']},
+  warranty:{title:'Yêu cầu bảo hành',  desc:'Nêu tình trạng thiết bị – kỹ thuật kiểm tra và xử lý bảo hành.',
+           label:'Bảo hành', show:['field-plate','field-account','field-issue']},
+  badge:  {title:'Đăng ký phù hiệu vận tải',
+           desc:'Làm phù hiệu xe theo Nghị định 10/2020/NĐ-CP. Chúng tôi chuẩn bị hồ sơ, nộp sở GTVT và giao tận tay. Phí dịch vụ sẽ được nhân viên báo lại sau khi tiếp nhận hồ sơ.',
+           label:'Phù hiệu xe',
+           show:['field-plate','field-address','field-badge-docs']}
+};
+const QUOTE_LATER_TYPES = ['repair','warranty'];
+
+// Multi-pick state
+let pickedItems = []; // [{id, qty}]
+
+function currentType(){
+  return document.querySelector('#tabs button.active')?.dataset.type || 'new';
+}
+
+function applyType(t){
+  tabs.forEach(b=>b.classList.toggle('active', b.dataset.type===t));
+  const m = TYPE_MAP[t];
+  document.getElementById('form-title').textContent = m.title;
+  document.getElementById('form-desc').textContent = m.desc;
+  document.getElementById('sum-type').textContent = m.label;
+
+  ALL_FIELDS.forEach(id=>document.getElementById(id).classList.add('hide'));
+  m.show.forEach(id=>document.getElementById(id).classList.remove('hide'));
+
+  const isBadge = t==='badge';
+  const isQuoteLater = QUOTE_LATER_TYPES.includes(t);
+  const isRenew = t==='renew';
+  const isNew = t==='new';
+
+  document.getElementById('row-product').classList.toggle('hide', isBadge);
+  document.getElementById('row-price')  .classList.toggle('hide', isBadge || isQuoteLater);
+  document.getElementById('row-labor')  .classList.toggle('hide', !isNew);
+  document.getElementById('row-years')  .classList.toggle('hide', !isRenew);
+  // Phu hieu: an het hang phi/so xe/ETA — phi do admin bao sau, hien khoi "bao gia sau" giong sua chua/bao hanh.
+  ['row-badge','row-qty','row-eta'].forEach(id=>
+    document.getElementById(id).classList.add('hide'));
+
+  const ql = document.getElementById('quote-later');
+  const showQuoteLater = isQuoteLater || isBadge;
+  ql.classList.toggle('hide', !showQuoteLater);
+  if(showQuoteLater){
+    document.getElementById('quote-kind').textContent = isBadge ? 'phù hiệu xe' : m.label.toLowerCase();
+    document.querySelector('#sum-total').parentElement.classList.add('hide');
+  } else {
+    document.querySelector('#sum-total').parentElement.classList.remove('hide');
+  }
+
+  renderPickedList();
+  calc(t);
+}
+
+// ---- Multi-pick thiết bị ----
+// Don gia dau ra trong p.price = gia da resolved theo customer dang login
+// (override > tier theo cap > tier mac dinh). Khong cho khach edit; admin
+// muon edit thi sua trong /admin/orders.
+function unitPriceFor(p, t){
+  if(t==='renew') return RENEWAL_PRICES[p.id] || 0;
+  return p.price || 0;
+}
+
+function renderPickedList(){
+  const wrap = document.getElementById('picked-list');
+  if(!wrap) return;
+  const t = currentType();
+  if(!pickedItems.length){
+    wrap.innerHTML = '<div class="text-muted" style="padding:12px;border:1px dashed var(--border);border-radius:8px;text-align:center;font-size:13px">Chưa chọn thiết bị nào</div>';
+    return;
+  }
+  wrap.innerHTML = pickedItems.map(it=>{
+    const p = PRODUCTS.find(x=>x.id===it.id);
+    if(!p) return '';
+    const unit = unitPriceFor(p, t);
+    const priceLabel = t==='renew' ? `${fmtVND(unit)}/năm` : `${fmtVND(unit)}/cái`;
+    return `
+      <div class="picked-row" style="display:flex;align-items:center;gap:8px;padding:10px;border:1px solid var(--border);border-radius:8px;background:#f8fafc">
+        <div style="font-size:22px">${p.icon||'📦'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:14px">${p.name}</div>
+          <div class="text-muted" style="font-size:12.5px">${priceLabel}</div>
+        </div>
+        <input type="number" min="1" value="${it.qty}" class="input pi-qty" data-id="${p.id}" style="width:64px;padding:6px;text-align:center">
+        <button type="button" class="pi-remove" data-id="${p.id}" title="Xoá" aria-label="Xoá"
+          style="background:none;border:1px solid var(--border);border-radius:6px;width:32px;height:32px;cursor:pointer;color:#dc2626;font-size:16px">×</button>
+      </div>`;
+  }).join('');
+}
+
+function addPickItem(id){
+  if(pickedItems.some(it=>it.id===id)) return;
+  pickedItems.push({id, qty:1});
+  renderPickedList();
+  calc(currentType());
+}
+function removePickItem(id){
+  pickedItems = pickedItems.filter(it=>it.id!==id);
+  renderPickedList();
+  calc(currentType());
+}
+function setQty(id, qty){
+  const it = pickedItems.find(x=>x.id===id);
+  if(it) it.qty = Math.max(1, +qty || 1);
+  calc(currentType());
+}
+
+// ---- Picker modal ----
+function openPicker(){
+  document.getElementById('productPickerModal').classList.add('open');
+  document.getElementById('pp_search').value = '';
+  renderPickerResults('');
+  setTimeout(()=>document.getElementById('pp_search').focus(), 50);
+}
+function closePicker(){ document.getElementById('productPickerModal').classList.remove('open'); }
+
+function renderPickerResults(q){
+  const ql = (q||'').toLowerCase().trim();
+  const list = PRODUCTS.filter(p =>
+    !ql || p.name.toLowerCase().includes(ql) || p.id.toLowerCase().includes(ql) || (p.cat||'').toLowerCase().includes(ql));
+  const wrap = document.getElementById('pp_results');
+  if(!list.length){
+    wrap.innerHTML = '<div class="text-muted text-center" style="padding:20px">Không có kết quả</div>';
+    return;
+  }
+  wrap.innerHTML = list.map(p=>{
+    const inOrder = pickedItems.some(it=>it.id===p.id);
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:8px">
+        <div style="font-size:22px">${p.icon||'📦'}</div>
+        <div style="flex:1;min-width:0">
+          <div><b>${p.name}</b> <small class="text-muted">${p.id}</small></div>
+          <div class="text-muted" style="font-size:12.5px">${p.cat||'—'} · ${fmtVND(p.price)}</div>
+        </div>
+        ${inOrder
+          ? '<span class="text-muted" style="font-size:12px">Đã có</span>'
+          : `<button type="button" class="btn sm pp-add" data-id="${p.id}">+ Thêm</button>`}
+      </div>`;
+  }).join('');
+}
+
+function calc(t){
+  if(t==='badge') return; // Phi do admin bao sau — khong tinh truoc.
+  if(QUOTE_LATER_TYPES.includes(t)) return;
+
+  // Tóm tắt: tổng theo các thiết bị đã chọn
+  let subtotal = 0;
+  let qtySum = 0;
+  pickedItems.forEach(it=>{
+    const p = PRODUCTS.find(x=>x.id===it.id);
+    if(!p) return;
+    qtySum += it.qty;
+    if(t==='new') subtotal += (p.price||0) * it.qty;
+    else if(t==='renew') subtotal += renewalPrice(p.id, +(document.querySelector('input[name=plan]:checked')?.value||1)) * it.qty;
+  });
+  const productLabel = qtySum
+    ? (pickedItems.length===1
+        ? `${PRODUCTS.find(x=>x.id===pickedItems[0].id)?.name||'—'} × ${qtySum}`
+        : `${pickedItems.length} loại · ${qtySum} thiết bị`)
+    : '—';
+  document.getElementById('sum-product').textContent = productLabel;
+
+  if(t==='new'){
+    document.getElementById('sum-price').textContent = fmtVND(subtotal);
+    document.getElementById('sum-total').textContent = fmtVND(subtotal);
+    return;
+  }
+  if(t==='renew'){
+    const years = +(document.querySelector('input[name=plan]:checked')?.value||1);
+    document.getElementById('sum-years').textContent = years + ' năm';
+    document.getElementById('sum-price').textContent = qtySum ? fmtVND(subtotal/years) + '/năm' : '0₫';
+    document.getElementById('sum-total').textContent = fmtVND(subtotal);
+    return;
+  }
+}
+
+tabs.forEach(b=>b.addEventListener('click',()=>applyType(b.dataset.type)));
+
+// Load products that tu DB (replace mock PRODUCTS) — can id integer de POST.
+// Khach login -> /customer/products de lay gia override/cap dai ly; chua login -> /public.
+async function loadProductsFromDB(){
+  try{
+    const endpoint = (window.auth && auth.isLoggedIn && auth.isLoggedIn())
+      ? '/customer/products'
+      : '/public/products';
+    const r = await api.get(endpoint + '?limit=48', { silent:true });
+    if(!r || !Array.isArray(r.items) || !r.items.length) return;
+    PRODUCTS.splice(0, PRODUCTS.length, ...r.items.map(p => ({
+      id:    String(p.id),
+      code:  p.code,
+      name:  p.name,
+      cat:   p.category_name || '',
+      price: Number(p.retail_price) || 0,
+      icon:  '📦',
+    })));
+  }catch(_){ /* fallback giu mock */ }
+}
+
+onReady(async ()=>{
+  // Auto-fill ho ten + SDT tu account dang nhap
+  const u = (window.auth && auth.user) ? auth.user() : null;
+  if(u){
+    const nameEl = document.getElementById('customer-name');
+    const phoneEl = document.getElementById('customer-phone');
+    if(nameEl && !nameEl.value)  nameEl.value  = u.full_name || u.name || '';
+    if(phoneEl && !phoneEl.value) phoneEl.value = u.phone || '';
+  }
+
+  await loadProductsFromDB();
+
+  setupBadgeUploader();
+
+  const params = new URLSearchParams(location.search);
+  if(params.get('product')){
+    const pid = params.get('product');
+    const found = PRODUCTS.find(x => x.id === pid || x.code === pid);
+    if(found) pickedItems.push({ id: found.id, qty: 1 });
+  }
+  applyType(params.get('type')||'new');
+
+  document.querySelectorAll('input[name=plan]').forEach(r=>r.onchange = () => calc('renew'));
+
+  // Picker handlers
+  document.getElementById('btnPickProduct').addEventListener('click', openPicker);
+  document.getElementById('ppClose').addEventListener('click', closePicker);
+  document.getElementById('ppCancel').addEventListener('click', closePicker);
+  document.getElementById('productPickerModal').addEventListener('click', (e)=>{
+    if(e.target.id==='productPickerModal') closePicker();
+  });
+  let searchTimer;
+  document.getElementById('pp_search').addEventListener('input', (e)=>{
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(()=>renderPickerResults(e.target.value), 150);
+  });
+  document.getElementById('pp_results').addEventListener('click', (e)=>{
+    const btn = e.target.closest('.pp-add');
+    if(!btn) return;
+    addPickItem(btn.dataset.id);
+    renderPickerResults(document.getElementById('pp_search').value);
+  });
+
+  // Picked list interactions
+  const picked = document.getElementById('picked-list');
+  picked.addEventListener('click', (e)=>{
+    const rm = e.target.closest('.pi-remove');
+    if(rm){ removePickItem(rm.dataset.id); }
+  });
+  picked.addEventListener('input', (e)=>{
+    if(e.target.classList.contains('pi-qty')) setQty(e.target.dataset.id, e.target.value);
+  });
+
+  // Nút mở chat trong khối Cần tư vấn
+  const chatBtn = document.getElementById('btnOpenChat');
+  if(chatBtn){
+    chatBtn.addEventListener('click', ()=>{
+      if(window.chatWithAdmin && chatWithAdmin.open) chatWithAdmin.open();
+      else if(window.ui && ui.toast) ui.toast('Không mở được chat – vui lòng tải lại trang', 'warning');
+    });
+  }
+});
+
+// FE service tab -> BE service_kind enum
+const SERVICE_KIND_MAP = { new:'install', renew:'renewal', repair:'maintenance', warranty:'warranty' };
+
+// ---- Badge file uploader ----
+// State: {url, caption} — caption tu ten file goc, user co the sua.
+let badgeUploads = [];
+
+function setupBadgeUploader(){
+  const btn  = document.getElementById('btnBadgeAddFile');
+  const inp  = document.getElementById('badge-file-input');
+  if(!btn || !inp) return;
+  btn.addEventListener('click', ()=> inp.click());
+  inp.addEventListener('change', async (e)=>{
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    for(const f of files){
+      if(!/^image\//.test(f.type)){
+        ui.toast(`${f.name}: chỉ hỗ trợ ảnh`, 'warning');
+        continue;
+      }
+      const placeholder = { url:'', caption: f.name, uploading:true, _id: Math.random().toString(36).slice(2) };
+      badgeUploads.push(placeholder);
+      renderBadgeUploads();
+      try{
+        const url = await imgbb.upload(f, { name: 'badge-' + Date.now() });
+        placeholder.url = url;
+        placeholder.uploading = false;
+      }catch(err){
+        ui.toast(`${f.name}: ${err.message || 'lỗi tải lên'}`, 'error');
+        badgeUploads = badgeUploads.filter(x => x !== placeholder);
+      }
+      renderBadgeUploads();
+    }
+  });
+
+  const wrap = document.getElementById('badge-uploads');
+  wrap.addEventListener('click', (ev)=>{
+    const rm = ev.target.closest('.bu-remove');
+    if(!rm) return;
+    badgeUploads = badgeUploads.filter(x => x._id !== rm.dataset.id);
+    renderBadgeUploads();
+  });
+  wrap.addEventListener('input', (ev)=>{
+    if(!ev.target.classList.contains('bu-caption')) return;
+    const it = badgeUploads.find(x => x._id === ev.target.dataset.id);
+    if(it) it.caption = ev.target.value;
+  });
+}
+
+function renderBadgeUploads(){
+  const wrap = document.getElementById('badge-uploads');
+  if(!wrap) return;
+  if(!badgeUploads.length){ wrap.innerHTML = ''; return; }
+  wrap.innerHTML = badgeUploads.map(u => `
+    <div class="row" style="gap:8px;align-items:center;padding:6px;border:1px solid var(--border);border-radius:6px;background:#fff">
+      ${u.uploading
+        ? '<div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;background:#f1f5f9;border-radius:4px;font-size:11px;color:#64748b">…</div>'
+        : `<a href="${u.url}" target="_blank" rel="noopener"><img src="${u.url}" style="width:48px;height:48px;object-fit:cover;border-radius:4px;display:block"></a>`}
+      <input type="text" class="input bu-caption" data-id="${u._id}" value="${(u.caption||'').replace(/"/g,'&quot;')}" placeholder="Mô tả tệp" style="flex:1">
+      <button type="button" class="btn ghost sm bu-remove" data-id="${u._id}">×</button>
+    </div>
+  `).join('');
+}
+
+// Dam bao da co session khach (login hoac quick-register).
+// Tra ve true neu OK; false neu khach yeu cau dang nhap (da popup loginDialog).
+async function ensureCustomerSession(name, phone, address){
+  if(window.auth && auth.user && auth.user()) return true;
+  try{
+    const r = await api.post('/auth/quick-register-customer',
+      { full_name:name, phone, address: address || null, exclusive:true },
+      { silent:true });
+    auth.setSession(r.token, r.user);
+    return true;
+  }catch(e){
+    if(e.status === 409){
+      // SDT da co tai khoan -> yeu cau khach dang nhap
+      ui.alert({
+        type:'info',
+        title:'Số điện thoại đã có tài khoản',
+        message:'Số điện thoại này đã đăng ký. Vui lòng đăng nhập để gửi yêu cầu.',
+      });
+      ui.loginDialog();
+      return false;
+    }
+    ui.toast(e.message || 'Không tạo được tài khoản', 'error');
+    return false;
+  }
+}
+
+async function submitOrder(){
+  const t = currentType();
+  const name  = (document.getElementById('customer-name')?.value || '').trim();
+  const phone = (document.getElementById('customer-phone')?.value || '').trim();
+  if(!name)  return ui.toast('Vui lòng nhập họ tên','warning');
+  if(!phone) return ui.toast('Vui lòng nhập số điện thoại','warning');
+
+  // Thu thap field chung
+  const plate    = (document.getElementById('vehicle-plate')?.value || '').trim();
+  const acc      = (document.getElementById('subscription-account')?.value || '').trim();
+  const address  = (document.getElementById('address')?.value || '').trim();
+  const issue    = (document.getElementById('issue-desc')?.value || '').trim();
+  const noteX    = (document.getElementById('note-extra')?.value || '').trim();
+
+  // ---- BADGE: dung endpoint /customer/badges ----
+  if(t==='badge'){
+    if(!plate) return ui.toast('Vui lòng nhập biển số xe','warning');
+    if(badgeUploads.some(u => u.uploading)){
+      return ui.toast('Đợi tệp đính kèm tải xong','warning');
+    }
+    const ok = await ensureCustomerSession(name, phone, address);
+    if(!ok) return;
+    try{
+      const r = await api.post('/customer/badges', {
+        vehicle_plate: plate,
+        note: noteX || null,
+        attachments: badgeUploads
+          .filter(u => u.url)
+          .map(u => ({ url: u.url, caption: u.caption || null, kind: 'other' })),
+      });
+      openModal('✅ Đã tiếp nhận hồ sơ phù hiệu!',
+        `<p>Mã hồ sơ: <b>${r.code}</b> · Biển số: <b>${plate}</b></p>
+         <p class="text-muted">Phí dịch vụ và thời gian xử lý sẽ được nhân viên báo lại sau khi tiếp nhận hồ sơ.</p>
+         <div class="divider"></div>
+         <p class="text-muted">📋 Bước tiếp theo: Chuyên viên sẽ gọi để xác nhận hồ sơ và hướng dẫn bổ sung giấy tờ (nếu thiếu).</p>`,
+        [{label:'Về trang chủ',cls:'btn ghost',fn:()=>location.href='index.html'},
+         {label:'Xem đơn của tôi',cls:'btn',fn:()=>location.href='orders.html'}]);
+      badgeUploads = [];
+      renderBadgeUploads();
+    }catch(_){ /* api.js da toast */ }
+    return;
+  }
+
+  // ---- INSTALL / RENEW: can it nhat 1 thiet bi ----
+  if((t==='new' || t==='renew') && !pickedItems.length){
+    return ui.toast('Vui lòng chọn ít nhất 1 thiết bị','warning');
+  }
+  // ---- INSTALL: bat buoc dia chi ----
+  if(t==='new' && !address){
+    return ui.toast('Vui lòng nhập địa chỉ lắp đặt','warning');
+  }
+  // ---- REPAIR / WARRANTY: bat buoc mo ta su co ----
+  if((t==='repair' || t==='warranty') && !issue){
+    return ui.toast('Vui lòng mô tả sự cố','warning');
+  }
+
+  const ok = await ensureCustomerSession(name, phone, address);
+  if(!ok) return;
+
+  // Build note theo tab
+  const noteParts = [];
+  if(t==='renew'){
+    const years = +(document.querySelector('input[name=plan]:checked')?.value || 1);
+    noteParts.push(`Gia hạn ${years} năm`);
+  }
+  if(issue) noteParts.push(`Sự cố: ${issue}`);
+  if(noteX) noteParts.push(noteX);
+
+  const body = {
+    service_kind: SERVICE_KIND_MAP[t],
+    items: (t==='new' || t==='renew')
+      ? pickedItems.map(it => ({ product_id: Number(it.id), qty: it.qty }))
+      : [],
+    address: address || null,
+    vehicle_plate: plate || null,
+    subscription_account: acc || null,
+    note: noteParts.length ? noteParts.join('\n') : null,
+  };
+
+  try{
+    const r = await api.post('/customer/orders', body);
+    const isQuoteLater = QUOTE_LATER_TYPES.includes(t);
+    const html = isQuoteLater
+      ? `<p>Yêu cầu <b>${TYPE_MAP[t].label}</b> đã được gửi. Mã đơn: <b>${r.code}</b></p>
+         <div style="background:#fefce8;border:1px dashed #fcd34d;padding:12px;border-radius:8px">
+           <b>⏳ Trạng thái: Chờ báo giá</b>
+           <p class="text-muted mt-1 mb-0" style="font-size:13px">Kỹ thuật sẽ liên hệ để hẹn lịch khảo sát. Sau khi kiểm tra thực tế, kỹ thuật báo giá – bạn duyệt giá xong mới tiến hành.</p>
+         </div>
+         <p class="text-muted mt-2">Theo dõi tại mục <a href="orders.html">Đơn của tôi</a>.</p>`
+      : `<p>Yêu cầu của bạn đã được gửi. Mã đơn: <b>${r.code}</b></p>
+         <p>Kỹ thuật sẽ gọi trong 15 phút để xác nhận lịch hẹn.</p>
+         <p class="text-muted">Bạn có thể theo dõi đơn trong mục <a href="orders.html">Đơn của tôi</a>.</p>`;
+    openModal('✅ Đã gửi yêu cầu!', html,
+      [{label:'Về trang chủ',cls:'btn ghost',fn:()=>location.href='index.html'},
+       {label:'Xem đơn của tôi',cls:'btn',fn:()=>location.href='orders.html'}]);
+  }catch(_){ /* api.js da toast loi */ }
+}
+</script>
+</body>
+</html>

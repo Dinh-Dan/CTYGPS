@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Công nợ – Admin GPS Việt</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px;flex-shrink:0}
+  .stat-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;display:flex;gap:12px;align-items:center}
+  .stat-icon{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;font-size:20px;flex-shrink:0}
+  .stat-icon.red  {background:#fee2e2;color:#dc2626}
+  .stat-icon.amber{background:#fef3c7;color:#92400e}
+  .stat-icon.blue {background:#dbeafe;color:#1d4ed8}
+  .stat-icon.green{background:#dcfce7;color:#166534}
+  .stat-label{font-size:12px;color:#64748b}
+  .stat-value{font-size:18px;font-weight:700;color:#0f172a}
+  .tabs{display:flex;gap:4px;margin-bottom:12px;flex-shrink:0;border-bottom:2px solid var(--border)}
+  .tabs button{background:none;border:none;padding:10px 18px;cursor:pointer;font-size:14px;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-2px}
+  .tabs button.active{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
+  .pill.retail{background:#e0e7ff;color:#3730a3}
+  .pill.dealer{background:#fef3c7;color:#92400e}
+  .pill.tech  {background:#dcfce7;color:#166534}
+  .pill.overdue{background:#fee2e2;color:#dc2626}
+  .opening-balance{color:#dc2626;font-weight:600}
+  .order-list{max-height:280px;overflow:auto;border:1px solid var(--border);border-radius:8px;background:#f8fafc}
+  .order-row{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:13.5px}
+  .order-row:last-child{border-bottom:none}
+  .order-row .o-info{display:flex;flex-direction:column;gap:2px}
+  .order-row .o-amount{font-weight:600;color:#dc2626}
+  .history-row{padding:8px 12px;background:#f1f5f9;border-radius:6px;display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px}
+  .summary-box{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px;margin:12px 0}
+  .summary-box .row{display:flex;justify-content:space-between;padding:4px 0;font-size:14px}
+  .summary-box .row.total{font-size:16px;font-weight:700;color:var(--primary);padding-top:8px;border-top:1px dashed #fdba74;margin-top:6px}
+  .qr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:8px}
+  .qr-pick{border:2px solid var(--border);border-radius:8px;padding:8px;cursor:pointer;text-align:center;background:#fff;transition:all .12s}
+  .qr-pick:hover{border-color:var(--primary)}
+  .qr-pick.selected{border-color:var(--primary);background:#eff6ff}
+  .qr-pick img{width:100%;aspect-ratio:1;object-fit:contain;border-radius:6px;background:#f8fafc}
+  .qr-pick .qr-label{font-size:11px;margin-top:6px;color:#475569}
+  .qr-pick.empty{background:#f8fafc;color:#94a3b8;cursor:not-allowed}
+  .qr-pick.empty:hover{border-color:var(--border)}
+  .receipt-preview{margin-top:8px;display:flex;align-items:center;gap:8px}
+  .receipt-preview img{max-width:120px;max-height:120px;object-fit:contain;border:1px solid var(--border);border-radius:6px}
+  .modal-title-wrap{display:flex;align-items:center;gap:8px;min-width:0}
+  .modal-title-wrap h3{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .modal-help-btn{background:#dbeafe;border:none;color:#1d4ed8;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:13px;font-weight:700;display:grid;place-items:center;padding:0;flex-shrink:0;line-height:1}
+  .modal-help-btn:hover{background:#bfdbfe}
+  .modal-help-btn.active{background:#1d4ed8;color:#fff}
+  .help-box{background:#eff6ff;border:1px solid #bfdbfe;border-left:3px solid #1d4ed8;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13.5px;color:#1e3a8a;line-height:1.6}
+  .help-box[hidden]{display:none}
+  .help-box ul{margin:6px 0 0;padding-left:20px}
+  .help-box li{margin:3px 0}
+  .help-box b{color:#1e3a8a}
+  .pending-orders-block{margin:14px 0 4px}
+  .pending-orders-block h4{margin:0 0 8px;font-size:14px;color:#475569}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topnav">
+      <h2 class="topnav-title">Công nợ</h2>
+      <div id="topnav-user" class="row" style="gap:10px"></div>
+    </div>
+    <div class="content flex-page">
+      <div class="stat-grid" id="statGrid">
+        <div class="stat-card"><div class="stat-icon red">💳</div><div><div class="stat-label">Tổng phải thu</div><div class="stat-value" id="stTotal">—</div></div></div>
+        <div class="stat-card"><div class="stat-icon amber">⚠</div><div><div class="stat-label">Quá hạn (≥7 ngày)</div><div class="stat-value" id="stOverdue">—</div></div></div>
+        <div class="stat-card"><div class="stat-icon blue">💰</div><div><div class="stat-label">KTV đang giữ</div><div class="stat-value" id="stStaff">—</div></div></div>
+        <div class="stat-card"><div class="stat-icon green">✓</div><div><div class="stat-label">Đã thu trong tháng</div><div class="stat-value" id="stMonth">—</div></div></div>
+      </div>
+
+      <div class="tabs">
+        <button class="active" data-tab="customers">Khách / Đại lý nợ</button>
+        <button data-tab="staff">KTV đang giữ tiền</button>
+      </div>
+
+      <!-- TAB: KHACH / DAI LY -->
+      <div id="tab-customers">
+        <div class="toolbar">
+          <select id="fType" class="select" style="max-width:180px">
+            <option value="all">Tất cả loại</option>
+            <option value="retail">Khách lẻ</option>
+            <option value="dealer">Đại lý</option>
+          </select>
+          <input id="fQ" class="search-box" placeholder="🔍 Tìm tên / SĐT / mã / công ty..." />
+        </div>
+        <div class="table-wrap">
+          <table class="data" id="tblCust">
+            <thead>
+              <tr>
+                <th style="width:240px">Đối tượng</th>
+                <th style="width:90px">Loại</th>
+                <th style="width:100px">Số đơn</th>
+                <th style="width:140px">Sớm nhất</th>
+                <th style="width:100px">Số ngày</th>
+                <th style="width:130px">Nợ kỳ trước</th>
+                <th style="width:140px">Tổng nợ</th>
+                <th style="width:210px">Hành động</th>
+              </tr>
+            </thead>
+            <tbody id="tbCust"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB: KTV -->
+      <div id="tab-staff" style="display:none">
+        <div id="pendingRemitBox" style="display:none;background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;margin-bottom:12px;align-items:center;justify-content:space-between;gap:8px">
+          <div>⚠ Có <b id="pendingRemitCount">0</b> lô KTV đã nộp qua app, đang chờ admin duyệt</div>
+          <button class="btn sm" id="btnViewPending">Xem & duyệt</button>
+        </div>
+        <div class="toolbar">
+          <input id="fQStaff" class="search-box" placeholder="🔍 Tìm KTV..." />
+        </div>
+        <div class="table-wrap">
+          <table class="data" id="tblStaff">
+            <thead>
+              <tr>
+                <th>Kỹ thuật</th>
+                <th style="width:120px">Khu vực</th>
+                <th style="width:100px">Số khoản</th>
+                <th style="width:140px">Sớm nhất</th>
+                <th style="width:100px">Số ngày giữ</th>
+                <th style="width:140px">Tổng tiền</th>
+                <th style="width:130px">Hành động</th>
+              </tr>
+            </thead>
+            <tbody id="tbStaff"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal: chi tiet cong no khach -->
+<div id="custModal" class="modal-bg">
+  <div class="modal" style="max-width:780px">
+    <div class="modal-head">
+      <div class="modal-title-wrap">
+        <h3 id="cmTitle">Công nợ khách</h3>
+        <button type="button" class="modal-help-btn" data-help="cust" title="Hướng dẫn">?</button>
+      </div>
+      <button type="button" class="modal-close" id="cmClose" aria-label="Đóng">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="help-box" data-help-for="cust" hidden>
+        <b>Trang chi tiết công nợ khách</b>
+        <ul>
+          <li><b>Nợ kỳ trước</b>: phần khách còn thiếu hoặc dư từ những lần tất toán trước (gối đầu).</li>
+          <li><b>Đơn đang nợ</b>: các đơn chưa thu đủ tiền — bao gồm cả phần KTV còn giữ và phần admin chờ xác nhận.</li>
+          <li><b>Lịch sử tất toán</b>: các phiếu thu đã tạo cho khách này.</li>
+          <li>Bấm <b>Tất toán</b> để tạo phiếu thu mới — tiền sẽ trừ vào đơn cũ nhất trước.</li>
+        </ul>
+      </div>
+      <div id="cmBody"></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="cmCloseBtn">Đóng</button>
+      <button type="button" class="btn" id="cmSettle">Tất toán</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: danh sach don no (chi xem) -->
+<div id="ordersListModal" class="modal-bg">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-head">
+      <div class="modal-title-wrap">
+        <h3 id="olTitle">Đơn đang nợ</h3>
+        <button type="button" class="modal-help-btn" data-help="ordersList" title="Hướng dẫn">?</button>
+      </div>
+      <button type="button" class="modal-close" id="olClose" aria-label="Đóng">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="help-box" data-help-for="ordersList" hidden>
+        <b>Danh sách đơn đang nợ</b>
+        <ul>
+          <li>Liệt kê các đơn của khách chưa thu đủ tiền — sắp theo ngày chốt cũ → mới.</li>
+          <li>Mỗi dòng: <b>mã đơn · ngày chốt</b>, tổng tiền, đã trả, KTV còn giữ (nếu có), số còn nợ.</li>
+          <li>Đây chỉ là cửa sổ <b>xem nhanh</b>. Để thu tiền, đóng dialog rồi bấm <b>Xem & tất toán</b>.</li>
+        </ul>
+      </div>
+      <div id="olBody"></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="olCloseBtn">Đóng</button>
+      <button type="button" class="btn" id="olSettle">Sang phiếu tất toán →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: form tat toan khach -->
+<div id="settleModal" class="modal-bg">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-head">
+      <div class="modal-title-wrap">
+        <h3>Tạo phiếu tất toán</h3>
+        <button type="button" class="modal-help-btn" data-help="settle" title="Hướng dẫn">?</button>
+      </div>
+      <button type="button" class="modal-close" id="smClose" aria-label="Đóng">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="help-box" data-help-for="settle" hidden>
+        <b>Tạo phiếu tất toán</b>
+        <ul>
+          <li>Phiếu này ghi nhận khách <b>trả tiền</b>. Tiền trả sẽ trừ vào đơn cũ nhất trước, đến khi hết.</li>
+          <li><b>Trả thiếu</b>: phần thiếu chuyển sang nợ kỳ sau (ghi vào <i>opening_balance</i>).</li>
+          <li><b>Trả dư</b>: phần dư cũng chuyển sang kỳ sau (opening_balance âm) — dùng đối trừ lần sau.</li>
+          <li>Chọn <b>QR</b> phù hợp để in lên bill cho khách. Cấu hình QR tại <a href="/admin/settings.html">Cài đặt</a>.</li>
+          <li>Bấm <b>Xác nhận & xem bill</b> sẽ chuyển sang trang in phiếu.</li>
+        </ul>
+      </div>
+      <div class="summary-box">
+        <div class="row"><span>Nợ kỳ trước:</span><span id="smOpening">0đ</span></div>
+        <div class="row"><span>Nợ phát sinh từ đơn:</span><span id="smOrderDebt">0đ</span></div>
+        <div class="row total"><span>Tổng phải thu:</span><span id="smTotalDebt">0đ</span></div>
+      </div>
+      <div id="smOrdersBlock" class="pending-orders-block" style="display:none">
+        <h4>Đơn đang nợ <small id="smOrdersCount" class="text-muted"></small></h4>
+        <div class="order-list" id="smOrdersList"></div>
+      </div>
+      <div class="grid cols-2">
+        <div class="field">
+          <label>Số tiền khách trả *</label>
+          <input type="number" id="smAmount" class="input" min="0" step="1000" placeholder="VD: 5000000">
+          <p class="help">Còn lại sẽ chuyển sang nợ kỳ sau</p>
+        </div>
+        <div class="field">
+          <label>Hình thức</label>
+          <select id="smMethod" class="select">
+            <option value="cash">Tiền mặt</option>
+            <option value="transfer">Chuyển khoản</option>
+            <option value="mixed">Hỗn hợp</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>QR thanh toán (cho bill in)</label>
+        <div class="qr-grid" id="smQrGrid"></div>
+        <p class="help">Chọn QR sẽ in lên bill. Cấu hình QR ở trang <a href="/admin/settings.html">Cài đặt</a>.</p>
+      </div>
+      <div class="field">
+        <label>Ảnh biên lai (tuỳ chọn)</label>
+        <input type="file" id="smReceipt" accept="image/*">
+        <div class="receipt-preview" id="smReceiptPrev" style="display:none">
+          <img id="smReceiptImg"><button type="button" class="btn ghost sm" id="smReceiptClear">Xoá</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Ghi chú</label>
+        <textarea id="smNote" class="textarea" rows="2"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="smCancel">Huỷ</button>
+      <button type="button" class="btn" id="smSubmit">Xác nhận & xem bill</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: tat toan KTV -->
+<div id="staffSettleModal" class="modal-bg">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-head">
+      <div class="modal-title-wrap">
+        <h3>Duyệt nộp tiền KTV</h3>
+        <button type="button" class="modal-help-btn" data-help="staffSettle" title="Hướng dẫn">?</button>
+      </div>
+      <button type="button" class="modal-close" id="ssClose" aria-label="Đóng">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="help-box" data-help-for="staffSettle" hidden>
+        <b>Duyệt nộp tiền KTV</b>
+        <ul>
+          <li>Xác nhận đã nhận đủ tiền KTV nộp lại — gộp tất cả khoản KTV đang giữ thành <b>1 lô</b>.</li>
+          <li>Sau khi duyệt, tiền sẽ được tính là <b>khách đã trả</b> cho các đơn tương ứng (paid_amount tăng).</li>
+          <li>Nếu KTV nộp qua app (cash/transfer kèm ảnh biên lai), lô sẽ ở trạng thái <i>pending</i> — duyệt ở khu "Lô KTV chờ duyệt" phía trên.</li>
+        </ul>
+      </div>
+      <div id="ssBody"></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="ssCancel">Huỷ</button>
+      <button type="button" class="btn" id="ssSubmit">Xác nhận đã nhận tiền</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: lo KTV cho duyet (KTV mobile da nop pending) -->
+<div id="pendingRemitModal" class="modal-bg">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-head">
+      <div class="modal-title-wrap">
+        <h3>Lô KTV chờ duyệt</h3>
+        <button type="button" class="modal-help-btn" data-help="pendingRemit" title="Hướng dẫn">?</button>
+      </div>
+      <button type="button" class="modal-close" id="prClose" aria-label="Đóng">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="help-box" data-help-for="pendingRemit" hidden>
+        <b>Lô KTV chờ duyệt</b>
+        <ul>
+          <li>Đây là các lô KTV đã nộp qua app mobile, đang đợi admin xác nhận đã nhận đủ tiền.</li>
+          <li>Bấm <b>Duyệt</b> nếu đã nhận đủ — các đơn tương ứng sẽ được ghi nhận đã trả tiền.</li>
+          <li>Bấm <b>Từ chối</b> nếu sai (KTV phải nộp lại) — có thể nhập lý do để KTV xem.</li>
+        </ul>
+      </div>
+      <div id="prBody"></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="prCloseBtn">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/imgbb.js"></script>
+<script src="/shared/js/admin-shell.js"></script>
+<script src="/admin/debts.js"></script>
+</body>
+</html>

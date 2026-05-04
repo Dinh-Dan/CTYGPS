@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Báo cáo – Admin GPS Việt</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .tabs{display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--border)}
+  .tabs button{padding:10px 18px;border:0;background:transparent;cursor:pointer;font-size:14px;color:#475569;border-bottom:3px solid transparent}
+  .tabs button.on{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
+  .summary-card{padding:14px 16px;background:#f8fafc;border-left:4px solid var(--primary);border-radius:6px;margin-bottom:12px}
+  .summary-card b{font-size:24px;color:var(--primary)}
+  .filter-bar{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:12px}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topnav">
+      <h2 class="topnav-title">Báo cáo</h2>
+      <div id="topnav-user" class="row" style="gap:10px"></div>
+    </div>
+    <div class="content">
+      <div class="tabs">
+        <button class="on" data-tab="overview">📊 Tổng quan</button>
+        <button data-tab="customer-debts">💳 Công nợ khách</button>
+        <button data-tab="staff-debts">👨‍🔧 Công nợ KTV</button>
+        <button data-tab="revenue">📈 Doanh thu</button>
+      </div>
+
+      <div id="tab-overview">
+        <div class="filter-bar">
+          <div class="field"><label>Từ ngày</label><input type="date" id="ov_from" class="input"></div>
+          <div class="field"><label>Đến ngày</label><input type="date" id="ov_to" class="input"></div>
+          <button class="btn" id="ov_apply">Áp dụng</button>
+        </div>
+        <div class="grid cols-2" style="gap:18px;align-items:start">
+          <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px">
+            <h4 style="margin:0 0 10px;color:#475569">📈 Doanh thu theo ngày</h4>
+            <canvas id="chartRevenue" height="220"></canvas>
+          </div>
+          <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px">
+            <h4 style="margin:0 0 10px;color:#475569">🥇 Top 10 sản phẩm bán chạy</h4>
+            <canvas id="chartTopProducts" height="220"></canvas>
+          </div>
+          <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px">
+            <h4 style="margin:0 0 10px;color:#475569">🔄 Phân bố trạng thái đơn</h4>
+            <canvas id="chartStatus" height="220"></canvas>
+          </div>
+          <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px">
+            <h4 style="margin:0 0 10px;color:#475569">🛠 Loại dịch vụ</h4>
+            <canvas id="chartServiceKind" height="220"></canvas>
+          </div>
+        </div>
+      </div>
+      <div id="tab-customer-debts" style="display:none">
+        <div class="summary-card">Tổng công nợ khách: <b id="cd-total">0đ</b> · <span id="cd-count">0</span> khách</div>
+        <table class="data" style="width:100%">
+          <thead><tr>
+            <th style="width:80px">Mã KH</th>
+            <th>Tên</th>
+            <th style="width:120px">Loại</th>
+            <th style="width:120px">SĐT</th>
+            <th style="width:100px">Số đơn nợ</th>
+            <th style="width:160px">Công nợ</th>
+          </tr></thead>
+          <tbody id="cd-tbody"></tbody>
+        </table>
+      </div>
+      <div id="tab-staff-debts" style="display:none">
+        <div class="summary-card">Tổng tiền KTV chưa nộp: <b id="sd-total">0đ</b> · <span id="sd-count">0</span> KTV</div>
+        <table class="data" style="width:100%">
+          <thead><tr>
+            <th>KTV</th>
+            <th style="width:120px">SĐT</th>
+            <th style="width:140px">Khu vực</th>
+            <th style="width:100px">Số collection</th>
+            <th style="width:160px">Tiền chưa nộp</th>
+            <th style="width:140px">Cũ nhất</th>
+          </tr></thead>
+          <tbody id="sd-tbody"></tbody>
+        </table>
+      </div>
+      <div id="tab-revenue" style="display:none">
+        <div class="filter-bar">
+          <div class="field">
+            <label>Từ ngày</label>
+            <input type="date" id="rv_from" class="input">
+          </div>
+          <div class="field">
+            <label>Đến ngày</label>
+            <input type="date" id="rv_to" class="input">
+          </div>
+          <div class="field">
+            <label>Gom theo</label>
+            <select id="rv_group" class="select">
+              <option value="day">Ngày</option>
+              <option value="month">Tháng</option>
+            </select>
+          </div>
+          <button class="btn" id="rv_apply">Áp dụng</button>
+        </div>
+        <div class="summary-card">
+          Tổng đơn: <b id="rv-orders">0</b> ·
+          Tổng tiền: <b id="rv-total">0đ</b> ·
+          Đã thu: <b id="rv-paid">0đ</b> ·
+          Còn nợ: <b id="rv-debt">0đ</b>
+        </div>
+        <table class="data" style="width:100%">
+          <thead><tr>
+            <th>Kỳ</th>
+            <th style="width:100px">Số đơn</th>
+            <th style="width:160px">Tổng tiền</th>
+            <th style="width:160px">Đã thu</th>
+            <th style="width:160px">Còn nợ</th>
+          </tr></thead>
+          <tbody id="rv-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/admin-shell.js"></script>
+<script src="/admin/reports.js"></script>
+</body>
+</html>

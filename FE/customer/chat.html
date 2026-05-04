@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Trò chuyện với GPS Việt</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .chat-page{max-width:680px;margin:20px auto;padding:0 16px;display:flex;flex-direction:column;height:calc(100vh - 40px)}
+  .chat-card{background:#fff;border:1px solid var(--border);border-radius:12px;flex:1;display:flex;flex-direction:column;overflow:hidden}
+  .chat-card .head{padding:14px 18px;background:var(--primary);color:#fff;display:flex;justify-content:space-between;align-items:center}
+  .chat-card .head a{color:#fff}
+  .chat-card .msgs{flex:1;overflow-y:auto;padding:14px;background:#f8fafc;display:flex;flex-direction:column;gap:6px}
+  .chat-card .msgs .msg{max-width:78%}
+  .chat-card .msgs .msg.me{align-self:flex-end;background:var(--primary);color:#fff;padding:8px 12px;border-radius:14px 14px 4px 14px}
+  .chat-card .msgs .msg.them{align-self:flex-start;background:#fff;border:1px solid var(--border);padding:8px 12px;border-radius:14px 14px 14px 4px}
+  .chat-card .msgs .msg .time{font-size:10px;opacity:.7;display:block;margin-top:2px}
+  .chat-card .msgs .order-tag{
+    display:inline-block;background:#fce7f3;color:#9d174d;font-size:11px;font-weight:600;
+    padding:2px 8px;border-radius:999px;margin-bottom:4px;text-decoration:none;cursor:pointer;
+  }
+  .chat-card .msg.me .order-tag{background:rgba(255,255,255,.25);color:#fff}
+  .chat-card form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--border);background:#fff;flex-direction:column}
+  .chat-card .input-row{display:flex;gap:8px}
+  .chat-card form input[type=text]{flex:1;padding:10px;border:1px solid var(--border);border-radius:6px}
+  .chat-card form button{padding:0 18px;background:var(--primary);color:#fff;border:none;border-radius:6px;cursor:pointer}
+  .chat-card .order-banner{
+    display:none;background:#fef3c7;color:#92400e;padding:8px 12px;border-radius:6px;
+    font-size:12.5px;display:flex;justify-content:space-between;align-items:center;gap:8px;
+  }
+  .chat-card .order-banner.on{display:flex}
+  .chat-card .order-banner button{background:transparent;border:none;color:#92400e;font-size:18px;cursor:pointer;padding:0}
+</style>
+</head>
+<body>
+<div class="chat-page">
+  <div class="chat-card">
+    <div class="head">
+      <div>
+        <b>💬 GPS Việt – Hỗ trợ</b>
+        <small style="display:block;font-size:12px;opacity:.85">Đội ngũ admin & kỹ thuật</small>
+      </div>
+      <a href="/customer/">← Về trang chủ</a>
+    </div>
+    <div class="msgs" id="msgsBox"></div>
+    <form id="msgForm">
+      <div id="orderBanner" class="order-banner">
+        <span>📦 Đang nhắn về đơn <b id="bannerOrderCode">—</b></span>
+        <button type="button" id="bannerClear" title="Bỏ tag đơn">×</button>
+      </div>
+      <div class="input-row">
+        <input type="text" id="msgInput" placeholder="Nhập tin nhắn..." autocomplete="off" required>
+        <button type="submit">Gửi</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/socket.js"></script>
+<script src="/shared/js/chat-msg-render.js"></script>
+<script src="/customer/chat.js"></script>
+</body>
+</html>

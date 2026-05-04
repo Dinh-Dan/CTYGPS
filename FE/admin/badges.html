@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Phù hiệu xe – Admin GPS Việt</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .pill.purple{background:#ede9fe;color:#6d28d9}
+  .pill.cyan{background:#cffafe;color:#155e75}
+  .quick-tabs{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+  .quick-tabs button{padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:#fff;cursor:pointer;font-size:13px}
+  .quick-tabs button.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .action-bar{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topnav">
+      <h2 class="topnav-title">Phù hiệu xe</h2>
+      <div id="topnav-user" class="row" style="gap:10px"></div>
+    </div>
+    <div class="content flex-page">
+      <div class="toolbar">
+        <button class="btn sm" id="btnAdd">+ Tạo hồ sơ</button>
+      </div>
+      <div class="quick-tabs" id="quickTabs">
+        <button data-status="" class="on">Tất cả</button>
+        <button data-status="pending_review">Chờ duyệt nội bộ</button>
+        <button data-status="submitted">Đã nộp Sở</button>
+        <button data-status="approved">Có kết quả</button>
+        <button data-status="rejected">Bị từ chối</button>
+        <button data-status="delivered">Đã giao</button>
+        <button data-status="cancelled">Huỷ</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data" id="tbl">
+          <thead>
+            <tr>
+              <th style="width:120px">Mã</th>
+              <th>Khách hàng</th>
+              <th style="width:120px">Đại lý</th>
+              <th style="width:120px">Biển số</th>
+              <th style="width:140px">Loại xe</th>
+              <th style="width:140px">Phí / Đã thu</th>
+              <th style="width:140px">Trạng thái</th>
+              <th style="width:120px">Hành động</th>
+            </tr>
+            <tr class="filter-row">
+              <th><input data-filter="q" placeholder="Mã/biển số/SĐT"></th>
+              <th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <button id="prevPage">« Trước</button>
+        <span id="pageInfo">Trang 1</span>
+        <button id="nextPage">Sau »</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal tao -->
+<div id="modal" class="modal-bg">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-head">
+      <h3>Tạo hồ sơ phù hiệu</h3>
+      <button type="button" class="modal-close" id="modalClose">×</button>
+    </div>
+    <form id="frm" style="display:contents">
+      <div class="modal-body">
+        <div class="grid cols-2">
+          <div class="field">
+            <label>Khách hàng *</label>
+            <select id="f_customer" class="select" required></select>
+          </div>
+          <div class="field">
+            <label>Đại lý (nếu qua dealer)</label>
+            <select id="f_dealer" class="select"><option value="">— Không —</option></select>
+          </div>
+        </div>
+        <div class="grid cols-2">
+          <div class="field">
+            <label>Biển số xe *</label>
+            <input type="text" id="f_plate" class="input" required placeholder="51A-12345">
+          </div>
+          <div class="field">
+            <label>Loại xe</label>
+            <select id="f_vtype" class="select">
+              <option value="truck_under_3.5t">Tải dưới 3.5T</option>
+              <option value="truck_over_3.5t">Tải trên 3.5T</option>
+              <option value="passenger">Xe khách</option>
+              <option value="contract">Xe hợp đồng</option>
+              <option value="taxi">Taxi</option>
+              <option value="other">Khác</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid cols-2">
+          <div class="field">
+            <label>Phí (VND)</label>
+            <input type="number" id="f_fee" class="input" min="0" step="1000" value="0">
+          </div>
+          <div class="field">
+            <label>Trạng thái</label>
+            <select id="f_status" class="select">
+              <option value="pending_review">Chờ duyệt nội bộ</option>
+              <option value="submitted">Đã nộp Sở GTVT</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Ghi chú</label>
+          <textarea id="f_note" class="textarea"></textarea>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="btnCancel">Hủy</button>
+        <button type="submit" class="btn">Lưu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal chi tiet -->
+<div id="detailModal" class="modal-bg">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-head">
+      <h3 id="detailTitle">Chi tiết</h3>
+      <button type="button" class="modal-close" id="detailClose">×</button>
+    </div>
+    <div class="modal-body" id="detailBody"></div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="detailCloseBtn">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/admin-shell.js"></script>
+<script src="/admin/badges.js"></script>
+</body>
+</html>

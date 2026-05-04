@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Tài khoản của tôi – GPS Việt</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .acc-grid{display:grid;grid-template-columns:1fr 2fr;gap:18px;align-items:start}
+  @media(max-width:840px){ .acc-grid{grid-template-columns:1fr} }
+  .acc-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px}
+  .acc-card h3{margin:0 0 12px;font-size:16px}
+  .acc-summary .row{display:flex;justify-content:space-between;padding:7px 0;font-size:13.5px;border-bottom:1px dashed #e2e8f0}
+  .acc-summary .row:last-child{border-bottom:none}
+  .acc-summary .row .k{color:#64748b}
+  .acc-summary .row .v{font-weight:600;color:#0f172a}
+  .acc-stat{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px}
+  .acc-stat .stat{background:#f8fafc;border-radius:8px;padding:12px;text-align:center}
+  .acc-stat .stat .num{font-size:22px;font-weight:700;color:var(--primary)}
+  .acc-stat .stat .lb{font-size:11.5px;color:#64748b;margin-top:2px}
+  .field-readonly{background:#f1f5f9;color:#475569}
+  .qlinks{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .qlinks a{font-size:12.5px}
+  .dealer-only{display:none}
+  body.role-daily .dealer-only{display:block}
+  body.role-daily .acc-stat.dealer-only{display:grid}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="container">
+    <div>☎ Hotline: 1900 2045</div>
+    <div id="topbarRight"></div>
+  </div>
+</div>
+
+<header class="site">
+  <div class="container">
+    <a class="logo" href="/customer/"><span class="logo-mark">GV</span> GPS VIỆT</a>
+    <button class="nav-toggle" aria-label="Mở menu" onclick="this.nextElementSibling.classList.toggle('open')">☰</button>
+    <nav class="main">
+      <a href="/customer/">Trang chủ</a>
+      <a href="/customer/products.html">Sản phẩm</a>
+      <a href="/customer/order.html">Đặt dịch vụ</a>
+      <a href="/customer/compliance.html">Nghị định 10</a>
+      <a href="/customer/guide.html">Hướng dẫn</a>
+      <a href="/customer/about.html">Về chúng tôi</a>
+    </nav>
+    <div class="header-actions">
+      <a class="btn ghost sm" href="/customer/orders.html">Đơn của tôi</a>
+      <span data-cart-mount></span>
+    </div>
+  </div>
+</header>
+
+<div class="container" style="padding:30px 20px">
+  <div class="spread mb-3">
+    <div>
+      <h1 style="margin:0">Tài khoản của tôi</h1>
+      <p class="text-muted mb-0">Quản lý hồ sơ và xem nhanh hoạt động.</p>
+    </div>
+  </div>
+
+  <div id="loadingBox" class="card text-center" style="padding:40px">
+    <p class="text-muted">Đang tải thông tin tài khoản...</p>
+  </div>
+
+  <div id="guestBox" class="card text-center" style="padding:40px;display:none">
+    <p style="font-size:15px">Bạn chưa đăng nhập.</p>
+    <button class="btn" onclick="ui.loginDialog()">Đăng nhập</button>
+  </div>
+
+  <div id="content" class="acc-grid" hidden>
+    <!-- Cot trai: tom tat ho so + thong ke -->
+    <div class="acc-card acc-summary">
+      <h3 id="profileTitle">👤 Hồ sơ</h3>
+      <div class="row"><span class="k" id="kCode">Mã KH</span><span class="v" id="vCode">—</span></div>
+      <div class="row"><span class="k" id="kName">Họ tên</span><span class="v" id="vName">—</span></div>
+      <div class="row"><span class="k">SĐT</span><span class="v" id="vPhone">—</span></div>
+      <div class="row"><span class="k">Email</span><span class="v" id="vEmail">—</span></div>
+      <div class="row"><span class="k">Địa chỉ</span><span class="v" id="vAddress" style="text-align:right;max-width:60%">—</span></div>
+
+      <div class="dealer-only">
+        <div class="row"><span class="k">Tên công ty</span><span class="v" id="vCompany" style="text-align:right;max-width:60%">—</span></div>
+        <div class="row"><span class="k">Người liên hệ</span><span class="v" id="vContact">—</span></div>
+        <div class="row"><span class="k">Hạn mức nợ</span><span class="v" id="vDebtLimit">—</span></div>
+        <div class="row"><span class="k">Hạn nợ (ngày)</span><span class="v" id="vTermDays">—</span></div>
+        <div class="row"><span class="k">Công nợ hiện tại</span><span class="v" id="vDebt" style="color:var(--danger)">—</span></div>
+      </div>
+
+      <h3 style="margin-top:18px">📊 Hoạt động</h3>
+      <div class="acc-stat">
+        <div class="stat"><div class="num" id="sTotal">—</div><div class="lb">Tổng đơn</div></div>
+        <div class="stat"><div class="num" id="sPending">—</div><div class="lb">Đang xử lý</div></div>
+        <div class="stat"><div class="num" id="sDone">—</div><div class="lb">Hoàn thành</div></div>
+      </div>
+
+      <h3 style="margin-top:18px">🔗 Truy cập nhanh</h3>
+      <div class="qlinks">
+        <a class="btn ghost sm" href="/customer/orders.html" id="qlOrders">📦 Đơn của tôi</a>
+        <a class="btn ghost sm" href="/customer/warranty.html">🛡 Tra bảo hành</a>
+        <a class="btn ghost sm" href="/customer/order.html" id="qlOrderNew">➕ Đặt dịch vụ</a>
+      </div>
+    </div>
+
+    <!-- Cot phai: form sua ho so -->
+    <div class="acc-card">
+      <h3>✏️ Sửa thông tin</h3>
+      <form id="profileForm" onsubmit="return false">
+        <div class="grid cols-2">
+          <div class="field">
+            <label>Họ tên *</label>
+            <input id="fName" class="input" required maxlength="100">
+          </div>
+          <div class="field">
+            <label>Số điện thoại</label>
+            <input id="fPhone" class="input field-readonly" readonly title="SĐT là khoá đăng nhập, không thể thay đổi tại đây">
+            <small class="text-muted" style="font-size:11.5px">SĐT là khoá đăng nhập — liên hệ CSKH nếu cần đổi.</small>
+          </div>
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input id="fEmail" class="input" type="email" maxlength="150" placeholder="vd: nguyenvana@gmail.com">
+        </div>
+        <div class="field">
+          <label>Địa chỉ</label>
+          <textarea id="fAddress" class="textarea" maxlength="300" rows="2" placeholder="Số nhà, đường, phường/xã, quận/huyện"></textarea>
+        </div>
+        <div class="row" style="gap:8px;justify-content:flex-end;margin-top:8px">
+          <button type="button" class="btn ghost" id="resetBtn">Huỷ</button>
+          <button type="submit" class="btn" id="saveBtn">💾 Lưu thay đổi</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<footer class="site"><div class="container bottom">© 2026 GPS Việt</div></footer>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/customer-topbar.js"></script>
+<script src="/shared/js/chat-with-admin.js"></script>
+<script src="/shared/js/app.js"></script>
+<script src="/shared/js/cart.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let currentUser = null;
+
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;')
+      .replaceAll('>','&gt;').replaceAll('"','&quot;');
+  }
+
+  const fmtN = new Intl.NumberFormat('vi-VN');
+
+  function applyRole(u) {
+    const isDealer = u.role === 'daily';
+    document.body.classList.toggle('role-daily', isDealer);
+    if (isDealer) {
+      $('profileTitle').textContent = '🏪 Hồ sơ đại lý';
+      $('kCode').textContent = 'Mã đại lý';
+      $('kName').textContent = 'Họ tên / chủ DN';
+      $('qlOrders').textContent = '📦 Đơn đặt hộ';
+      $('qlOrderNew').textContent = '➕ Đặt hộ khách';
+    }
+  }
+
+  function paint(u) {
+    currentUser = u;
+    applyRole(u);
+    $('vCode').textContent    = u.code || '—';
+    $('vName').textContent    = u.full_name || '—';
+    $('vPhone').textContent   = u.phone || '—';
+    $('vEmail').textContent   = u.email || '—';
+    $('vAddress').textContent = u.address || '—';
+
+    if (u.role === 'daily') {
+      $('vCompany').textContent   = u.company_name || '—';
+      $('vContact').textContent   = u.contact_person || '—';
+      $('vDebtLimit').textContent = (u.debt_limit != null ? fmtN.format(u.debt_limit) + 'đ' : '—');
+      $('vTermDays').textContent  = (u.credit_term_days != null ? u.credit_term_days + ' ngày' : '—');
+      $('vDebt').textContent      = (u.debt != null ? fmtN.format(u.debt) + 'đ' : '—');
+    }
+
+    $('fName').value    = u.full_name || '';
+    $('fPhone').value   = u.phone || '';
+    $('fEmail').value   = u.email || '';
+    $('fAddress').value = u.address || '';
+  }
+
+  // Validators FE — mirror BE
+  function vName(s) {
+    const v = String(s || '').trim();
+    if (!v)             return 'Vui lòng nhập họ tên';
+    if (v.length < 2)   return 'Họ tên quá ngắn';
+    if (v.length > 100) return 'Họ tên quá dài';
+    if (/[<>"'`]/.test(v)) return 'Họ tên có ký tự không hợp lệ';
+    return null;
+  }
+  function vEmail(s) {
+    const v = String(s || '').trim();
+    if (!v) return null;
+    if (v.length > 150) return 'Email quá dài';
+    if (!/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']{2,}$/.test(v)) return 'Email không hợp lệ';
+    return null;
+  }
+  function vAddress(s) {
+    const v = String(s || '').trim();
+    if (!v) return null;
+    if (v.length > 300) return 'Địa chỉ quá dài (tối đa 300)';
+    if (/[<>]/.test(v)) return 'Địa chỉ có ký tự không hợp lệ';
+    return null;
+  }
+
+  async function loadProfile() {
+    try {
+      // Dung /api/customer/me thay vi /auth/me — endpoint nay tra them debt cho dai ly.
+      // Tu dong reject neu role = staff/admin/kithuat (req role customer hoac daily).
+      const { user } = await api.get('/customer/me');
+      if (user.role !== 'customer' && user.role !== 'daily') {
+        $('loadingBox').style.display = 'none';
+        $('guestBox').style.display   = '';
+        $('guestBox').innerHTML       = '<p>Trang này dành cho khách hàng và đại lý.</p>';
+        return;
+      }
+      paint(user);
+      $('loadingBox').style.display = 'none';
+      $('content').hidden = false;
+      loadStats();
+    } catch (err) {
+      $('loadingBox').style.display = 'none';
+      if (err.status === 401) {
+        $('guestBox').style.display = '';
+      } else {
+        $('guestBox').style.display = '';
+        $('guestBox').innerHTML = `<p>Lỗi tải dữ liệu (HTTP ${err.status||'?'}).</p>`;
+      }
+    }
+  }
+
+  async function loadStats() {
+    const res = await api.get('/customer/orders', { silent: true }).catch(() => null);
+    if (!res) return;
+    const items = res.items || [];
+    const pending = items.filter(o => ['pending_review','new','assigned','in_progress'].includes(o.status)).length;
+    const done    = items.filter(o => o.status === 'done' || o.status === 'completed').length;
+    $('sTotal').textContent   = items.length;
+    $('sPending').textContent = pending;
+    $('sDone').textContent    = done;
+  }
+
+  $('profileForm').addEventListener('submit', async () => {
+    const name    = $('fName').value;
+    const email   = $('fEmail').value;
+    const address = $('fAddress').value;
+
+    const errN = vName(name);     if (errN) return ui.toast(errN, 'warning');
+    const errE = vEmail(email);   if (errE) return ui.toast(errE, 'warning');
+    const errA = vAddress(address); if (errA) return ui.toast(errA, 'warning');
+
+    $('saveBtn').disabled = true;
+    const res = await api.patch('/customer/profile', {
+      full_name: name.trim(),
+      email:     email.trim() || null,
+      address:   address.trim() || null,
+    }, { successMessage: 'Đã lưu thay đổi' }).catch(() => null);
+    $('saveBtn').disabled = false;
+    if (!res) return;
+
+    paint(res.user);
+    // Cap nhat localStorage + topbar
+    auth.setSession(api.getToken(), res.user);
+    if (window.customerTopbar?.paint) customerTopbar.paint(res.user);
+  });
+
+  $('resetBtn').addEventListener('click', () => {
+    if (currentUser) paint(currentUser);
+  });
+
+  loadProfile();
+</script>
+</body>
+</html>

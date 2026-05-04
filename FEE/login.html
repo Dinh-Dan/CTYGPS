@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Đăng nhập – GPS Việt</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+</head>
+<body class="login-bg">
+<div class="login-card text-center">
+  <div class="logo" style="justify-content:center;margin-bottom:12px"><span class="logo-mark">GV</span> GPS VIỆT</div>
+  <p class="text-muted">Hệ thống đã chuyển sang đăng nhập trực tiếp tại từng trang qua dialog.</p>
+  <p class="text-muted">Đang chuyển bạn về trang chủ...</p>
+  <a class="btn mt-2" href="/">Trang chủ</a>
+</div>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script>
+  // Tu mo login dialog ngay neu chua co session
+  if (auth.isLoggedIn()) {
+    location.href = auth.homeForRole(auth.user().role);
+  } else {
+    setTimeout(() => ui.loginDialog(), 50);
+  }
+</script>
+</body>
+</html>

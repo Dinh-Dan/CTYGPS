@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Chi tiết sản phẩm – GPS Việt</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+</head>
+<body>
+<div class="topbar"><div class="container"><div>☎ Hotline: 1900 2045</div><div id="topbarRight"></div></div></div>
+<header class="site">
+  <div class="container">
+    <a class="logo" href="/customer/"><span class="logo-mark">GV</span> GPS VIỆT</a>
+    <button class="nav-toggle" aria-label="Mở menu" onclick="this.nextElementSibling.classList.toggle('open')">☰</button>
+    <nav class="main">
+      <a href="/customer/">Trang chủ</a>
+      <a href="/customer/products.html" class="active">Sản phẩm</a>
+      <a href="/customer/order.html">Đặt dịch vụ</a>
+      <a href="/customer/compliance.html">Nghị định 10</a>
+      <a href="/customer/guide.html">Hướng dẫn</a>
+      <a href="/customer/about.html">Về chúng tôi</a>
+    </nav>
+    <div class="header-actions">
+      <a class="btn ghost sm" href="/customer/orders.html">Đơn của tôi</a>
+      <span data-cart-mount></span>
+    </div>
+  </div>
+</header>
+
+<div class="container" style="padding:30px 20px">
+  <p class="text-muted"><a href="/customer/products.html">← Quay lại danh sách</a></p>
+  <div class="grid cols-2" id="detail"></div>
+
+  <!-- Timeline noi dung do admin them: text/image/video xen ke -->
+  <div class="section" style="padding:20px 0" id="timelineSection" hidden>
+    <div id="timeline" class="product-timeline"></div>
+  </div>
+
+  <!-- Thong so CHI TIET (position='bottom') -->
+  <div class="section" style="padding:20px 0" id="specsSection" hidden>
+    <h2 style="text-align:left">Thông số chi tiết</h2>
+    <div class="card" id="specs"></div>
+  </div>
+
+</div>
+
+<footer class="site"><div class="container bottom">© 2026 GPS Việt</div></footer>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/customer-topbar.js"></script>
+<script src="/shared/js/chat-with-admin.js"></script>
+<script src="/shared/js/app.js"></script>
+<script src="/shared/js/cart.js"></script>
+<script>
+  const fmt = new Intl.NumberFormat('vi-VN');
+  const $ = (id) => document.getElementById(id);
+
+  function iconFor(name) {
+    const n = (name || '').toLowerCase();
+    if (n.includes('định vị') || n.includes('dinh vi')) return '📍';
+    if (n.includes('camera')) return '📷';
+    if (n.includes('sim'))    return '📡';
+    return '📦';
+  }
+
+  const id = new URLSearchParams(location.search).get('id');
+  if (!id) {
+    $('detail').innerHTML = '<div class="card"><p>Thiếu mã sản phẩm. <a href="/customer/products.html">← Quay lại danh sách</a></p></div>';
+  } else {
+    // Khach login -> /customer/products/:id de lay gia rieng/theo cap; chua login -> /public.
+    const detailEndpoint = (window.auth && auth.isLoggedIn && auth.isLoggedIn())
+      ? '/customer/products/' + id
+      : '/public/products/' + id;
+    api.get(detailEndpoint, { silent: true })
+      .then(p => {
+        document.title = p.name + ' – GPS Việt';
+
+        // ---- Header: anh chinh + gia + thong so CO BAN -------
+        const topAttrs = (p.attributes_top && p.attributes_top.length)
+          ? `<div class="divider"></div>
+             <ul style="margin:0;padding-left:20px">
+               ${p.attributes_top.map(a => `<li style="margin-bottom:6px"><b>${esc(a.label)}:</b> ${esc(a.value || '')}</li>`).join('')}
+             </ul>`
+          : '';
+
+        $('detail').innerHTML = `
+          <div class="card" style="text-align:center;padding:40px">
+            ${p.image_url
+              ? `<img src="${p.image_url}" style="max-width:100%;border-radius:8px">`
+              : `<div style="font-size:180px">${iconFor(p.category_name)}</div>`}
+            <div class="row" style="justify-content:center;margin-top:10px">
+              ${p.category_name ? `<span class="badge">${esc(p.category_name)}</span>` : ''}
+            </div>
+          </div>
+          <div>
+            <h1 style="margin-top:0">${esc(p.name)}</h1>
+            <p class="text-muted">Mã SP: <b>${esc(p.code)}</b> • Bảo hành: <b>${p.warranty_months || 0} tháng</b></p>
+            <div style="font-size:30px;color:var(--primary);font-weight:800;margin:12px 0">
+              ${p.retail_price ? fmt.format(p.retail_price) + 'đ' : 'Liên hệ'}
+            </div>
+            ${p.description ? `<p>${esc(p.description)}</p>` : ''}
+            ${topAttrs}
+            <div class="divider"></div>
+            <p><b>✓</b> Tặng kèm công lắp đặt tận nơi tại TP.HCM</p>
+            <p><b>✓</b> Miễn phí gia hạn tháng đầu</p>
+            <p><b>✓</b> Đổi trả 7 ngày nếu lỗi NSX</p>
+            <div class="row mt-2" style="gap:8px;align-items:center;flex-wrap:wrap">
+              <button class="btn accent" data-cart-add
+                data-product-id="${p.id}"
+                data-code="${esc(p.code)}"
+                data-name="${esc(p.name)}"
+                data-image="${esc(p.image_url || '')}"
+                data-price="${p.retail_price || 0}">🛒 Thêm vào giỏ</button>
+              <button class="btn" id="chatAboutBtn" type="button"
+                style="background:#0ea5e9;color:#fff">💬 Chat về sản phẩm</button>
+              <button class="btn ghost" data-cart-open>Xem giỏ hàng</button>
+            </div>
+          </div>`;
+
+        // ---- Nut "Chat ve san pham nay" ----------------------
+        // Khong can check login: widget tu hien form dang ky nhanh cho guest.
+        const chatBtn = document.getElementById('chatAboutBtn');
+        if (chatBtn) {
+          chatBtn.addEventListener('click', () => {
+            const link = location.origin + '/customer/product-detail.html?id=' + p.id;
+            const priceTxt = p.retail_price ? fmt.format(p.retail_price) + 'đ' : 'Liên hệ';
+            const msg = `Xin chào, mình quan tâm sản phẩm:\n• ${p.name} (Mã ${p.code})\n• Giá: ${priceTxt}\n• ${link}\nMình cần được tư vấn thêm.`;
+            chatWithAdmin.openWithMessage(msg);
+          });
+        }
+
+        // ---- Timeline blocks ---------------------------------
+        if (p.blocks && p.blocks.length) {
+          const tlEl = $('timeline');
+          tlEl.innerHTML = p.blocks.map(b => {
+            if (b.block_type === 'text') {
+              return `<div class="tl-block tl-text">${esc(b.content).replaceAll('\n', '<br>')}</div>`;
+            }
+            if (b.block_type === 'image') {
+              return `<figure class="tl-block tl-image">
+                <img src="${esc(b.content)}" alt="${esc(b.caption || '')}">
+                ${b.caption ? `<figcaption>${esc(b.caption)}</figcaption>` : ''}
+              </figure>`;
+            }
+            if (b.block_type === 'video') {
+              return `<figure class="tl-block tl-video">
+                <video controls preload="metadata" src="${esc(b.content)}"></video>
+                ${b.caption ? `<figcaption>${esc(b.caption)}</figcaption>` : ''}
+              </figure>`;
+            }
+            return '';
+          }).join('');
+          $('timelineSection').hidden = false;
+        }
+
+        // ---- Thong so CHI TIET (bottom) ----------------------
+        if (p.attributes_bottom && p.attributes_bottom.length) {
+          $('specs').innerHTML =
+            '<ul style="columns:2;margin:0;padding-left:20px">' +
+            p.attributes_bottom.map(s => `<li style="margin-bottom:6px"><b>${esc(s.label)}:</b> ${esc(s.value || '')}</li>`).join('') +
+            '</ul>';
+          $('specsSection').hidden = false;
+        }
+      })
+      .catch(err => {
+        $('detail').innerHTML = `<div class="card"><p class="text-muted">${err.status===404 ? 'Không tìm thấy sản phẩm.' : 'Lỗi tải dữ liệu.'} <a href="/customer/products.html">← Quay lại</a></p></div>`;
+      });
+  }
+
+  function esc(s) {
+    if (s == null) return '';
+    return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+  }
+</script>
+</body>
+</html>

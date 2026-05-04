@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Yêu cầu bảo hành – GPS Việt</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .wr-card{border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;background:#fff}
+  .wr-card .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px}
+  .wr-card .meta{font-size:13px;color:#64748b;margin-bottom:6px}
+  .wr-card .row-info{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 18px;font-size:13px;margin-top:6px}
+  .wr-card .row-info .lbl{color:#64748b}
+  .wr-photo img{display:block;max-width:140px;max-height:110px;object-fit:cover;border:1px solid var(--border);border-radius:6px}
+  .pill.purple{background:#ede9fe;color:#6d28d9}
+  .pill.cyan{background:#cffafe;color:#155e75}
+  .pill.orange{background:#ffedd5;color:#9a3412}
+  .empty-state{padding:40px 20px;text-align:center;color:#64748b}
+  .empty-state .ic{font-size:48px;margin-bottom:8px}
+  .wr-items{margin-top:10px;border-top:1px dashed var(--border);padding-top:8px}
+  .wr-items h4{margin:0 0 4px;font-size:13px;color:#475569}
+  .wr-items .wr-item-group{margin-bottom:6px}
+  .wr-items .wr-item-group .lbl{font-size:12.5px;color:#64748b;margin-bottom:2px}
+  .wr-items .wr-item{font-size:13px;padding:2px 0}
+  .wr-items .wr-item .imei{font-family:monospace;font-size:12px;color:#64748b}
+</style>
+</head>
+<body>
+<div class="topbar"><div class="container"><div>☎ Hotline: 1900 2045</div><div id="topbarRight"></div></div></div>
+<header class="site">
+  <div class="container">
+    <a class="logo" href="index.html"><span class="logo-mark">GV</span> GPS VIỆT</a>
+    <button class="nav-toggle" aria-label="Mở menu" onclick="this.nextElementSibling.classList.toggle('open')">☰</button>
+    <nav class="main">
+      <a href="index.html">Trang chủ</a>
+      <a href="products.html">Sản phẩm</a>
+      <a href="orders.html">Đơn của tôi</a>
+      <a href="warranty.html" class="active">Bảo hành</a>
+      <a href="compliance.html">Nghị định 10</a>
+      <a href="guide.html">Hướng dẫn</a>
+      <a href="about.html">Về chúng tôi</a>
+    </nav>
+  </div>
+</header>
+
+<div class="container" style="padding:30px 20px;max-width:900px">
+  <div class="spread mb-2">
+    <div>
+      <h1 style="margin:0">Yêu cầu bảo hành</h1>
+      <p class="text-muted mb-0">Gửi yêu cầu bảo hành — GPS Việt sẽ tiếp nhận và liên hệ thu hồi thiết bị.</p>
+    </div>
+    <button class="btn" id="btnNew">+ Tạo yêu cầu</button>
+  </div>
+
+  <div id="loginRequired" style="display:none">
+    <div class="card text-center" style="padding:40px 20px">
+      <p>Vui lòng <a href="javascript:void(0)" onclick="ui.loginDialog()"><b>đăng nhập</b></a> để gửi yêu cầu bảo hành và xem các yêu cầu cũ.</p>
+    </div>
+  </div>
+
+  <div id="list"></div>
+</div>
+
+<!-- Modal tao yeu cau bao hanh -->
+<div id="modal" class="modal-bg">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-head">
+      <h3>Yêu cầu bảo hành</h3>
+      <button type="button" class="modal-close" id="modalClose" aria-label="Đóng">×</button>
+    </div>
+    <form id="frm" style="display:contents">
+      <div class="modal-body">
+        <div class="grid cols-2">
+          <div class="field">
+            <label>Biển số xe</label>
+            <input type="text" id="f_plate" class="input" placeholder="VD: 51H-123.45">
+          </div>
+          <div class="field">
+            <label>Tên thiết bị</label>
+            <input type="text" id="f_device" class="input" placeholder="VD: VT-02 Pro">
+          </div>
+        </div>
+        <div class="field">
+          <label>IMEI (nếu nhớ)</label>
+          <input type="text" id="f_imei" class="input mono" placeholder="VD: 868290000000001">
+        </div>
+        <div class="field">
+          <label>Lý do bảo hành *</label>
+          <textarea id="f_reason" class="textarea" required placeholder="VD: Không lên nguồn, mất kết nối, lỗi GPS..."></textarea>
+        </div>
+        <div class="field">
+          <label>Địa chỉ thu hồi</label>
+          <textarea id="f_address" class="textarea" placeholder="Địa chỉ KTV đến lấy thiết bị..."></textarea>
+        </div>
+        <div class="field">
+          <label>Ghi chú thêm</label>
+          <textarea id="f_note" class="textarea" placeholder="VD: Lỗi xảy ra từ tuần trước..."></textarea>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="btnCancel">Hủy</button>
+        <button type="submit" class="btn" id="btnSave">Gửi yêu cầu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<footer class="site"><div class="container bottom">© 2025 GPS Việt</div></footer>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/customer-topbar.js"></script>
+<script src="/shared/js/chat-with-admin.js"></script>
+<script src="/shared/js/app.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = new Intl.NumberFormat('vi-VN');
+
+const STATUS_LABEL = {
+  pending:           { text: 'Đã gửi yêu cầu',  cls: 'gray' },
+  received:          { text: 'GPS Việt đã tiếp nhận', cls: 'blue' },
+  recovered:         { text: 'Đã thu hồi máy',  cls: 'amber' },
+  awaiting_warranty: { text: 'Đang bảo hành',   cls: 'purple' },
+  warranty_done:     { text: 'Đã bảo hành xong', cls: 'cyan' },
+  delivering:        { text: 'Đang trả về',     cls: 'orange' },
+  completed:         { text: 'Đã hoàn tất',     cls: 'green' },
+  cancelled:         { text: 'Đã huỷ',          cls: 'red' },
+};
+
+function escape(s) {
+  if (s == null) return '';
+  return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;')
+    .replaceAll('>','&gt;').replaceAll('"','&quot;');
+}
+function statusPill(s) {
+  const def = STATUS_LABEL[s] || { text: s, cls: 'gray' };
+  return `<span class="pill ${def.cls}">${def.text}</span>`;
+}
+function fmtDate(d) {
+  if (!d) return '—';
+  const s = String(d);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+function vnd(n) { return fmt.format(Number(n) || 0) + 'đ'; }
+
+const ITEM_GROUPS = [
+  { kind: 'received_from_customer', label: '📥 Đã nhận từ bạn' },
+  { kind: 'sent_to_partner',        label: '📤 Đang ở nơi bảo hành' },
+  { kind: 'received_back',          label: '📩 Đã nhận về' },
+  { kind: 'replacement',            label: '🔄 Sản phẩm thay thế' },
+  { kind: 'delivered_to_customer',  label: '🚚 Đã giao bạn' },
+];
+
+function renderItems(items) {
+  if (!items || !items.length) return '';
+  const byKind = {};
+  for (const it of items) (byKind[it.kind] = byKind[it.kind] || []).push(it);
+  const groups = ITEM_GROUPS.map(g => {
+    const list = byKind[g.kind] || [];
+    if (!list.length) return '';
+    const rows = list.map(it =>
+      `<div class="wr-item">• <b>${escape(it.name)}</b>${it.imei ? ` <span class="imei">(${escape(it.imei)})</span>` : ''} × ${it.qty}</div>`
+    ).join('');
+    return `<div class="wr-item-group"><div class="lbl">${g.label}</div>${rows}</div>`;
+  }).filter(Boolean).join('');
+  return groups ? `<div class="wr-items"><h4>Sản phẩm</h4>${groups}</div>` : '';
+}
+
+function cardHtml(w) {
+  const cost = Number(w.cost_amount) || 0;
+  const paid = Number(w.paid_amount) || 0;
+  const debt = cost - paid;
+  return `
+    <div class="wr-card">
+      <div class="head">
+        <div>
+          <b>${escape(w.code)}</b>
+          ${statusPill(w.status)}
+        </div>
+        <div class="text-muted" style="font-size:13px">${fmtDate(w.request_date)}</div>
+      </div>
+      <div class="row-info">
+        <div><span class="lbl">Biển số:</span> <b class="mono">${escape(w.license_plate || '—')}</b></div>
+        <div><span class="lbl">Thiết bị:</span> ${escape(w.device_name || '—')}</div>
+        <div><span class="lbl">IMEI:</span> <span class="mono">${escape(w.imei_search || '—')}</span></div>
+        <div><span class="lbl">Kỹ thuật viên:</span> ${escape(w.staff_name || '—')}</div>
+      </div>
+      <div style="margin-top:8px"><span class="text-muted" style="font-size:13px">Lý do:</span> ${escape(w.reason_text || '')}</div>
+      ${w.warranty_partner ? `<div style="margin-top:6px;font-size:13px"><span class="text-muted">Gửi tới:</span> ${escape(w.warranty_partner)}</div>` : ''}
+      ${cost > 0 ? `
+        <div class="row" style="margin-top:8px;gap:14px;font-size:13px">
+          <div><b>Phí:</b> ${vnd(cost)}</div>
+          <div><b>Đã thu:</b> ${vnd(paid)}</div>
+          ${debt > 0 ? `<div style="color:#dc2626"><b>Còn nợ:</b> ${vnd(debt)}</div>` : ''}
+        </div>` : ''}
+      ${renderItems(w.items)}
+      ${w.recovered_image_url ? `<div class="wr-photo" style="margin-top:8px"><a href="${escape(w.recovered_image_url)}" target="_blank"><img src="${escape(w.recovered_image_url)}" alt="Ảnh thu hồi"></a><div class="text-muted" style="font-size:11.5px;margin-top:2px">Ảnh thu hồi</div></div>` : ''}
+    </div>`;
+}
+
+async function loadList() {
+  const res = await api.get('/customer/warranty-orders').catch(() => null);
+  if (!res) return;
+  const wrap = $('list');
+  if (!res.items.length) {
+    wrap.innerHTML = `
+      <div class="empty-state">
+        <div class="ic">🛡</div>
+        <p>Bạn chưa có yêu cầu bảo hành nào.</p>
+        <button class="btn" onclick="openModal()">+ Tạo yêu cầu đầu tiên</button>
+      </div>`;
+  } else {
+    wrap.innerHTML = res.items.map(cardHtml).join('');
+  }
+}
+
+function openModal() {
+  $('f_plate').value = '';
+  $('f_device').value = '';
+  $('f_imei').value = '';
+  $('f_reason').value = '';
+  $('f_address').value = '';
+  $('f_note').value = '';
+  $('modal').classList.add('open');
+}
+function closeModal() { $('modal').classList.remove('open'); }
+
+async function submitForm(e) {
+  e.preventDefault();
+  const data = {
+    license_plate: $('f_plate').value.trim() || null,
+    device_name:   $('f_device').value.trim() || null,
+    imei_search:   $('f_imei').value.trim() || null,
+    reason:        $('f_reason').value.trim(),
+    address:       $('f_address').value.trim() || null,
+    note:          $('f_note').value.trim() || null,
+  };
+  if (!data.reason) return ui.toast('Vui lòng nhập lý do bảo hành', 'warning');
+
+  $('btnSave').disabled = true;
+  const r = await api.post('/customer/warranty-orders', data, {
+    successMessage: 'Đã gửi yêu cầu, GPS Việt sẽ liên hệ sớm.',
+    loading: true,
+  }).catch(() => null);
+  $('btnSave').disabled = false;
+  if (!r) return;
+  closeModal();
+  loadList();
+}
+
+function init() {
+  const u = auth.user();
+  if (!u || (u.role !== 'customer' && u.role !== 'daily')) {
+    $('loginRequired').style.display = '';
+    $('btnNew').style.display = 'none';
+    return;
+  }
+  $('btnNew').addEventListener('click', openModal);
+  $('modalClose').addEventListener('click', closeModal);
+  $('btnCancel').addEventListener('click', closeModal);
+  $('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
+  $('frm').addEventListener('submit', submitForm);
+  loadList();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+window.openModal = openModal;
+</script>
+</body>
+</html>

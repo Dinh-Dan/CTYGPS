@@ -1,0 +1,15 @@
+/* CSS dung chung cho 4 portal — se bo sung sau */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #1f2937;
+  background: #f9fafb;
+  padding: 24px;
+}
+
+h1 { font-size: 24px; margin-bottom: 12px; }
+p  { color: #4b5563; }

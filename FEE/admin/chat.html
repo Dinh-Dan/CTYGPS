@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Tin nhắn – Admin GPS Việt</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .chat-shell{ display:flex;height:calc(100vh - 60px);background:#f8fafc; }
+
+  /* Cot trai: list */
+  .chat-list{
+    width:340px;flex:0 0 340px;background:#fff;border-right:1px solid #e2e8f0;
+    display:flex;flex-direction:column;
+  }
+  .chat-list .head{ padding:12px 14px;border-bottom:1px solid #e2e8f0; }
+  .chat-list .head h2{ margin:0 0 8px;font-size:16px; }
+  .chat-list .tabs{ display:flex;gap:4px;font-size:12.5px; }
+  .chat-list .tab{
+    padding:6px 10px;background:#f1f5f9;border-radius:999px;cursor:pointer;
+    color:#475569;border:1px solid transparent;
+  }
+  .chat-list .tab.active{ background:#dbeafe;color:#1e40af;font-weight:600;border-color:#93c5fd; }
+  .chat-list .search-box{ padding:10px 14px;border-bottom:1px solid #e2e8f0; }
+  .chat-list .search-box input{ width:100%;padding:7px 10px;font-size:13px;border:1px solid #cbd5e1;border-radius:8px; }
+  .chat-list .scroll{ flex:1;overflow-y:auto; }
+  .conv-item{
+    display:flex;gap:10px;align-items:center;padding:10px 14px;cursor:pointer;
+    border-bottom:1px solid #f1f5f9;
+  }
+  .conv-item:hover{ background:#f8fafc; }
+  .conv-item.active{ background:#eff6ff;border-left:3px solid #2563eb; padding-left:11px; }
+  .conv-avatar{
+    width:40px;height:40px;border-radius:50%;background:#e0e7ff;
+    display:flex;align-items:center;justify-content:center;
+    color:#3730a3;font-weight:700;font-size:14px;flex-shrink:0;
+    object-fit:cover;
+  }
+  img.conv-avatar{ background:#f1f5f9; }
+  .conv-info{ flex:1;min-width:0; }
+  .conv-name{ font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .conv-last{ font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px; }
+  .conv-meta{ display:flex;align-items:center;gap:6px;flex-shrink:0;flex-direction:column;align-items:flex-end; }
+  .conv-time{ font-size:11px;color:#94a3b8; }
+  .conv-unread{
+    background:#dc2626;color:#fff;border-radius:999px;
+    min-width:18px;height:18px;font-size:11px;font-weight:700;
+    padding:0 5px;display:inline-flex;align-items:center;justify-content:center;
+  }
+
+  /* Cot phai: chat panel */
+  .chat-panel{ flex:1;display:flex;flex-direction:column;min-width:0; }
+  .chat-header{
+    background:#fff;border-bottom:1px solid #e2e8f0;padding:12px 16px;
+    display:flex;gap:12px;align-items:center;
+  }
+  .chat-header .name{ font-weight:700;font-size:15px; }
+  .chat-header .meta{ font-size:12px;color:#64748b; }
+  .chat-msgs{
+    flex:1;overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:6px;
+    background:#f8fafc;
+  }
+  .msg{
+    max-width:70%;padding:8px 12px;border-radius:14px;font-size:13.5px;
+    word-wrap:break-word;line-height:1.4;
+  }
+  .msg.from-customer{ background:#fff;align-self:flex-start;border:1px solid #e2e8f0; }
+  .msg.from-staff{ background:#2563eb;color:#fff;align-self:flex-end; }
+  .msg .sender{ font-size:11px;opacity:.7;margin-bottom:2px;font-weight:600; }
+  .msg.from-customer .sender{ color:#475569; }
+  .msg.from-staff .sender{ color:#dbeafe; }
+  .msg .time{ font-size:10px;opacity:.6;margin-top:2px;display:block; }
+
+  .chat-input{
+    background:#fff;border-top:1px solid #e2e8f0;padding:10px 14px;
+    display:flex;gap:8px;
+  }
+  .chat-input input{ flex:1;padding:10px 14px;border:1px solid #cbd5e1;border-radius:999px;font-size:14px; }
+  .chat-input button{
+    background:#2563eb;color:#fff;border:none;padding:10px 20px;
+    border-radius:999px;cursor:pointer;font-weight:600;
+  }
+  .chat-input button:disabled{ opacity:.5;cursor:not-allowed; }
+
+  .empty-state{
+    flex:1;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:14px;
+    flex-direction:column;gap:6px;
+  }
+  .empty-state .icon{ font-size:48px;margin-bottom:8px; }
+
+  .pill.daily{ background:#fef3c7;color:#92400e; }
+  .pill.retail{ background:#dbeafe;color:#1e40af; }
+  .pill.order-tag{ background:#fce7f3;color:#9d174d;font-size:10.5px;text-decoration:none; }
+
+  /* Members panel */
+  .members-pop{
+    position:absolute;top:60px;right:14px;background:#fff;border:1px solid #e2e8f0;
+    border-radius:10px;box-shadow:0 8px 24px rgba(15,23,42,.12);width:300px;z-index:50;
+    display:none;
+  }
+  .members-pop.open{ display:block; }
+  .members-pop .head{
+    padding:10px 12px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:13px;
+  }
+  .members-pop .body{ max-height:300px;overflow-y:auto;padding:6px 0; }
+  .members-pop .row{
+    display:flex;gap:8px;align-items:center;padding:6px 12px;font-size:13px;
+  }
+  .members-pop .row .name{ flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+  .members-pop .row .role-tag{ font-size:10.5px;color:#64748b; }
+  .members-pop .row.removed{ opacity:.5; }
+  .members-pop .row button{
+    background:transparent;border:none;color:#dc2626;cursor:pointer;font-size:13px;padding:2px 6px;
+  }
+  .members-pop .add-row{ padding:8px 12px;border-top:1px solid #e2e8f0;display:flex;gap:6px; }
+  .members-pop .add-row select{
+    flex:1;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;
+  }
+  .members-pop .add-row button{
+    background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 12px;
+    font-size:13px;cursor:pointer;
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main" style="padding:0">
+    <div class="chat-shell">
+      <div class="chat-list">
+        <div class="head">
+          <h2>💬 Tin nhắn</h2>
+          <div class="text-muted" style="font-size:12px">Mỗi khách 1 cuộc – admin có thể thêm KTV vào chat.</div>
+        </div>
+        <div class="search-box">
+          <input id="search" placeholder="🔍 Tìm tên, SĐT, mã...">
+        </div>
+        <div class="scroll" id="convList"></div>
+      </div>
+
+      <div class="chat-panel" id="chatPanel" style="position:relative">
+        <div class="empty-state">
+          <div class="icon">💬</div>
+          <div>Chọn cuộc trò chuyện ở bên trái để xem tin nhắn</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal cap nhat thong tin khach (mo tu nut trong chat header) -->
+<div id="custModal" class="modal-bg">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-head">
+      <h3 id="custModalTitle">Cập nhật thông tin khách</h3>
+      <button type="button" class="modal-close" id="custClose" aria-label="Đóng">×</button>
+    </div>
+    <form id="custForm" style="display:contents">
+      <div class="modal-body">
+        <input type="hidden" id="cf_id">
+        <p class="text-muted" style="font-size:12.5px;margin:0 0 12px">
+          Cập nhật thông tin khách dựa trên những gì khách cung cấp qua chat.
+          Các trường nâng cao (hạn nợ, mức giá…) chỉnh ở
+          <a href="/admin/customers.html" target="_blank" style="color:#2563eb">trang Khách hàng</a>.
+        </p>
+
+        <div class="field">
+          <label>Họ tên *</label>
+          <input type="text" id="cf_full_name" class="input" required>
+        </div>
+        <div class="grid cols-2">
+          <div class="field"><label>Số điện thoại</label><input type="text" id="cf_phone" class="input"></div>
+          <div class="field"><label>Email</label><input type="email" id="cf_email" class="input"></div>
+        </div>
+        <div class="field"><label>Địa chỉ</label><input type="text" id="cf_address" class="input"></div>
+
+        <fieldset id="cf_dealerFields" class="dealer-block hide">
+          <legend>Thông tin đại lý</legend>
+          <div class="grid cols-2">
+            <div class="field"><label>Tên công ty</label><input type="text" id="cf_company_name" class="input"></div>
+            <div class="field"><label>Mã số thuế</label><input type="text" id="cf_tax_code" class="input"></div>
+          </div>
+          <div class="field"><label>Người liên hệ</label><input type="text" id="cf_contact_person" class="input"></div>
+        </fieldset>
+
+        <div class="field"><label>Ghi chú</label><textarea id="cf_note" class="textarea" rows="3"></textarea></div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="custCancel">Hủy</button>
+        <button type="submit" class="btn" id="custSave">Lưu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/socket.js"></script>
+<script src="/shared/js/admin-shell.js"></script>
+<script src="/shared/js/chat-msg-render.js"></script>
+<script src="/admin/chat.js"></script>
+</body>
+</html>

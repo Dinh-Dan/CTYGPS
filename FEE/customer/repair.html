@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Yêu cầu sửa chữa – GPS Việt</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .ro-card{border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;background:#fff}
+  .ro-card .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px}
+  .ro-card .row-info{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 18px;font-size:13px;margin-top:6px}
+  .ro-card .row-info .lbl{color:#64748b}
+  .ro-photo img{display:block;max-width:140px;max-height:110px;object-fit:cover;border:1px solid var(--border);border-radius:6px}
+  .pill.purple{background:#ede9fe;color:#6d28d9}
+  .pill.cyan{background:#cffafe;color:#155e75}
+  .pill.orange{background:#ffedd5;color:#9a3412}
+  .pill.indigo{background:#e0e7ff;color:#3730a3}
+  .pill.pink{background:#fce7f3;color:#9d174d}
+  .empty-state{padding:40px 20px;text-align:center;color:#64748b}
+  .empty-state .ic{font-size:48px;margin-bottom:8px}
+  .quote-box{margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:8px;background:#fafbfc}
+  .quote-box h4{margin:0 0 6px;font-size:13px;color:#475569}
+  .quote-box table{width:100%;font-size:13px;border-collapse:collapse}
+  .quote-box td{padding:3px 4px}
+  .quote-box .total-row{border-top:1px solid var(--border);font-weight:600}
+  .quote-actions{display:flex;gap:8px;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="topbar"><div class="container"><div>☎ Hotline: 1900 2045</div><div id="topbarRight"></div></div></div>
+<header class="site">
+  <div class="container">
+    <a class="logo" href="index.html"><span class="logo-mark">GV</span> GPS VIỆT</a>
+    <button class="nav-toggle" aria-label="Mở menu" onclick="this.nextElementSibling.classList.toggle('open')">☰</button>
+    <nav class="main">
+      <a href="index.html">Trang chủ</a>
+      <a href="products.html">Sản phẩm</a>
+      <a href="orders.html">Đơn của tôi</a>
+      <a href="warranty.html">Bảo hành</a>
+      <a href="repair.html" class="active">Sửa chữa</a>
+      <a href="compliance.html">Nghị định 10</a>
+      <a href="guide.html">Hướng dẫn</a>
+      <a href="about.html">Về chúng tôi</a>
+    </nav>
+  </div>
+</header>
+
+<div class="container" style="padding:30px 20px;max-width:900px">
+  <div class="spread mb-2">
+    <div>
+      <h1 style="margin:0">Yêu cầu sửa chữa</h1>
+      <p class="text-muted mb-0">Gửi yêu cầu sửa chữa thiết bị. KTV sẽ chẩn đoán và báo giá để bạn duyệt trước khi sửa.</p>
+    </div>
+    <button class="btn" id="btnNew">+ Tạo yêu cầu</button>
+  </div>
+
+  <div id="loginRequired" style="display:none">
+    <div class="card text-center" style="padding:40px 20px">
+      <p>Vui lòng <a href="javascript:void(0)" onclick="ui.loginDialog()"><b>đăng nhập</b></a> để gửi yêu cầu sửa chữa.</p>
+    </div>
+  </div>
+
+  <div id="list"></div>
+</div>
+
+<!-- Modal tao yeu cau -->
+<div id="modal" class="modal-bg">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-head">
+      <h3>Yêu cầu sửa chữa</h3>
+      <button type="button" class="modal-close" id="modalClose">×</button>
+    </div>
+    <form id="frm" style="display:contents">
+      <div class="modal-body">
+        <div class="grid cols-2">
+          <div class="field">
+            <label>Biển số xe</label>
+            <input type="text" id="f_plate" class="input">
+          </div>
+          <div class="field">
+            <label>Tên thiết bị</label>
+            <input type="text" id="f_device" class="input">
+          </div>
+        </div>
+        <div class="field">
+          <label>IMEI (nếu nhớ)</label>
+          <input type="text" id="f_imei" class="input mono">
+        </div>
+        <div class="field">
+          <label>Mô tả lỗi *</label>
+          <textarea id="f_reason" class="textarea" required placeholder="VD: Mất kết nối, không lên nguồn, hỏng pin..."></textarea>
+        </div>
+        <div class="field">
+          <label>Địa chỉ thu hồi</label>
+          <textarea id="f_address" class="textarea"></textarea>
+        </div>
+        <div class="field">
+          <label>Ghi chú thêm</label>
+          <textarea id="f_note" class="textarea"></textarea>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="btnCancel">Hủy</button>
+        <button type="submit" class="btn" id="btnSave">Gửi yêu cầu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<footer class="site"><div class="container bottom">© 2025 GPS Việt</div></footer>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/customer-topbar.js"></script>
+<script src="/shared/js/chat-with-admin.js"></script>
+<script src="/shared/js/app.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = new Intl.NumberFormat('vi-VN');
+
+const STATUS_LABEL = {
+  pending:           { text: 'Đã gửi yêu cầu',     cls: 'gray' },
+  assigned:          { text: 'Đã có KTV nhận',     cls: 'blue' },
+  diagnosing:        { text: 'KTV đang chẩn đoán', cls: 'amber' },
+  quoted:            { text: 'KTV đã có báo giá',  cls: 'indigo' },
+  awaiting_customer: { text: 'Mời bạn duyệt báo giá', cls: 'purple' },
+  approved:          { text: 'Đã duyệt báo giá',   cls: 'cyan' },
+  rejected:          { text: 'Bạn đã từ chối',     cls: 'pink' },
+  repairing:         { text: 'Đang sửa',           cls: 'orange' },
+  done:              { text: 'Đã sửa xong',        cls: 'cyan' },
+  delivering:        { text: 'Đang giao trả',      cls: 'orange' },
+  completed:         { text: 'Đã hoàn tất',        cls: 'green' },
+  cancelled:         { text: 'Đã huỷ',             cls: 'red' },
+};
+
+function escape(s) {
+  if (s == null) return '';
+  return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;')
+    .replaceAll('>','&gt;').replaceAll('"','&quot;');
+}
+function statusPill(s) {
+  const def = STATUS_LABEL[s] || { text: s, cls: 'gray' };
+  return `<span class="pill ${def.cls}">${def.text}</span>`;
+}
+function fmtDate(d) {
+  if (!d) return '—';
+  const s = String(d);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+function vnd(n) { return fmt.format(Number(n) || 0) + 'đ'; }
+
+function renderQuote(r) {
+  const items = r.items || [];
+  const charges = r.charges || [];
+  if (!items.length && !charges.length && !r.total_amount) return '';
+  const itemRows = items.map(it => {
+    const sub = (Number(it.qty) || 0) * (Number(it.unit_price) || 0);
+    return `<tr><td>${escape(it.product_name || '')}</td><td style="text-align:right">${it.qty}</td><td style="text-align:right">${vnd(it.unit_price)}</td><td style="text-align:right">${vnd(sub)}</td></tr>`;
+  }).join('');
+  const chargeRows = charges.map(c =>
+    `<tr><td colspan="3">${escape(c.label)}</td><td style="text-align:right">${vnd(c.amount)}</td></tr>`
+  ).join('');
+  return `
+    <div class="quote-box">
+      <h4>📄 Báo giá sửa chữa</h4>
+      <table>
+        ${items.length ? '<thead><tr><th style="text-align:left">Vật tư</th><th style="text-align:right">SL</th><th style="text-align:right">Đơn giá</th><th style="text-align:right">Tổng</th></tr></thead>' : ''}
+        <tbody>
+          ${itemRows}
+          ${chargeRows}
+          <tr class="total-row"><td colspan="3" style="text-align:right">Tổng cộng:</td><td style="text-align:right">${vnd(r.total_amount)}</td></tr>
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function cardHtml(r) {
+  const total = Number(r.total_amount) || 0;
+  const paid = Number(r.paid_amount) || 0;
+  const debt = total - paid;
+  const showQuote = ['quoted', 'awaiting_customer', 'approved', 'rejected', 'repairing', 'done', 'delivering', 'completed'].includes(r.status);
+  const showApprove = r.status === 'awaiting_customer';
+
+  return `
+    <div class="ro-card">
+      <div class="head">
+        <div>
+          <b>${escape(r.code)}</b>
+          ${statusPill(r.status)}
+        </div>
+        <div class="text-muted" style="font-size:13px">${fmtDate(r.request_date)}</div>
+      </div>
+      <div class="row-info">
+        <div><span class="lbl">Biển số:</span> <b class="mono">${escape(r.license_plate || '—')}</b></div>
+        <div><span class="lbl">Thiết bị:</span> ${escape(r.device_name || '—')}</div>
+        <div><span class="lbl">IMEI:</span> <span class="mono">${escape(r.imei_search || '—')}</span></div>
+        <div><span class="lbl">KTV:</span> ${escape(r.staff_name || '—')}</div>
+      </div>
+      <div style="margin-top:8px"><span class="text-muted" style="font-size:13px">Lỗi báo:</span> ${escape(r.reason_text || '')}</div>
+      ${r.diagnose_text ? `<div style="margin-top:6px;font-size:13px"><span class="text-muted">KTV chẩn đoán:</span> ${escape(r.diagnose_text)}</div>` : ''}
+      ${showQuote ? renderQuote(r) : ''}
+      ${total > 0 && r.status === 'completed' ? `
+        <div class="row" style="margin-top:8px;gap:14px;font-size:13px">
+          <div><b>Đã thu:</b> ${vnd(paid)}</div>
+          ${debt > 0 ? `<div style="color:#dc2626"><b>Còn nợ:</b> ${vnd(debt)}</div>` : ''}
+        </div>` : ''}
+      ${showApprove ? `
+        <div class="quote-actions">
+          <button class="btn" data-act="approve" data-id="${r.id}">✓ Duyệt báo giá</button>
+          <button class="btn ghost" data-act="reject" data-id="${r.id}" style="color:var(--danger)">✗ Từ chối</button>
+        </div>` : ''}
+      ${r.recovered_image_url ? `<div class="ro-photo" style="margin-top:8px"><a href="${escape(r.recovered_image_url)}" target="_blank"><img src="${escape(r.recovered_image_url)}" alt="Ảnh nhận"></a><div class="text-muted" style="font-size:11.5px;margin-top:2px">Ảnh nhận máy</div></div>` : ''}
+    </div>`;
+}
+
+async function loadList() {
+  const res = await api.get('/customer/repair-orders').catch(() => null);
+  if (!res) return;
+  const wrap = $('list');
+  if (!res.items.length) {
+    wrap.innerHTML = `
+      <div class="empty-state">
+        <div class="ic">🔧</div>
+        <p>Bạn chưa có yêu cầu sửa chữa nào.</p>
+        <button class="btn" onclick="openModal()">+ Tạo yêu cầu đầu tiên</button>
+      </div>`;
+  } else {
+    wrap.innerHTML = res.items.map(cardHtml).join('');
+  }
+}
+
+function openModal() {
+  ['f_plate','f_device','f_imei','f_reason','f_address','f_note'].forEach(k => $(k).value = '');
+  $('modal').classList.add('open');
+}
+function closeModal() { $('modal').classList.remove('open'); }
+
+async function submitForm(e) {
+  e.preventDefault();
+  const data = {
+    license_plate: $('f_plate').value.trim() || null,
+    device_name:   $('f_device').value.trim() || null,
+    imei_search:   $('f_imei').value.trim() || null,
+    reason:        $('f_reason').value.trim(),
+    address:       $('f_address').value.trim() || null,
+    note:          $('f_note').value.trim() || null,
+  };
+  if (!data.reason) return ui.toast('Vui lòng nhập mô tả lỗi', 'warning');
+
+  $('btnSave').disabled = true;
+  const r = await api.post('/customer/repair-orders', data, {
+    successMessage: 'Đã gửi yêu cầu, GPS Việt sẽ liên hệ sớm.',
+    loading: true,
+  }).catch(() => null);
+  $('btnSave').disabled = false;
+  if (!r) return;
+  closeModal();
+  loadList();
+}
+
+async function handleListClick(e) {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const id = btn.dataset.id;
+  if (btn.dataset.act === 'approve') {
+    const ok = await ui.confirm({
+      title: 'Duyệt báo giá?',
+      message: 'Sau khi duyệt, KTV sẽ tiến hành sửa chữa theo báo giá. Tiếp tục?',
+      okText: 'Duyệt',
+    });
+    if (!ok) return;
+    const r = await api.post(`/customer/repair-orders/${id}/approve-quote`, {}, {
+      successMessage: 'Đã duyệt báo giá', loading: true,
+    }).catch(() => null);
+    if (r) loadList();
+  } else if (btn.dataset.act === 'reject') {
+    const reason = prompt('Lý do từ chối (không bắt buộc):');
+    if (reason == null) return;
+    const r = await api.post(`/customer/repair-orders/${id}/reject-quote`,
+      { reason: reason.trim() || null },
+      { successMessage: 'Đã từ chối báo giá', loading: true }).catch(() => null);
+    if (r) loadList();
+  }
+}
+
+function init() {
+  const u = auth.user();
+  if (!u || (u.role !== 'customer' && u.role !== 'daily')) {
+    $('loginRequired').style.display = '';
+    $('btnNew').style.display = 'none';
+    return;
+  }
+  $('btnNew').addEventListener('click', openModal);
+  $('modalClose').addEventListener('click', closeModal);
+  $('btnCancel').addEventListener('click', closeModal);
+  $('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
+  $('frm').addEventListener('submit', submitForm);
+  $('list').addEventListener('click', handleListClick);
+  loadList();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+window.openModal = openModal;
+</script>
+</body>
+</html>

@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Khách hàng – Admin GPS Việt</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topnav">
+      <h2 class="topnav-title">Khách hàng &amp; Đại lý</h2>
+    </div>
+    <div class="content flex-page">
+      <div class="toolbar">
+        <button class="btn sm" id="btnAdd">+ Thêm mới</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data" id="tbl">
+          <thead>
+            <tr>
+              <th style="width:60px">Avatar</th>
+              <th style="width:100px">Mã</th>
+              <th style="width:120px">Loại</th>
+              <th>Họ tên / Công ty</th>
+              <th style="width:130px">SĐT</th>
+              <th>Email</th>
+              <th style="width:130px">Hạn mức nợ</th>
+              <th style="width:100px">Hạn nợ</th>
+              <th style="width:140px">Hành động</th>
+            </tr>
+            <tr class="filter-row">
+              <th></th>
+              <th><input data-filter="code"  placeholder="Lọc mã"></th>
+              <th>
+                <select data-filter="type">
+                  <option value="">Tất cả</option>
+                  <option value="retail">Khách lẻ</option>
+                  <option value="dealer">Đại lý</option>
+                </select>
+              </th>
+              <th><input data-filter="name"  placeholder="Lọc tên / công ty"></th>
+              <th><input data-filter="phone" placeholder="Lọc SĐT"></th>
+              <th><input data-filter="email" placeholder="Lọc email"></th>
+              <th></th>
+              <th></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="pager">
+        <button id="prevPage">« Trước</button>
+        <span id="pageInfo">Trang 1</span>
+        <button id="nextPage">Sau »</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal them/sua khach hang -->
+<div id="modal" class="modal-bg">
+  <div class="modal" style="max-width:780px">
+    <div class="modal-head">
+      <h3 id="modalTitle">Thêm khách hàng</h3>
+      <button type="button" class="modal-close" id="modalClose" aria-label="Đóng">×</button>
+    </div>
+    <form id="frm" style="display:contents">
+      <div class="modal-body">
+        <input type="hidden" id="f_id">
+
+        <div class="grid cols-2">
+          <div class="field">
+            <label>Loại khách hàng *</label>
+            <select id="f_type" class="select" required>
+              <option value="retail">Khách lẻ</option>
+              <option value="dealer">Đại lý</option>
+            </select>
+          </div>
+          <div class="field" id="f_code_block">
+            <label>Mã khách hàng</label>
+            <input type="text" id="f_code" class="input" readonly placeholder="Tự sinh khi tạo">
+          </div>
+        </div>
+
+        <div class="row" style="align-items:flex-start;gap:24px">
+          <div style="flex:0 0 160px">
+            <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:#334155">Avatar</label>
+            <div class="avatar-pick">
+              <img id="f_avatar_preview" src="" alt="" class="avatar-preview">
+              <input type="file" id="f_avatar_file" accept="image/*">
+              <input type="hidden" id="f_avatar_url">
+              <button type="button" id="f_avatar_clear" class="btn ghost sm">Xóa ảnh</button>
+            </div>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div class="field"><label>Họ tên *</label><input type="text" id="f_full_name" class="input" required></div>
+            <div class="grid cols-2">
+              <div class="field"><label>Số điện thoại</label><input type="text" id="f_phone" class="input"></div>
+              <div class="field"><label>Email</label><input type="email" id="f_email" class="input"></div>
+            </div>
+            <div class="field"><label>Địa chỉ</label><input type="text" id="f_address" class="input"></div>
+            <div class="field">
+              <label>Mức giá áp dụng</label>
+              <select id="f_default_tier_id" class="select">
+                <option value="">— Theo mức Mặc định chung —</option>
+              </select>
+              <small class="text-muted" style="font-size:12px;display:block;margin-top:4px">
+                Khách này khi đăng nhập sẽ thấy giá theo mức được chọn. Để trống = dùng mức Mặc định chung.
+              </small>
+            </div>
+          </div>
+        </div>
+
+        <fieldset id="dealerFields" class="dealer-block">
+          <legend>Thông tin đại lý</legend>
+          <div class="grid cols-2">
+            <div class="field"><label>Tên công ty</label><input type="text" id="f_company_name" class="input"></div>
+            <div class="field"><label>Mã số thuế</label><input type="text" id="f_tax_code" class="input"></div>
+          </div>
+          <div class="grid cols-2">
+            <div class="field"><label>Người liên hệ</label><input type="text" id="f_contact_person" class="input"></div>
+            <div class="field"><label>Hạn mức nợ (VND)</label><input type="number" id="f_debt_limit" class="input" min="0" step="1000"></div>
+          </div>
+          <div class="grid cols-2">
+            <div class="field"><label>Số ngày được nợ</label><input type="number" id="f_credit_term_days" class="input" min="0" step="1"></div>
+            <div class="field"><label>Chiết khấu (%)</label><input type="number" id="f_discount_rate" class="input" min="0" max="100" step="0.01"></div>
+          </div>
+
+          <!-- Khoi mat khau dealer — chi hien khi edit dealer co san -->
+          <div id="pwBlock" class="hide" style="border-top:1px dashed #fbbf24;margin-top:12px;padding-top:12px">
+            <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:#92400e">🔑 Mật khẩu đăng nhập</label>
+            <div class="row" style="gap:8px">
+              <span class="text-muted" id="pwStatus" style="font-size:13px;flex:1"></span>
+              <button type="button" class="btn ghost sm" id="btnChangePw">Đổi mật khẩu</button>
+            </div>
+          </div>
+        </fieldset>
+
+        <div class="field"><label>Ghi chú</label><textarea id="f_note" class="textarea"></textarea></div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="btnCancel">Hủy</button>
+        <button type="submit" class="btn" id="btnSave">Lưu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal doi mat khau (dialog phu, dung khi click "Doi mat khau" trong form sua) -->
+<div id="pwModal" class="modal-bg">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-head">
+      <h3>Đổi mật khẩu đại lý</h3>
+      <button type="button" class="modal-close" id="pwClose" aria-label="Đóng">×</button>
+    </div>
+    <form id="pwForm" style="display:contents">
+      <div class="modal-body">
+        <input type="hidden" id="pw_id">
+        <p class="text-muted mb-2">Đại lý: <b id="pw_name"></b> (<span id="pw_code"></span>)</p>
+        <div class="field">
+          <label>Mật khẩu mới</label>
+          <input type="text" id="pw_new" class="input" required minlength="4" placeholder="Tối thiểu 4 ký tự">
+          <p class="help">Hiển thị plaintext để admin có thể đọc + gửi cho đại lý. Sau khi lưu sẽ được hash trong DB.</p>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="pwCancel">Hủy</button>
+        <button type="submit" class="btn">Lưu mật khẩu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/admin-shell.js"></script>
+<script src="/admin/customers.js"></script>
+</body>
+</html>

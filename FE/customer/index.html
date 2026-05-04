@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>GPS Việt – Thiết bị định vị &amp; Camera hành trình</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+</head>
+<body>
+
+<div class="topbar">
+  <div class="container">
+    <div>☎ Hotline: 1900 2045 &nbsp;|&nbsp; ✉ hotro@gpsviet.vn</div>
+    <div id="topbarRight"></div>
+  </div>
+</div>
+<header class="site">
+  <div class="container">
+    <a class="logo" href="/customer/"><span class="logo-mark">GV</span> GPS VIỆT</a>
+    <button class="nav-toggle" aria-label="Mở menu" onclick="this.nextElementSibling.classList.toggle('open')">☰</button>
+    <nav class="main">
+      <a href="/customer/" class="active">Trang chủ</a>
+      <a href="/customer/products.html">Sản phẩm</a>
+      <a href="/customer/order.html">Đặt dịch vụ</a>
+      <a href="/customer/compliance.html">Nghị định 10</a>
+      <a href="/customer/guide.html">Hướng dẫn</a>
+      <a href="/customer/about.html">Về chúng tôi</a>
+    </nav>
+    <div class="header-actions">
+      <a class="btn ghost sm" href="/customer/my-orders.html">Đơn của tôi</a>
+      <a class="btn sm" href="/customer/order.html">+ Đặt dịch vụ</a>
+    </div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="container spread">
+    <div style="max-width:560px">
+      <span class="chip">🇻🇳 Sản phẩm chính hãng • 10+ năm kinh nghiệm</span>
+      <h1>Định vị GPS &amp; Camera hành trình chuyên nghiệp</h1>
+      <p class="lead">Giám sát xe 24/7, cảnh báo tốc độ, hành trình 90 ngày. Bảo hành tận nơi, gia hạn trực tuyến – chỉ 30 giây.</p>
+      <div class="row">
+        <a class="btn accent" href="/customer/order.html">Đặt lắp ngay</a>
+        <a class="btn ghost" href="/customer/products.html">Xem sản phẩm →</a>
+      </div>
+      <div class="chips">
+        <span class="chip">✓ Chuẩn Nghị định 10</span>
+        <span class="chip">✓ Bảo hành 24 tháng</span>
+        <span class="chip">✓ Kỹ thuật tận nơi TP.HCM</span>
+      </div>
+    </div>
+    <div style="font-size:180px;line-height:1">🛰️</div>
+  </div>
+</section>
+
+<!-- QUICK ACTIONS -->
+<section class="section">
+  <div class="container">
+    <h2>Bạn cần hỗ trợ gì hôm nay?</h2>
+    <p class="subtitle">Chọn dịch vụ bạn muốn sử dụng. Mọi thao tác đều online, không cần chờ nhắn tin.</p>
+    <div class="grid" style="grid-template-columns:repeat(5,1fr);gap:20px">
+      <a class="card hover" href="/customer/order.html?type=new" style="text-decoration:none;color:inherit;text-align:center">
+        <div style="font-size:44px">🛠️</div>
+        <h3>Lắp mới</h3>
+        <p class="text-muted">Đặt lịch, kỹ thuật đến lắp tận nơi</p>
+      </a>
+      <a class="card hover" href="/customer/order.html?type=renew" style="text-decoration:none;color:inherit;text-align:center">
+        <div style="font-size:44px">🔄</div>
+        <h3>Gia hạn gói</h3>
+        <p class="text-muted">Thanh toán QR, gia hạn tự động</p>
+      </a>
+      <a class="card hover" href="/customer/order.html?type=repair" style="text-decoration:none;color:inherit;text-align:center">
+        <div style="font-size:44px">🔧</div>
+        <h3>Sửa chữa</h3>
+        <p class="text-muted">Báo lỗi, hẹn kỹ thuật xử lý</p>
+      </a>
+      <a class="card hover" href="/customer/warranty.html" style="text-decoration:none;color:inherit;text-align:center">
+        <div style="font-size:44px">🛡️</div>
+        <h3>Bảo hành</h3>
+        <p class="text-muted">Tra cứu &amp; yêu cầu bảo hành</p>
+      </a>
+      <a class="card hover" href="/customer/order.html?type=badge" style="text-decoration:none;color:inherit;text-align:center;background:linear-gradient(135deg,#fef3c7,#fde68a);border-color:#fcd34d">
+        <div style="font-size:44px">🪪</div>
+        <h3>Phù hiệu xe</h3>
+        <p class="text-muted">Làm phù hiệu vận tải – NĐ 10</p>
+        <span class="badge hot" style="font-size:10px">MỚI</span>
+      </a>
+    </div>
+    <style>@media(max-width:1100px){.grid[style*="repeat(5"]{grid-template-columns:repeat(2,1fr)!important}}</style>
+  </div>
+</section>
+
+<!-- PRODUCTS -->
+<section class="section" style="background:#eef2f7">
+  <div class="container">
+    <div class="spread mb-3">
+      <div>
+        <h2 style="text-align:left">Sản phẩm nổi bật</h2>
+        <p class="text-muted mb-0">Được tin dùng bởi 3.000+ xe khắp các tỉnh miền Nam</p>
+      </div>
+      <a class="btn ghost" href="/customer/products.html">Xem tất cả →</a>
+    </div>
+    <div class="grid cols-4" id="products-grid"></div>
+  </div>
+</section>
+
+<!-- BADGE SERVICE PROMO -->
+<section class="section" style="background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%)">
+  <div class="container">
+    <div class="grid cols-2" style="align-items:center">
+      <div>
+        <span class="badge warn">🆕 DỊCH VỤ MỚI</span>
+        <h2 style="text-align:left;margin:10px 0">Làm phù hiệu xe vận tải — trọn gói</h2>
+        <p class="text-muted">Theo <b>Nghị định 10/2020/NĐ-CP</b>, xe kinh doanh vận tải bắt buộc phải có phù hiệu. Chúng tôi lo toàn bộ: chuẩn bị hồ sơ, nộp sở GTVT, nhận kết quả và giao tận nơi.</p>
+        <div class="grid cols-2 mt-2">
+          <div><b>🚚 Xe tải</b><div class="text-muted" style="font-size:13px">Từ 800.000₫/xe</div></div>
+          <div><b>🚐 Xe hợp đồng</b><div class="text-muted" style="font-size:13px">Từ 900.000₫/xe</div></div>
+          <div><b>🚌 Xe khách / du lịch</b><div class="text-muted" style="font-size:13px">Từ 1.200.000₫/xe</div></div>
+          <div><b>🚛 Xe container</b><div class="text-muted" style="font-size:13px">Từ 1.500.000₫/xe</div></div>
+        </div>
+        <div class="row mt-3">
+          <a class="btn accent" href="/customer/order.html?type=badge">🪪 Đăng ký ngay</a>
+          <a class="btn ghost" href="/customer/compliance.html">Tìm hiểu NĐ 10 →</a>
+        </div>
+      </div>
+      <div class="text-center" style="font-size:180px">🪪</div>
+    </div>
+  </div>
+</section>
+
+<!-- WHY US -->
+<section class="section">
+  <div class="container">
+    <h2>Vì sao chọn GPS Việt?</h2>
+    <p class="subtitle">Không chỉ bán thiết bị – chúng tôi đồng hành với khách hàng trong suốt vòng đời sử dụng.</p>
+    <div class="grid cols-3">
+      <div class="card"><div style="font-size:36px">🎯</div><h3>Chính hãng 100%</h3><p class="text-muted">Đại lý cấp cao của các hãng lớn, cam kết linh kiện chính hãng, đúng chuẩn Nghị định.</p></div>
+      <div class="card"><div style="font-size:36px">⚡</div><h3>Lắp nhanh 30 phút</h3><p class="text-muted">Kỹ thuật đến tận nơi trong ngày, quy trình 15 bước chuẩn hoá.</p></div>
+      <div class="card"><div style="font-size:36px">🛡️</div><h3>Bảo hành dài hạn</h3><p class="text-muted">12–24 tháng, hỗ trợ đổi mới nếu lỗi nhà sản xuất.</p></div>
+      <div class="card"><div style="font-size:36px">📱</div><h3>App thân thiện</h3><p class="text-muted">Xem vị trí xe, hành trình trên điện thoại mọi lúc mọi nơi.</p></div>
+      <div class="card"><div style="font-size:36px">💳</div><h3>Gia hạn online</h3><p class="text-muted">Quét QR thanh toán, tự động gia hạn – không cần gọi điện.</p></div>
+      <div class="card"><div style="font-size:36px">🤝</div><h3>Chiết khấu đại lý</h3><p class="text-muted">Chính sách giá riêng cho đại lý cấp dưới, hỗ trợ công nợ linh hoạt.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="section" style="background:linear-gradient(135deg,#1f6feb,#0b1a33);color:#fff;text-align:center">
+  <div class="container">
+    <h2 style="color:#fff">Sẵn sàng lắp đặt cho xe của bạn?</h2>
+    <p class="subtitle" style="color:#cbd5e1">Điền thông tin và kỹ thuật sẽ liên hệ trong 15 phút</p>
+    <a class="btn accent" href="/customer/order.html">Đặt lịch ngay →</a>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="container grid cols-4">
+    <div>
+      <h4>GPS VIỆT</h4>
+      <p>Thiết bị định vị, camera hành trình, hộp đen ô tô chính hãng.</p>
+      <p>☎ 1900 2045<br>✉ hotro@gpsviet.vn</p>
+    </div>
+    <div>
+      <h4>Sản phẩm</h4>
+      <a href="/customer/products.html">Định vị xe máy</a>
+      <a href="/customer/products.html">Định vị ô tô</a>
+      <a href="/customer/products.html">Camera hành trình</a>
+      <a href="/customer/products.html">Hộp đen xe tải</a>
+    </div>
+    <div>
+      <h4>Hỗ trợ</h4>
+      <a href="/customer/guide.html">Hướng dẫn sử dụng</a>
+      <a href="/customer/warranty.html">Tra bảo hành</a>
+      <a href="/customer/compliance.html">Nghị định 10 &amp; QCVN 31</a>
+      <a href="/customer/order.html">Đặt dịch vụ</a>
+      <a href="/customer/about.html">Chính sách</a>
+    </div>
+    <div>
+      <h4>Tài khoản</h4>
+      <a href="javascript:void(0)" onclick="ui.loginDialog()">Đăng nhập</a>
+      <a href="/customer/my-orders.html">Đơn của tôi</a>
+      <a href="/">Cổng nội bộ</a>
+    </div>
+  </div>
+  <div class="bottom container">© 2026 GPS Việt</div>
+</footer>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/customer-topbar.js"></script>
+<script src="/shared/js/app.js"></script>
+<script src="/shared/js/chat-with-admin.js"></script>
+<script>
+  const fmt = new Intl.NumberFormat('vi-VN');
+
+  // ---- Featured products (4) -------------------------------
+  function iconFor(catName) {
+    const n = (catName || '').toLowerCase();
+    if (n.includes('định vị') || n.includes('dinh vi')) return '📍';
+    if (n.includes('camera')) return '📷';
+    if (n.includes('sim')) return '📡';
+    return '📦';
+  }
+  api.get('/public/products?limit=4&sort=newest', { silent: true })
+    .then(res => {
+      if (!res || !res.items) return;
+      const g = document.getElementById('products-grid');
+      g.innerHTML = res.items.map(p => `
+        <div class="product">
+          <div class="thumb">${p.image_url ? `<img src="${p.image_url}" alt="">` : `<span class="thumb-icon">${iconFor(p.category_name)}</span>`}</div>
+          <div class="body">
+            <span class="badge new">${p.category_name || ''}</span>
+            <h4>${p.name}</h4>
+            <div class="price">${p.retail_price ? fmt.format(p.retail_price) + 'đ' : 'Liên hệ'}</div>
+            <div class="meta">Bảo hành ${p.warranty_months || 0} tháng</div>
+            <div class="actions">
+              <a class="btn sm" href="/customer/product-detail.html?id=${p.id}">Chi tiết</a>
+              <a class="btn sm ghost" href="/customer/order.html?product=${p.code}">Đặt lắp</a>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    })
+    .catch(() => {});
+</script>
+</body>
+</html>
