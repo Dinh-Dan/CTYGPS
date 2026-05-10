@@ -151,17 +151,45 @@ router.get('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// Sinh ma KH/DL ngau nhien khong trung
+// Sinh ma KH/DL tuan tu padded (KH0001+, DL0001+)
+// BX-04: thong nhat voi quick-register-customer (cung dung KH<NNNN>)
 async function generateCustomerCode(type) {
   const prefix = type === 'dealer' ? 'DL' : 'KH';
-  for (let i = 0; i < 20; i++) {
-    const code = prefix + String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const [maxRow] = await db.query(
+      `SELECT COALESCE(MAX(CAST(SUBSTRING(code, 3) AS UNSIGNED)), 0) AS max_n
+         FROM customers WHERE code REGEXP ?`,
+      [`^${prefix}[0-9]+$`]
+    );
+    const n = (Number(maxRow[0].max_n) || 0) + 1 + attempt;
+    const code = prefix + String(n).padStart(4, '0');
     const [rows] = await db.query(
       `SELECT id FROM customers WHERE code = ? LIMIT 1`, [code]
     );
     if (!rows.length) return code;
   }
   throw httpErr(500, 'Khong sinh duoc ma khach hang');
+}
+
+// Chuan hoa SDT giong auth.js (bo space/.-) de check trung
+function normPhone(s) {
+  return String(s || '').replace(/\D/g, '');
+}
+
+// Check SDT trung (B-009): 1 SDT chi gan voi 1 customer chua bi xoa
+async function ensurePhoneUnique(phone, excludeId = null) {
+  if (!phone) return;
+  const digits = normPhone(phone);
+  if (!digits) return;
+  const params = [digits];
+  let sql = `SELECT id FROM customers
+              WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '.', ''), '-', '') = ?
+                AND is_deleted = 0`;
+  if (excludeId) { sql += ' AND id <> ?'; params.push(excludeId); }
+  const [rows] = await db.query(sql + ' LIMIT 1', params);
+  if (rows.length) {
+    throw httpErr(409, 'So dien thoai da duoc su dung boi khach hang khac');
+  }
 }
 
 // ---- POST /api/admin/customers --------------------------------
@@ -178,6 +206,8 @@ router.post('/', async (req, res, next) => {
       [data.code]
     );
     if (dup.length) return res.status(409).json({ error: 'Ma khach hang da ton tai' });
+
+    await ensurePhoneUnique(data.phone);
 
     const cols = Object.keys(data);
     const placeholders = cols.map(() => '?').join(', ');
@@ -214,6 +244,9 @@ router.put('/:id', async (req, res, next) => {
         [data.code, id]
       );
       if (dup.length) return res.status(409).json({ error: 'Ma khach hang da ton tai' });
+    }
+    if (data.phone !== undefined) {
+      await ensurePhoneUnique(data.phone, id);
     }
 
     const cols = Object.keys(data);
