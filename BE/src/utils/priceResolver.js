@@ -3,9 +3,11 @@
 // Priority (lay theo thu tu, dung lai khi tim thay):
 //   1) customer_product_prices (override rieng cho customer + product)
 //   2) product_prices via customers.default_tier_id (gia theo cap dai ly)
-//   3) product_prices via price_tiers.is_default = 1 (fallback ban le)
+//   3) Neu khach la dealer & van chua co gia: lay MIN gia trong product_prices
+//      (tier si re nhat) thay vi rui ro fallback ve retail (B-DLR-0).
+//   4) product_prices via price_tiers.is_default = 1 (fallback ban le)
 //
-// Truyen customerId = null/0 => bo qua buoc 1+2, chi lay tier mac dinh (khach guest, public).
+// Truyen customerId = null/0 => bo qua buoc 1+2+3, chi lay tier mac dinh (khach guest, public).
 
 async function resolvePriceMap(conn, productIds, customerId) {
   if (!productIds || !productIds.length) return new Map();
@@ -13,6 +15,14 @@ async function resolvePriceMap(conn, productIds, customerId) {
   const map = new Map();   // product_id -> price (number)
 
   const cid = Number(customerId) || 0;
+
+  let isDealer = false;
+  if (cid) {
+    const [c] = await conn.query(
+      `SELECT type FROM customers WHERE id = ? AND is_deleted = 0`, [cid]
+    );
+    isDealer = c.length > 0 && c[0].type === 'dealer';
+  }
 
   // 1) override rieng
   if (cid) {
@@ -43,7 +53,26 @@ async function resolvePriceMap(conn, productIds, customerId) {
     }
   }
 
-  // 3) tier is_default (fallback)
+  // 3) Dealer chua co gia o tier rieng -> dung MIN gia si (cap si re nhat) thay vi retail.
+  if (isDealer) {
+    const remaining = ids.filter(pid => !map.has(pid));
+    if (remaining.length) {
+      const ph = remaining.map(() => '?').join(',');
+      const [rows] = await conn.query(
+        `SELECT pp.product_id, MIN(pp.price) AS price
+           FROM product_prices pp
+           JOIN price_tiers t ON t.id = pp.tier_id
+          WHERE pp.product_id IN (${ph})
+            AND t.is_deleted = 0
+            AND t.is_default = 0
+          GROUP BY pp.product_id`,
+        remaining
+      );
+      rows.forEach(r => map.set(Number(r.product_id), Number(r.price) || 0));
+    }
+  }
+
+  // 4) tier is_default (fallback ban le)
   const stillRemaining = ids.filter(pid => !map.has(pid));
   if (stillRemaining.length) {
     const ph = stillRemaining.map(() => '?').join(',');
