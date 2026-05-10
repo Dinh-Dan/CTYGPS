@@ -52,10 +52,16 @@ app.use('/api', (req, res) => {
   res.status(404).json({ error: 'API endpoint not found' });
 });
 
-// Error handler chung
+// Error handler chung — an SQL detail khi loi 500 de chong leak schema
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err);
-  res.status(err.status || 500).json({ error: err.message || 'Internal error' });
+  const status = err.status || 500;
+  let message = err.message || 'Internal error';
+  // Loi MySQL/SQL leak ten bang/cot ra ngoai -> tra message chung khi 5xx
+  if (status >= 500 && (err.code || '').toString().startsWith('ER_')) {
+    message = 'Loi he thong, vui long thu lai';
+  }
+  res.status(status).json({ error: message });
 });
 
 // Socket.IO (chat realtime) — auth + handler trong src/socket.js

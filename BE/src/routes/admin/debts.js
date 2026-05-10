@@ -616,6 +616,9 @@ router.get('/settlement/:id', async (req, res, next) => {
 router.get('/:customer_id', async (req, res, next) => {
   try {
     const customerId = Number(req.params.customer_id);
+    if (!Number.isFinite(customerId) || customerId <= 0) {
+      return res.status(400).json({ error: 'customer_id khong hop le' });
+    }
     const [custRows] = await db.query(
       `SELECT id, code, full_name, phone, address, type, company_name, tax_code,
               credit_term_days, debt_limit, opening_balance
@@ -655,6 +658,10 @@ router.post('/:customer_id/settle', async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const customerId = Number(req.params.customer_id);
+    if (!Number.isFinite(customerId) || customerId <= 0) {
+      conn.release();
+      return res.status(400).json({ error: 'customer_id khong hop le' });
+    }
     const amountPaid = Math.max(0, Number(req.body.amount_paid) || 0);
     const qrSlot = req.body.qr_slot ? Math.min(5, Math.max(1, Number(req.body.qr_slot))) : null;
     const payMethod = ['cash', 'transfer', 'mixed'].includes(req.body.pay_method)
