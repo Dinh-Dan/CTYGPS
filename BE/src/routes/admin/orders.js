@@ -42,6 +42,15 @@ function httpErr(status, message) {
   return e;
 }
 
+// Sanitize text tu do (note, address) chong stored XSS — cap dai + cam < >
+function sanitizeFreeText(input, { max, label }) {
+  if (input == null || input === '') return null;
+  const v = String(input);
+  if (v.length > max) throw httpErr(400, `${label} qua dai (toi da ${max})`);
+  if (/[<>]/.test(v)) throw httpErr(400, `${label} chua ky tu khong hop le`);
+  return v.trim() || null;
+}
+
 // Sinh code phieu PX/PN-YYMMDD-NNN
 async function genReceiptCode(conn, kind) {
   const prefix = kind === 'in' ? 'PN' : 'PX';
@@ -103,7 +112,7 @@ async function replaceLines(conn, orderId, lines) {
     const [r] = await conn.query(
       `INSERT INTO order_lines (order_id, template_id, custom_name, seq, note)
        VALUES (?, ?, ?, ?, ?)`,
-      [orderId, tplId, customName, lineSeq, ln.note ? String(ln.note) : null]
+      [orderId, tplId, customName, lineSeq, sanitizeFreeText(ln.note, { max: 500, label: 'Ghi chu dong' })]
     );
     const lineId = r.insertId;
 
@@ -144,7 +153,14 @@ async function replaceLines(conn, orderId, lines) {
       for (const fv of ln.field_values) {
         const label = String(fv.label || '').trim();
         if (!label) continue;
-        const value = fv.value == null ? null : String(fv.value);
+        if (label.length > 100 || /[<>"'`]/.test(label)) {
+          throw httpErr(400, 'Nhan thong tin (label) khong hop le');
+        }
+        let value = fv.value == null ? null : String(fv.value);
+        if (value != null) {
+          if (value.length > 500) throw httpErr(400, 'Gia tri thong tin qua dai (toi da 500)');
+          if (/[<>]/.test(value)) throw httpErr(400, 'Gia tri thong tin chua ky tu khong hop le');
+        }
         const tfId = fv.template_field_id ? Number(fv.template_field_id) : null;
         seq++;
         await conn.query(
@@ -403,7 +419,8 @@ router.post('/', async (req, res, next) => {
                  ?, ?, ?, ?, ?,
                  ?, 'admin', ?)`,
         [code, customerId, status, paymentMethod,
-         req.body.address || null, req.body.note || null,
+         sanitizeFreeText(req.body.address, { max: 300, label: 'Dia chi' }),
+         sanitizeFreeText(req.body.note, { max: 1000, label: 'Ghi chu' }),
          req.body.due_at || null, wage, assignedStaffId, adminId]
       );
     });
@@ -444,8 +461,8 @@ router.put('/:id', async (req, res, next) => {
 
     const sets = [], args = [];
     const b = req.body;
-    if (b.note !== undefined)      { sets.push('note = ?');      args.push(b.note ? String(b.note) : null); }
-    if (b.address !== undefined)   { sets.push('address = ?');   args.push(b.address ? String(b.address) : null); }
+    if (b.note !== undefined)      { sets.push('note = ?');      args.push(sanitizeFreeText(b.note, { max: 1000, label: 'Ghi chu' })); }
+    if (b.address !== undefined)   { sets.push('address = ?');   args.push(sanitizeFreeText(b.address, { max: 300, label: 'Dia chi' })); }
     if (b.due_at !== undefined)    { sets.push('due_at = ?');    args.push(b.due_at || null); }
     if (b.payment_method !== undefined && PAYMENT_METHODS.includes(b.payment_method)) {
       sets.push('payment_method = ?'); args.push(b.payment_method);
