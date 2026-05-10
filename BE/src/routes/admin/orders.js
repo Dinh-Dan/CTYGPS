@@ -556,11 +556,39 @@ router.post('/:id/approve', async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) throw httpErr(400, 'id khong hop le');
     const [rows] = await conn.query(
-      `SELECT id, status FROM orders WHERE id = ? AND is_deleted = 0`, [id]
+      `SELECT o.id, o.status, o.total_amount, o.paid_amount, o.customer_id, o.dealer_id,
+              c.type AS customer_type, c.debt_limit
+         FROM orders o
+         LEFT JOIN customers c ON c.id = o.customer_id
+        WHERE o.id = ? AND o.is_deleted = 0`, [id]
     );
     if (!rows.length) throw httpErr(404, 'Khong tim thay don');
     if (rows[0].status !== 'pending') throw httpErr(409, 'Don khong o trang thai pending');
+
+    // B-DLR-1: enforce debt_limit cho dealer khi confirm
+    if (rows[0].customer_type === 'dealer' && Number(rows[0].debt_limit) > 0) {
+      const dealerId = rows[0].customer_id;
+      const [debtRow] = await conn.query(
+        `SELECT COALESCE(SUM(total_amount - paid_amount), 0) AS debt
+           FROM orders
+          WHERE (customer_id = ? OR dealer_id = ?)
+            AND status NOT IN ('pending','cancelled')
+            AND payment_status != 'paid'
+            AND is_deleted = 0
+            AND total_amount > paid_amount
+            AND id <> ?`,
+        [dealerId, dealerId, id]
+      );
+      const currentDebt = Number(debtRow[0].debt) || 0;
+      const orderRemain = Math.max(0, Number(rows[0].total_amount) - Number(rows[0].paid_amount));
+      const limit = Number(rows[0].debt_limit);
+      const force = req.body && (req.body.force === true || req.body.force === 'true' || req.body.force === 1);
+      if (currentDebt + orderRemain > limit && !force) {
+        throw httpErr(409, `Vuot han muc cong no dai ly (no hien tai ${currentDebt}, don ${orderRemain}, han muc ${limit}). Gui force=true de bo qua.`);
+      }
+    }
 
     await conn.query(`UPDATE orders SET status = 'confirmed' WHERE id = ?`, [id]);
     res.json({ ok: true, status: 'confirmed' });
