@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Chi tiết sản phẩm – GPS Việt</title>
+<title>Chi tiết sản phẩm – VinaGPS</title>
 <link rel="stylesheet" href="/shared/css/style.css" />
 </head>
 <body>
-<div class="topbar"><div class="container"><div>☎ Hotline: 1900 2045</div><div id="topbarRight"></div></div></div>
+<div class="topbar"><div class="container"><div>☎ (028) 6682 5658 — DĐ: 0949.155.160</div><div id="topbarRight"></div></div></div>
 <header class="site">
   <div class="container">
-    <a class="logo" href="/customer/"><span class="logo-mark">GV</span> GPS VIỆT</a>
+    <a class="logo" href="/customer/"><span class="logo-mark">VG</span> VINAGPS</a>
     <button class="nav-toggle" aria-label="Mở menu" onclick="this.nextElementSibling.classList.toggle('open')">☰</button>
     <nav class="main">
       <a href="/customer/">Trang chủ</a>
@@ -44,7 +44,7 @@
 
 </div>
 
-<footer class="site"><div class="container bottom">© 2026 GPS Việt</div></footer>
+<footer class="site"><div class="container bottom">© 2026 VinaGPS — 190 TTH 21, P. Tân Thới Hiệp, Q.12, TP.HCM</div></footer>
 
 <script src="/shared/js/ui.js"></script>
 <script src="/shared/js/api.js"></script>
@@ -75,7 +75,7 @@
       : '/public/products/' + id;
     api.get(detailEndpoint, { silent: true })
       .then(p => {
-        document.title = p.name + ' – GPS Việt';
+        document.title = p.name + ' – VinaGPS';
 
         // ---- Header: anh chinh + gia + thong so CO BAN -------
         const topAttrs = (p.attributes_top && p.attributes_top.length)

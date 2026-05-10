@@ -3,26 +3,123 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Kỹ thuật – Admin GPS Việt</title>
+<title>Kỹ thuật – Admin VinaGPS</title>
 <link rel="stylesheet" href="/shared/css/style.css" />
 <style>
-  .ktv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
-  .ktv-card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:10px;box-shadow:var(--shadow);transition:.15s}
-  .ktv-card:hover{box-shadow:var(--shadow-lg)}
-  .ktv-head{display:flex;align-items:center;gap:12px}
-  .ktv-avatar{width:52px;height:52px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:20px;font-weight:700;flex-shrink:0;object-fit:cover}
-  .ktv-name{font-size:16px;font-weight:700}
-  .ktv-username{color:var(--muted);font-size:12px}
-  .ktv-meta{display:flex;gap:8px;flex-wrap:wrap;font-size:13px;color:#475569}
-  .ktv-meta b{color:var(--text)}
-  .ktv-stats{display:flex;gap:14px;padding:8px 0;border-top:1px dashed var(--border);border-bottom:1px dashed var(--border);font-size:13px}
-  .ktv-stats .stat-num{font-size:18px;font-weight:700;color:var(--primary);display:block}
-  .ktv-actions{display:flex;gap:6px;flex-wrap:wrap}
-  .online-dot{width:8px;height:8px;border-radius:50%;background:#16a34a;display:inline-block;margin-right:4px}
-  .online-dot.off{background:#94a3b8}
+  .ktv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px}
+  .ktv-card{position:relative;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:var(--shadow);transition:.15s}
+  .ktv-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-1px)}
+  .ktv-card .role-tag{position:absolute;top:10px;right:10px;font-size:11px}
+  .ktv-head{display:flex;align-items:center;gap:12px;padding-right:70px}
+  .ktv-avatar{width:48px;height:48px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:18px;font-weight:700;flex-shrink:0;object-fit:cover}
+  .ktv-name{font-size:15px;font-weight:700;line-height:1.25}
+  .ktv-username{color:var(--muted);font-size:12px;margin-top:2px}
+  .ktv-meta{display:flex;gap:10px;flex-wrap:wrap;font-size:12.5px;color:#475569}
+  .ktv-meta span{display:inline-flex;align-items:center;gap:4px}
+  .ktv-meta b{color:var(--text);font-weight:600}
+  .ktv-stats{display:flex;gap:8px;padding:8px 0;border-top:1px dashed var(--border);border-bottom:1px dashed var(--border)}
+  .ktv-stats .stat{flex:1;text-align:center;padding:2px 4px;border-radius:6px}
+  .ktv-stats .stat-num{font-size:18px;font-weight:700;color:var(--primary);display:block;line-height:1.1}
+  .ktv-stats .stat-lbl{font-size:11.5px;color:var(--muted);display:block;margin-top:2px}
+  .ktv-stats .stat.zero .stat-num{color:#cbd5e1}
+  .ktv-stats .stat.warn{background:#fff7ed}
+  .ktv-stats .stat.warn .stat-num{color:#ea580c}
+  .ktv-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .ktv-actions .btn{justify-content:center;font-size:12.5px}
+  .ktv-actions .full{grid-column:1 / -1}
+  .online-dot{width:8px;height:8px;border-radius:50%;background:#16a34a;display:inline-block;margin-right:4px;box-shadow:0 0 0 2px #dcfce7}
+  .online-dot.off{background:#94a3b8;box-shadow:0 0 0 2px #f1f5f9}
   .filter-task-row{padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:#f8fafc;cursor:pointer;transition:.1s}
   .filter-task-row:hover{background:#e0f2fe;border-color:var(--primary)}
   .filter-task-row.disabled{opacity:.5;cursor:not-allowed}
+
+  /* ===== Modal cap san pham ===== */
+  #issueModal .modal{max-width:1080px;width:calc(100vw - 24px);height:88vh;display:flex;flex-direction:column}
+  #issueModal .modal-head{background:linear-gradient(135deg,#0ea5e9 0%,#2563eb 100%);color:#fff;border-bottom:0}
+  #issueModal .modal-head h3{color:#fff}
+  #issueModal .modal-head .modal-close{color:#fff;opacity:.9}
+  #issueModal .modal-head .modal-close:hover{opacity:1}
+  #issueModal .modal-body{padding:0;overflow:hidden;display:flex;flex-direction:column;flex:1;background:#f1f5f9}
+
+  .iss-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;flex:1;min-height:0}
+  .iss-pane{display:flex;flex-direction:column;min-height:0;background:#fff}
+  .iss-pane + .iss-pane{border-left:1px solid var(--border)}
+  .iss-pane-head{padding:12px 16px;border-bottom:1px solid var(--border);background:#f8fafc;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .iss-pane-head h4{margin:0;font-size:14px;font-weight:700;color:#0f172a;display:flex;align-items:center;gap:8px}
+  .iss-pane-head .badge{background:#fee2e2;color:#991b1b;font-size:11px;padding:2px 9px;border-radius:999px;font-weight:700}
+  .iss-pane-body{padding:14px 16px;overflow-y:auto;flex:1}
+
+  /* === Pane Tao moi === */
+  .iss-form-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+  .iss-form-table thead th{background:#f1f5f9;color:#475569;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;padding:8px 8px;text-align:left;border-bottom:1px solid var(--border)}
+  .iss-form-table thead th:first-child{border-top-left-radius:6px}
+  .iss-form-table thead th:last-child{border-top-right-radius:6px}
+  .iss-form-table tbody td{padding:6px 6px;vertical-align:middle;border-bottom:1px solid #f1f5f9}
+  .iss-form-table tbody tr:last-child td{border-bottom:0}
+  .iss-prod-cell{position:relative}
+  .iss-prod-cell input{width:100%}
+  .iss-prod-cell .stock-hint{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:#0ea5e9;font-weight:700;pointer-events:none;background:#e0f2fe;padding:2px 6px;border-radius:4px}
+  .iss-prod-cell .stock-hint.low{color:#dc2626;background:#fee2e2}
+  .iss-form-table input.qty{width:64px;text-align:center}
+  .iss-form-table textarea.imei{width:100%;font-family:monospace;font-size:12px;resize:vertical;min-height:34px;max-height:140px;padding:6px 8px;line-height:1.4;display:block}
+  .iss-form-table .rm{background:transparent;border:0;color:#94a3b8;font-size:18px;cursor:pointer;line-height:1;padding:4px 6px;border-radius:4px}
+  .iss-form-table .rm:hover{color:#dc2626;background:#fee2e2}
+  .iss-add-line{margin-top:8px;background:#f8fafc;color:#0f172a;border:1px dashed #cbd5e1;width:100%;justify-content:center}
+  .iss-add-line:hover{background:#e0f2fe;border-color:#0ea5e9;color:#0c4a6e}
+
+  .iss-form-foot{padding:10px 16px;border-top:1px solid var(--border);background:#fafbfc;display:flex;align-items:center;gap:10px;justify-content:space-between}
+  .iss-form-foot .summary{font-size:13px;color:#475569}
+  .iss-form-foot .summary b{color:#0f172a;font-size:15px}
+
+  /* === Pane Lich su === */
+  .iss-filter{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
+  .iss-filter button{font-size:11.5px;padding:3px 9px;border-radius:999px;border:1px solid var(--border);background:#fff;cursor:pointer;color:#475569;transition:.1s}
+  .iss-filter button:hover{background:#f1f5f9}
+  .iss-filter button.on{background:#0f172a;color:#fff;border-color:#0f172a}
+
+  .iss-history{display:flex;flex-direction:column;gap:8px}
+  .iss-card{border:1px solid var(--border);border-radius:10px;background:#fff;overflow:hidden;transition:.15s;cursor:pointer;border-left:4px solid #cbd5e1}
+  .iss-card:hover{box-shadow:0 4px 10px rgba(15,23,42,.06);transform:translateY(-1px)}
+  .iss-card.open{box-shadow:0 4px 14px rgba(15,23,42,.08)}
+  .iss-card.draft{border-left-color:#f59e0b;background:#fffbeb}
+  .iss-card.approved{border-left-color:#10b981;background:#ecfdf5}
+  .iss-card.received{border-left-color:#059669}
+  .iss-card.rejected{border-left-color:#ef4444;opacity:.85}
+  .iss-card.cancelled{border-left-color:#94a3b8;opacity:.7}
+  .iss-card-head{padding:10px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .iss-card-head .code{font-weight:700;font-size:14px;color:#0f172a}
+  .iss-card-head .meta{font-size:12px;color:#64748b;margin-left:auto;text-align:right}
+  .iss-card-head .meta b{color:#0f172a;font-size:12.5px}
+  .iss-card-head .arrow{color:#94a3b8;transition:.15s;font-size:14px}
+  .iss-card.open .arrow{transform:rotate(180deg)}
+  .iss-card .iss-items{padding:0 12px 12px;display:none;border-top:1px solid #f1f5f9;background:rgba(255,255,255,.6)}
+  .iss-card.open .iss-items{display:block}
+  .iss-card table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+  .iss-card th,.iss-card td{padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}
+  .iss-card th{background:#f8fafc;font-size:11px;font-weight:600;text-transform:uppercase;color:#64748b;letter-spacing:.3px}
+  .iss-card td.imei{font-family:monospace;font-size:11.5px;color:#475569}
+  .iss-card td input.qty{width:64px;text-align:center;padding:3px 6px;font-size:13px}
+  .iss-card .extra{margin-top:8px;font-size:13px;color:#475569}
+  .iss-card .extra b{color:#0f172a}
+  .iss-card .acts{display:flex;gap:6px;justify-content:flex-end;margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0}
+  .iss-low{color:#dc2626;font-weight:700}
+  .iss-ok{color:#16a34a;font-weight:600}
+
+  .pill.cap-draft{background:#fef3c7;color:#92400e}
+  .pill.cap-approved{background:#dcfce7;color:#15803d}
+  .pill.cap-received{background:#bbf7d0;color:#14532d}
+  .pill.cap-rejected{background:#fee2e2;color:#991b1b}
+  .pill.cap-cancelled{background:#f1f5f9;color:#475569}
+  .iss-photo{display:inline-block;border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-top:4px}
+  .iss-photo img{display:block;max-height:80px}
+  .iss-empty{text-align:center;color:#94a3b8;padding:30px 16px;font-size:13px;font-style:italic;border:1px dashed #e2e8f0;border-radius:8px;background:#fafbfc}
+
+  /* Mobile: stack 2 cot, modal vua sat man hinh, moi pane scroll rieng */
+  @media (max-width:880px){
+    .iss-grid{grid-template-columns:1fr;grid-template-rows:1fr 1fr}
+    .iss-pane + .iss-pane{border-left:0;border-top:1px solid var(--border)}
+    #issueModal .modal{height:95vh}
+  }
 </style>
 </head>
 <body>
@@ -61,8 +158,8 @@
         <input type="hidden" id="f_id">
         <div class="grid cols-2">
           <div class="field">
-            <label>Username *</label>
-            <input type="text" id="f_username" class="input" required placeholder="VD: ktv01">
+            <label>Username</label>
+            <input type="text" id="f_username" class="input" readonly placeholder="(Tự sinh sau khi lưu)">
           </div>
           <div class="field">
             <label>Vai trò *</label>
@@ -108,6 +205,65 @@
     </div>
     <div class="modal-foot">
       <button type="button" class="btn ghost" id="assignCancelBtn">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal cap san pham cho KTV -->
+<div id="issueModal" class="modal-bg">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>📤 Cấp sản phẩm cho <span id="issKtvName"></span></h3>
+      <button type="button" class="modal-close" id="issClose" aria-label="Đóng">×</button>
+    </div>
+    <div class="modal-body">
+      <datalist id="issProdList"></datalist>
+      <div class="iss-grid">
+        <!-- Pane trai: Tao phieu moi -->
+        <div class="iss-pane">
+          <div class="iss-pane-head">
+            <h4>📝 Tạo phiếu mới</h4>
+          </div>
+          <div class="iss-pane-body" style="display:flex;flex-direction:column;padding-bottom:0">
+            <table class="iss-form-table" id="issFormTable">
+              <thead>
+                <tr>
+                  <th>Sản phẩm</th>
+                  <th style="width:80px">SL</th>
+                  <th>IMEI (tuỳ chọn)</th>
+                  <th style="width:32px"></th>
+                </tr>
+              </thead>
+              <tbody id="issLines"></tbody>
+            </table>
+            <button type="button" class="btn sm iss-add-line" id="issAddLine">+ Thêm sản phẩm</button>
+            <div class="field" style="margin-top:14px;margin-bottom:8px">
+              <label style="font-size:12px;color:#64748b;font-weight:600">Ghi chú</label>
+              <input type="text" id="issNote" class="input" placeholder="VD: Cấp đợt đầu tháng">
+            </div>
+          </div>
+          <div class="iss-form-foot">
+            <div class="summary">Tổng SL: <b id="issSumQty">0</b></div>
+            <button type="button" class="btn primary" id="issSubmit">Tạo phiếu (chờ duyệt)</button>
+          </div>
+        </div>
+
+        <!-- Pane phai: Lich su -->
+        <div class="iss-pane">
+          <div class="iss-pane-head">
+            <h4>📋 Lịch sử phiếu <span id="issDraftBadge" class="badge" style="display:none"></span></h4>
+            <div class="iss-filter" id="issFilter">
+              <button data-st="" class="on">Tất cả</button>
+              <button data-st="draft">Chờ duyệt</button>
+              <button data-st="approved">Đã duyệt</button>
+              <button data-st="received">Đã nhận</button>
+            </div>
+          </div>
+          <div class="iss-pane-body">
+            <div id="issHistory" class="iss-history"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>

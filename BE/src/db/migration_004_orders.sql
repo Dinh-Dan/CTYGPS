@@ -25,7 +25,6 @@ CREATE TABLE IF NOT EXISTS orders (
   payment_method  ENUM('cash','transfer','debt') NOT NULL DEFAULT 'cash',
   status          ENUM('new','assigned','in_progress','done','cancelled')
                   NOT NULL DEFAULT 'new',
-  area            VARCHAR(100) NULL,                       -- de goi y KTV theo khu vuc
   address         VARCHAR(500) NULL,
   vehicle_plate   VARCHAR(30)  NULL,                       -- bien so xe (don lap GPS)
   note            TEXT         NULL,
@@ -39,7 +38,6 @@ CREATE TABLE IF NOT EXISTS orders (
     ON DELETE SET NULL ON UPDATE CASCADE,
 
   INDEX idx_orders_status   (status),
-  INDEX idx_orders_area     (area),
   INDEX idx_orders_customer (customer_id),
   INDEX idx_orders_dealer   (dealer_id),
   INDEX idx_orders_deleted  (is_deleted)

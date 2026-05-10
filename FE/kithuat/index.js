@@ -10,18 +10,11 @@
       .replaceAll('>','&gt;').replaceAll('"','&quot;');
   }
 
-  const KIND_LABEL = { install: 'Lắp đặt', maintenance: 'Bảo trì', renew: 'Gia hạn', uninstall: 'Tháo gỡ' };
-  const STATUS_PILL = {
-    assigned:              '<span class="pill gray">Mới giao</span>',
-    warehouse_released:    '<span class="pill blue">Đã xuất kho</span>',
-    in_progress:           '<span class="pill amber">Đang làm</span>',
-    done:                  '<span class="pill green">Xong</span>',
-    customer_owes:         '<span class="pill amber">Khách còn nợ</span>',
-    pending_admin_confirm: '<span class="pill amber">Chờ admin xác nhận</span>',
-    staff_owes:            '<span class="pill amber">Bạn còn giữ tiền</span>',
-    cancelled:             '<span class="pill red">Huỷ</span>',
-  };
-  const FINAL = ['done','customer_owes','staff_owes','pending_admin_confirm'];
+  function statusPill(t) {
+    if (t.status === 'cancelled') return '<span class="pill red">Huỷ</span>';
+    if (t.completed_at) return '<span class="pill green">Đã xong</span>';
+    return `<span class="pill blue">${escape(t.status)}</span>`;
+  }
 
   async function loadStats() {
     const me = await api.get('/kithuat/me', { silent: true }).catch(() => null);
@@ -33,9 +26,9 @@
   }
 
   async function loadToday() {
-    const res = await api.get('/kithuat/orders?today=1', { silent: true }).catch(() => null);
+    const res = await api.get('/kithuat/orders?today=1&bucket=active', { silent: true }).catch(() => null);
     if (!res) return;
-    const tasks = (res.items || []).filter(t => !FINAL.includes(t.status) && t.status !== 'cancelled');
+    const tasks = res.items || [];
     if (!tasks.length) {
       $('todayList').innerHTML = '<div class="empty">Hôm nay chưa có công việc nào 🎉</div>';
       return;
@@ -45,16 +38,15 @@
       return `
       <div class="task-mini">
         <div class="info">
-          <b>${escape(t.code)}</b> — ${KIND_LABEL[t.kind] || t.kind} ${STATUS_PILL[t.status] || ''}<br>
+          <b>${escape(t.code)}</b> — ${escape(t.template_names || t.template_name || '')} ${statusPill(t)}<br>
           <span class="text-muted">
             👤 ${escape(t.customer_name || '')}
             ${t.customer_phone ? ' · 📞 ' + escape(t.customer_phone) : ''}
-            ${t.vehicle_plate ? ' · 🚗 ' + escape(t.vehicle_plate) : ''}
           </span><br>
           <span class="text-muted">💰 Còn thu: ${fmt.format(due)}đ</span>
         </div>
         <div>
-          <a href="/kithuat/tasks.html#order-${t.id}" class="btn sm">Mở</a>
+          <a href="/kithuat/tasks.html" class="btn sm">Mở</a>
         </div>
       </div>
     `;

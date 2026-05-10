@@ -391,8 +391,10 @@
     const noteVal    = document.getElementById('co_note').value.trim();
     const nameVal    = document.getElementById('co_full_name').value.trim();
 
+    // template_id = 1 (Lắp đặt — seed mặc định ở mig 045).
+    // FE cart đặt đơn install nhanh, admin có thể đổi template trong chi tiết đơn.
     const common = {
-      service_kind: 'install',
+      template_id:  1,
       address:      addressVal || null,
       phone:        phoneVal || null,
       note:         noteVal || null,

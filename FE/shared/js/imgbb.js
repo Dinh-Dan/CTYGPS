@@ -4,12 +4,37 @@
 //   // -> 'https://i.ibb.co/xxxx/abc.jpg'
 //
 // Tra ve URL anh truc tiep tren CDN imgbb. Throw Error neu loi.
-// File toi da 5MB (gioi han FE; imgbb free cho 32MB).
+// File toi da 32MB (theo imgbb free). Anh > 4MB se duoc resize/nen
+// xuong canh max 2000px JPEG q=0.85 truoc khi upload de tiet kiem
+// bandwidth — anh chup dt thuong 4-12MB nhung resize xong < 1MB.
 
 (function (global) {
   const API_KEY = '29952e4eac15179f4ae35c5cbe3d0e22';
   const ENDPOINT = 'https://api.imgbb.com/1/upload';
-  const MAX_BYTES = 5 * 1024 * 1024;
+  const MAX_BYTES = 32 * 1024 * 1024;
+  const COMPRESS_OVER = 4 * 1024 * 1024;
+  const MAX_EDGE = 2000;
+  const JPEG_Q = 0.85;
+
+  function shrinkImage(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const w0 = img.naturalWidth, h0 = img.naturalHeight;
+        const scale = Math.min(1, MAX_EDGE / Math.max(w0, h0));
+        const w = Math.round(w0 * scale), h = Math.round(h0 * scale);
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        cv.toBlob(b => b ? resolve(b) : reject(new Error('Khong nen duoc anh')),
+          'image/jpeg', JPEG_Q);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Khong doc duoc anh')); };
+      img.src = url;
+    });
+  }
 
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -26,10 +51,15 @@
 
   async function upload(file, opts) {
     if (!file) throw new Error('Thieu file');
-    if (file.size > MAX_BYTES) throw new Error('Anh qua 5MB');
+    if (file.size > MAX_BYTES) throw new Error('Anh qua 32MB');
     opts = opts || {};
 
-    const base64 = await fileToBase64(file);
+    let payload = file;
+    if (file.size > COMPRESS_OVER && file.type && file.type.startsWith('image/')) {
+      try { payload = await shrinkImage(file); } catch (_) { payload = file; }
+    }
+
+    const base64 = await fileToBase64(payload);
     const form = new FormData();
     form.append('key', API_KEY);
     form.append('image', base64);

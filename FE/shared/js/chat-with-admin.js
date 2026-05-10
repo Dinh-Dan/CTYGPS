@@ -126,7 +126,7 @@
         <div class="chat-pop" id="chatPop">
           <div class="head">
             <div style="flex:1">
-              <div class="title">💬 CSKH GPS Việt</div>
+              <div class="title">💬 CSKH VinaGPS</div>
               <div class="sub">Chúng tôi sẽ phản hồi nhanh nhất có thể.</div>
             </div>
             <button type="button" id="chatPopClose" aria-label="Đóng">×</button>
@@ -259,7 +259,7 @@
     const sub   = document.querySelector('#chatPop .head .sub');
     if (body) { body.innerHTML = ''; body.style.padding = ''; body.style.background = ''; }
     if (bar)  bar.style.display = '';
-    if (title) title.textContent = '💬 CSKH GPS Việt';
+    if (title) title.textContent = '💬 CSKH VinaGPS';
     if (sub)   sub.textContent   = 'Chúng tôi sẽ phản hồi nhanh nhất có thể.';
   }
 
@@ -302,7 +302,7 @@
         </button>
         <p style="font-size:11.5px;color:#64748b;margin:4px 0 0;line-height:1.45">
           Lần sau bạn có thể đăng nhập lại bằng <b>số điện thoại</b> này.
-          Bằng việc tiếp tục, bạn đồng ý cho GPS Việt liên hệ tư vấn.
+          Bằng việc tiếp tục, bạn đồng ý cho VinaGPS liên hệ tư vấn.
         </p>
       </form>`;
 

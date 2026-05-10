@@ -17,20 +17,14 @@
 
 const express = require('express');
 const db = require('../../db');
-const { recalcOrderFinalStatus } = require('../../utils/orderState');
-const { DEBT_STATUSES: WO_DEBT_STATUSES } = require('../../utils/warrantyState');
+const { recalcPaymentStatus } = require('../../utils/orderState');
 
 const router = express.Router();
 
-// Status duoc tinh la "co the no" (don da qua giai doan KTV).
-// cancelled khong tinh; pending_admin_confirm la admin chua xac nhan CK -> tinh
-// (vi tu goc nhin "khach con no cong ty" thi van la no).
-const DEBT_STATUSES = ['customer_owes', 'pending_admin_confirm', 'staff_owes', 'in_progress', 'done'];
-const DEBT_PH = DEBT_STATUSES.map(() => '?').join(',');
-
-// Don bao hanh: tinh tu khi delivering tro di (KTV dang/da giao thi tien co the
-// chua thu du) cho den khi ket no. cancelled khong tinh.
-const WO_DEBT_PH = WO_DEBT_STATUSES.map(() => '?').join(',');
+// Sau mig 046, no = orders.status NOT IN ('pending','cancelled')
+//                AND orders.payment_status != 'paid'.
+// Khong con bang warranty_orders rieng — tat ca don di vao orders.
+const DEBT_WHERE = `o.status NOT IN ('pending','cancelled') AND o.payment_status != 'paid'`;
 
 // Sinh ma phieu tat toan TT-DDMM-NNN (retry khi gap race UNIQUE).
 async function genSettlementCode(conn, attempt = 0) {
@@ -51,8 +45,7 @@ async function genSettlementCode(conn, attempt = 0) {
 }
 
 // Tinh tong no cua 1 khach: opening_balance + tong don chua ket (debt_carried_at IS NULL)
-// con thieu. Bao gom CA orders (lap/gia han/...) lan warranty_orders (bao hanh).
-// Tra ve so chi tiet kem hai mang pending_orders / pending_warranty.
+// con thieu. Sau mig 045 chi con 1 bang orders, khong tach warranty.
 async function calcCustomerDebt(conn, customerId) {
   const [custRows] = await conn.query(
     `SELECT opening_balance FROM customers WHERE id = ? AND is_deleted = 0`,
@@ -63,7 +56,8 @@ async function calcCustomerDebt(conn, customerId) {
 
   const [orders] = await conn.query(
     `SELECT
-       o.id, o.code, o.total_amount, o.paid_amount, o.status, o.confirmed_at,
+       o.id, o.code, o.total_amount, o.paid_amount, o.status, o.payment_status,
+       o.confirmed_at, o.created_at, o.address, o.due_at, o.completed_at,
        COALESCE((
          SELECT SUM(col.amount) FROM collections col
           WHERE col.order_id = o.id AND col.remitted = 0 AND col.is_deleted = 0
@@ -72,13 +66,15 @@ async function calcCustomerDebt(conn, customerId) {
          SELECT SUM(p.amount) FROM order_payments p
           WHERE p.order_id = o.id AND p.source = 'admin_pending'
                 AND p.confirmed = 0 AND p.is_deleted = 0
-       ), 0) AS admin_pending
+       ), 0) AS admin_pending,
+       (SELECT s.full_name FROM staff s WHERE s.id = o.assigned_staff_id) AS assigned_staff_names,
+       (SELECT COUNT(*) FROM order_lines ol WHERE ol.order_id = o.id) AS item_count
      FROM orders o
      WHERE o.customer_id = ?
        AND o.is_deleted = 0
        AND o.debt_carried_at IS NULL
-       AND o.status IN (${DEBT_PH})`,
-    [customerId, ...DEBT_STATUSES]
+       AND ${DEBT_WHERE}`,
+    [customerId]
   );
 
   let orderDebt = 0;
@@ -97,40 +93,21 @@ async function calcCustomerDebt(conn, customerId) {
         admin_pending: Number(o.admin_pending),
         remaining: remain,
         status: o.status,
+        payment_status: o.payment_status,
         confirmed_at: o.confirmed_at,
+        created_at: o.created_at,
+        due_at: o.due_at,
+        completed_at: o.completed_at,
+        address: o.address,
+        assigned_staff_names: o.assigned_staff_names || '',
+        item_count: Number(o.item_count) || 0,
       });
     }
   }
 
-  // Don bao hanh: cost_amount - paid_amount (don gian, khong co
-  // collections/admin_pending phuc tap nhu orders).
-  const [warranties] = await conn.query(
-    `SELECT id, code, cost_amount, paid_amount, status, request_date
-       FROM warranty_orders
-      WHERE customer_id = ?
-        AND is_deleted = 0
-        AND debt_carried_at IS NULL
-        AND status IN (${WO_DEBT_PH})`,
-    [customerId, ...WO_DEBT_STATUSES]
-  );
-
-  let warrantyDebt = 0;
+  // Bao hanh khong con bang rieng (mig 045) — khong tinh warrantyDebt nua.
+  const warrantyDebt = 0;
   const pendingWarranty = [];
-  for (const w of warranties) {
-    const remain = Number(w.cost_amount) - Number(w.paid_amount);
-    if (remain > 0) {
-      warrantyDebt += remain;
-      pendingWarranty.push({
-        id: w.id,
-        code: w.code,
-        cost_amount: Number(w.cost_amount),
-        paid_amount: Number(w.paid_amount),
-        remaining: remain,
-        status: w.status,
-        request_date: w.request_date,
-      });
-    }
-  }
 
   return {
     opening_balance: opening,
@@ -164,26 +141,23 @@ router.get('/summary', async (req, res, next) => {
          FROM orders o
         WHERE o.is_deleted = 0
           AND o.debt_carried_at IS NULL
-          AND o.status IN (${DEBT_PH})`,
-      DEBT_STATUSES
+          AND ${DEBT_WHERE}`
     );
-    const [warrantySum] = await db.query(
-      `SELECT COALESCE(SUM(GREATEST(cost_amount - paid_amount, 0)), 0) AS total
-         FROM warranty_orders
-        WHERE is_deleted = 0
-          AND debt_carried_at IS NULL
-          AND status IN (${WO_DEBT_PH})`,
-      WO_DEBT_STATUSES
-    );
+    const warrantySum = [{ total: 0 }];   // module bao hanh cu da xoa
     const totalReceivable = Number(openSum[0].total)
                           + Number(orderSum[0].total)
                           + Number(warrantySum[0].total);
 
-    // KTV giu tien
-    const [staffSum] = await db.query(
+    // KTV giu tien = opening_balance KTV + collections chua nop
+    const [staffOpenSum] = await db.query(
+      `SELECT COALESCE(SUM(opening_balance), 0) AS total
+         FROM staff WHERE is_deleted = 0 AND role = 'kithuat' AND opening_balance > 0`
+    );
+    const [staffColSum] = await db.query(
       `SELECT COALESCE(SUM(amount), 0) AS total
          FROM collections WHERE remitted = 0 AND is_deleted = 0`
     );
+    const staffSum = [{ total: Number(staffOpenSum[0].total) + Number(staffColSum[0].total) }];
 
     // Da thu trong thang nay
     const [monthSum] = await db.query(
@@ -201,13 +175,12 @@ router.get('/summary', async (req, res, next) => {
          SELECT id AS customer_id FROM customers
           WHERE is_deleted = 0 AND opening_balance > 0
          UNION
-         SELECT customer_id FROM orders
-          WHERE is_deleted = 0
-            AND debt_carried_at IS NULL
-            AND status IN (${DEBT_PH})
-            AND DATEDIFF(NOW(), COALESCE(confirmed_at, NOW())) >= 7
-       ) t`,
-      DEBT_STATUSES
+         SELECT o.customer_id FROM orders o
+          WHERE o.is_deleted = 0
+            AND o.debt_carried_at IS NULL
+            AND ${DEBT_WHERE}
+            AND DATEDIFF(NOW(), COALESCE(o.confirmed_at, NOW())) >= 7
+       ) t`
     );
 
     res.json({
@@ -240,7 +213,7 @@ router.get('/', async (req, res, next) => {
       args.push(like, like, like, like);
     }
 
-    // Tinh dung 1 query gom: opening_balance + sum don chua ket (orders + warranty_orders)
+    // 1 query gom: opening_balance + sum don chua ket
     const [rows] = await db.query(
       `SELECT
          c.id, c.code, c.full_name, c.phone, c.type, c.company_name,
@@ -248,10 +221,7 @@ router.get('/', async (req, res, next) => {
          c.opening_balance,
          COALESCE(d.order_debt, 0)        AS order_debt,
          COALESCE(d.order_count, 0)       AS order_count,
-         d.oldest_at,
-         COALESCE(w.warranty_debt, 0)     AS warranty_debt,
-         COALESCE(w.warranty_count, 0)    AS warranty_count,
-         w.oldest_warranty_at
+         d.oldest_at
        FROM customers c
        LEFT JOIN (
          SELECT
@@ -269,40 +239,22 @@ router.get('/', async (req, res, next) => {
          FROM orders o
          WHERE o.is_deleted = 0
            AND o.debt_carried_at IS NULL
-           AND o.status IN (${DEBT_PH})
+           AND ${DEBT_WHERE}
          GROUP BY o.customer_id
        ) d ON d.customer_id = c.id
-       LEFT JOIN (
-         SELECT
-           wo.customer_id,
-           SUM(GREATEST(wo.cost_amount - wo.paid_amount, 0)) AS warranty_debt,
-           COUNT(*) AS warranty_count,
-           MIN(wo.request_date) AS oldest_warranty_at
-         FROM warranty_orders wo
-         WHERE wo.is_deleted = 0
-           AND wo.debt_carried_at IS NULL
-           AND wo.status IN (${WO_DEBT_PH})
-         GROUP BY wo.customer_id
-       ) w ON w.customer_id = c.id
        WHERE ${where.join(' AND ')}
          AND (c.opening_balance > 0
-              OR COALESCE(d.order_debt, 0) > 0
-              OR COALESCE(w.warranty_debt, 0) > 0)
-       ORDER BY (c.opening_balance + COALESCE(d.order_debt, 0) + COALESCE(w.warranty_debt, 0)) DESC
+              OR COALESCE(d.order_debt, 0) > 0)
+       ORDER BY (c.opening_balance + COALESCE(d.order_debt, 0)) DESC
        LIMIT 500`,
-      [...DEBT_STATUSES, ...WO_DEBT_STATUSES, ...args]
+      args
     );
 
     const items = rows.map(r => {
       const opening = Number(r.opening_balance) || 0;
       const orderDebt = Number(r.order_debt) || 0;
-      const warrantyDebt = Number(r.warranty_debt) || 0;
-      const total = opening + orderDebt + warrantyDebt;
-      // oldest unpaid: lay min cua oldest_at (orders) va oldest_warranty_at
-      let oldestAt = r.oldest_at || null;
-      if (r.oldest_warranty_at && (!oldestAt || new Date(r.oldest_warranty_at) < new Date(oldestAt))) {
-        oldestAt = r.oldest_warranty_at;
-      }
+      const total = opening + orderDebt;
+      const oldestAt = r.oldest_at || null;
       const oldest = oldestAt ? new Date(oldestAt) : null;
       const daysOverdue = oldest ? Math.floor((Date.now() - oldest.getTime()) / 86400000) : 0;
       return {
@@ -310,15 +262,15 @@ router.get('/', async (req, res, next) => {
         code: r.code,
         name: r.full_name,
         phone: r.phone,
-        type: r.type,                         // 'retail' | 'dealer'
+        type: r.type,
         company_name: r.company_name,
         credit_term_days: Number(r.credit_term_days) || 0,
         debt_limit: Number(r.debt_limit) || 0,
         opening_balance: opening,
         order_debt: orderDebt,
         order_count: Number(r.order_count) || 0,
-        warranty_debt: warrantyDebt,
-        warranty_count: Number(r.warranty_count) || 0,
+        warranty_debt: 0,
+        warranty_count: 0,
         total_debt: total,
         oldest_unpaid_at: oldestAt,
         days_overdue: daysOverdue,
@@ -336,28 +288,39 @@ router.get('/', async (req, res, next) => {
 router.get('/staff', async (req, res, next) => {
   try {
     const q = (req.query.q || '').trim();
-    const where = ['col.remitted = 0', 'col.is_deleted = 0'];
+    const where = ['s.role = \'kithuat\'', 's.is_deleted = 0'];
     const args = [];
     if (q) {
       where.push('(s.full_name LIKE ? OR s.username LIKE ? OR s.phone LIKE ?)');
       const like = `%${q}%`;
       args.push(like, like, like);
     }
+    // LEFT JOIN de KTV co opening_balance > 0 nhung khong giu collection van hien.
     const [rows] = await db.query(
       `SELECT
          s.id, s.username, s.full_name, s.phone, s.area,
-         COALESCE(SUM(col.amount), 0) AS total_amount,
-         COUNT(col.id) AS collection_count,
-         MIN(col.collected_at) AS oldest_at
+         s.opening_balance,
+         COALESCE(c.holding_amount, 0)    AS holding_amount,
+         COALESCE(c.collection_count, 0)  AS collection_count,
+         c.oldest_at
        FROM staff s
-       JOIN collections col ON col.staff_id = s.id
-       WHERE s.role = 'kithuat' AND s.is_deleted = 0
-         AND ${where.join(' AND ')}
-       GROUP BY s.id
-       ORDER BY total_amount DESC`,
+       LEFT JOIN (
+         SELECT staff_id,
+                SUM(amount) AS holding_amount,
+                COUNT(*)    AS collection_count,
+                MIN(collected_at) AS oldest_at
+           FROM collections
+          WHERE remitted = 0 AND is_deleted = 0
+          GROUP BY staff_id
+       ) c ON c.staff_id = s.id
+       WHERE ${where.join(' AND ')}
+         AND (COALESCE(c.holding_amount, 0) > 0 OR s.opening_balance > 0)
+       ORDER BY (s.opening_balance + COALESCE(c.holding_amount, 0)) DESC`,
       args
     );
     const items = rows.map(r => {
+      const opening = Number(r.opening_balance) || 0;
+      const holding = Number(r.holding_amount) || 0;
       const oldest = r.oldest_at ? new Date(r.oldest_at) : null;
       const days = oldest ? Math.floor((Date.now() - oldest.getTime()) / 86400000) : 0;
       return {
@@ -366,13 +329,76 @@ router.get('/staff', async (req, res, next) => {
         name: r.full_name,
         phone: r.phone,
         area: r.area,
-        total_amount: Number(r.total_amount),
+        opening_balance: opening,
+        holding_amount: holding,
+        total_amount: opening + holding,        // tong phai nop = ky truoc + dang giu
         collection_count: Number(r.collection_count),
         oldest_at: r.oldest_at,
         days_holding: days,
       };
     });
     res.json({ items, total: items.length });
+  } catch (err) { next(err); }
+});
+
+// ==============================================================
+// GET /api/admin/debts/staff/:tech_id — chi tiet KTV + danh sach khoan dang giu
+// ==============================================================
+router.get('/staff/:tech_id', async (req, res, next) => {
+  try {
+    const techId = Number(req.params.tech_id);
+    const [staffRows] = await db.query(
+      `SELECT id, username, full_name, phone, area, opening_balance
+         FROM staff WHERE id = ? AND role = 'kithuat' AND is_deleted = 0`,
+      [techId]
+    );
+    if (!staffRows.length) return res.status(404).json({ error: 'Khong tim thay KTV' });
+    const s = staffRows[0];
+
+    const [cols] = await db.query(
+      `SELECT col.id, col.amount, col.collected_at, col.method,
+              o.id AS order_id, o.code AS order_code, o.confirmed_at
+         FROM collections col
+         LEFT JOIN orders o ON o.id = col.order_id
+        WHERE col.staff_id = ? AND col.remitted = 0 AND col.is_deleted = 0
+        ORDER BY col.collected_at ASC`,
+      [techId]
+    );
+    const holdingAmount = cols.reduce((sum, c) => sum + Number(c.amount), 0);
+    const opening = Number(s.opening_balance) || 0;
+
+    const [history] = await db.query(
+      `SELECT id, amount, total_holding, remaining, method, remitted_at, approved_at, status, note
+         FROM remittances
+        WHERE staff_id = ? AND is_deleted = 0
+        ORDER BY remitted_at DESC LIMIT 30`,
+      [techId]
+    );
+
+    res.json({
+      staff: {
+        id: s.id, username: s.username, name: s.full_name,
+        phone: s.phone, area: s.area,
+      },
+      opening_balance: opening,
+      holding_amount: holdingAmount,
+      total_to_collect: opening + holdingAmount,
+      collections: cols.map(c => ({
+        id: c.id,
+        amount: Number(c.amount),
+        method: c.method,
+        collected_at: c.collected_at,
+        order_id: c.order_id,
+        order_code: c.order_code,
+        confirmed_at: c.confirmed_at,
+      })),
+      history: history.map(h => ({
+        ...h,
+        amount: Number(h.amount),
+        total_holding: Number(h.total_holding),
+        remaining: Number(h.remaining),
+      })),
+    });
   } catch (err) { next(err); }
 });
 
@@ -388,55 +414,86 @@ router.post('/staff/:tech_id/settle', async (req, res, next) => {
     const method = (req.body.method === 'transfer') ? 'transfer' : 'cash';
     const note = String(req.body.note || '').trim() || null;
     const receiptUrl = String(req.body.receipt_url || '').trim() || null;
+    // amount_paid = so KTV thuc nop. Mac dinh = total_to_collect (nop du).
+    const amountPaidRaw = req.body.amount_paid;
+    const hasAmount = amountPaidRaw !== undefined && amountPaidRaw !== null && amountPaidRaw !== '';
 
     await conn.beginTransaction();
     const [staffRows] = await conn.query(
-      `SELECT id, role, full_name FROM staff WHERE id = ? AND is_deleted = 0`,
+      `SELECT id, role, full_name, opening_balance
+         FROM staff WHERE id = ? AND is_deleted = 0 FOR UPDATE`,
       [techId]
     );
     if (!staffRows.length || staffRows[0].role !== 'kithuat') {
       await conn.rollback();
       return res.status(404).json({ error: 'Khong tim thay KTV' });
     }
+    const opening = Number(staffRows[0].opening_balance) || 0;
 
     const [collections] = await conn.query(
       `SELECT id, amount, order_id FROM collections
         WHERE staff_id = ? AND remitted = 0 AND is_deleted = 0`,
       [techId]
     );
-    if (!collections.length) {
-      await conn.rollback();
-      return res.status(400).json({ error: 'KTV khong co khoan thu chua nop' });
-    }
-    const totalAmount = collections.reduce((s, c) => s + Number(c.amount), 0);
+    const holding = collections.reduce((s, c) => s + Number(c.amount), 0);
+    const totalToCollect = opening + holding;
 
-    // Tao remittance approved luon
+    if (totalToCollect <= 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'KTV khong co khoan can nop' });
+    }
+
+    const amountPaid = hasAmount ? Math.max(0, Number(amountPaidRaw) || 0) : totalToCollect;
+    if (amountPaid <= 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'So tien nop phai > 0' });
+    }
+    if (amountPaid > totalToCollect * 1.1) {
+      await conn.rollback();
+      return res.status(400).json({
+        error: `So tien nop (${amountPaid}) vuot tong phai nop (${totalToCollect}) qua nhieu`,
+      });
+    }
+    const remaining = totalToCollect - amountPaid; // co the < 0 neu nop du
+
+    // Tao remittance approved
     const [insRes] = await conn.query(
       `INSERT INTO remittances
-         (staff_id, amount, method, receipt_url, note, approved_by, approved_at, status)
-       VALUES (?, ?, ?, ?, ?, ?, NOW(), 'approved')`,
-      [techId, totalAmount, method, receiptUrl, note, req.user.sub]
+         (staff_id, amount, total_holding, remaining, method, receipt_url, note,
+          approved_by, approved_at, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'approved')`,
+      [techId, amountPaid, totalToCollect, remaining, method, receiptUrl, note, req.user.sub]
     );
     const remittanceId = insRes.insertId;
 
-    // Gan collections vao remittance
+    // Gan TAT CA collections dang giu vao remittance (mark remitted)
+    let affectedOrderIds = [];
+    if (collections.length) {
+      await conn.query(
+        `UPDATE collections SET remitted = 1, remittance_id = ?
+          WHERE staff_id = ? AND remitted = 0 AND is_deleted = 0`,
+        [remittanceId, techId]
+      );
+      affectedOrderIds = [...new Set(collections.map(c => c.order_id))];
+    }
+
+    // Cap nhat opening_balance moi cua KTV = remaining
     await conn.query(
-      `UPDATE collections SET remitted = 1, remittance_id = ?
-        WHERE staff_id = ? AND remitted = 0 AND is_deleted = 0`,
-      [remittanceId, techId]
+      `UPDATE staff SET opening_balance = ? WHERE id = ?`,
+      [remaining, techId]
     );
 
-    // Recalc status cac don bi anh huong
-    const [taskRows] = await conn.query(
-      `SELECT DISTINCT order_id
-         FROM collections
-        WHERE remittance_id = ?`,
-      [remittanceId]
-    );
-    for (const r of taskRows) await recalcOrderFinalStatus(conn, r.order_id);
+    // Recalc status don bi anh huong
+    for (const oid of affectedOrderIds) await recalcPaymentStatus(conn, oid);
 
     await conn.commit();
-    res.json({ remittance_id: remittanceId, amount: totalAmount, count: collections.length });
+    res.json({
+      remittance_id: remittanceId,
+      total_holding: totalToCollect,
+      amount_paid: amountPaid,
+      remaining,
+      count: collections.length,
+    });
   } catch (err) {
     try { await conn.rollback(); } catch (_) {}
     next(err);
@@ -467,22 +524,18 @@ router.get('/settlement/:id', async (req, res, next) => {
 
     // Don da ket vao phieu nay (snapshot)
     const [carriedOrders] = await db.query(
-      `SELECT id, code, total_amount, paid_amount, status, confirmed_at, service_kind
-         FROM orders
-        WHERE debt_settlement_id = ? AND is_deleted = 0
-        ORDER BY confirmed_at ASC`,
+      `SELECT o.id, o.code, o.total_amount, o.paid_amount, o.status, o.confirmed_at,
+              (SELECT GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ')
+                 FROM order_lines ol
+                 LEFT JOIN order_templates t ON t.id = ol.template_id
+                WHERE ol.order_id = o.id AND ol.is_deleted = 0) AS template_name
+         FROM orders o
+        WHERE o.debt_settlement_id = ? AND o.is_deleted = 0
+        ORDER BY o.confirmed_at ASC`,
       [id]
     );
-
-    // Don bao hanh da ket
-    const [carriedWarranty] = await db.query(
-      `SELECT id, code, cost_amount AS total_amount, paid_amount, status, request_date AS confirmed_at,
-              license_plate, device_name
-         FROM warranty_orders
-        WHERE debt_settlement_id = ? AND is_deleted = 0
-        ORDER BY request_date ASC`,
-      [id]
-    );
+    // Bao hanh khong con bang rieng
+    const carriedWarranty = [];
 
     // Lich su tat toan truoc do (cua cung khach, paid_at < paid_at cua phieu nay)
     const [history] = await db.query(
@@ -673,20 +726,10 @@ router.post('/:customer_id/settle', async (req, res, next) => {
         [settlementId, ...orderIds]
       );
       // Recalc status: don da carried -> done (logic moi trong orderState.js)
-      for (const oid of orderIds) await recalcOrderFinalStatus(conn, oid);
+      for (const oid of orderIds) await recalcPaymentStatus(conn, oid);
     }
 
-    // Tuong tu cho don bao hanh — chi can set debt_carried_at + debt_settlement_id,
-    // khong recalc status vi don bao hanh da o trang thai 'completed' (terminal).
-    const warrantyIds = debt.pending_warranty.map(w => w.id);
-    if (warrantyIds.length) {
-      await conn.query(
-        `UPDATE warranty_orders
-            SET debt_carried_at = NOW(), debt_settlement_id = ?
-          WHERE id IN (${warrantyIds.map(() => '?').join(',')})`,
-        [settlementId, ...warrantyIds]
-      );
-    }
+    // (Module bao hanh cu da xoa — khong con warranty_orders)
 
     // Cap nhat opening_balance moi = remaining
     await conn.query(

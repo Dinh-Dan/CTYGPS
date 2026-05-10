@@ -146,9 +146,13 @@ router.get('/orders/:code', async (req, res, next) => {
     if (!code) return res.status(400).json({ error: 'Thieu ma don' });
 
     const [orderRows] = await db.query(
-      `SELECT o.id, o.code, o.status, o.service_kind, o.area, o.address,
-              o.vehicle_plate, o.note, o.subtotal, o.total_amount, o.paid_amount,
-              o.payment_method, o.confirmed_at,
+      `SELECT o.id, o.code, o.status, o.payment_status,
+              o.address, o.note, o.subtotal, o.total_amount, o.paid_amount,
+              o.payment_method, o.confirmed_at, o.completed_at,
+              (SELECT GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ')
+                 FROM order_lines ol
+                 LEFT JOIN order_templates t ON t.id = ol.template_id
+                WHERE ol.order_id = o.id AND ol.is_deleted = 0) AS template_name,
               c.full_name AS customer_name, c.phone AS customer_phone
          FROM orders o
          LEFT JOIN customers c ON c.id = o.customer_id
@@ -197,185 +201,90 @@ router.get('/orders/:code', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ==========================================================
-// Renewal public flow — mo bang link gui khach (khong can login)
-// URL FE: /customer/order-public.html?t=<public_token>
-// ----------------------------------------------------------
-//   GET    /renewal/:token              -> chi tiet don (mask SDT)
-//   POST   /renewal/:token/accept       -> quoted -> awaiting_payment (transfer)
-//   POST   /renewal/:token/mark-debt    -> quoted -> awaiting_payment (debt)
-//   POST   /renewal/:token/report-payment -> awaiting_payment(transfer) -> payment_reported
-// ==========================================================
-
-async function loadRenewalByToken(token) {
-  if (!token || token.length < 16) return null;
-  const [rows] = await db.query(
-    `SELECT o.id, o.code, o.status, o.service_kind, o.total_amount, o.paid_amount,
-            o.payment_method, o.subtotal, o.note, o.public_token,
-            c.full_name AS customer_name, c.phone AS customer_phone, c.type AS customer_type
-       FROM orders o
-       LEFT JOIN customers c ON c.id = o.customer_id
-      WHERE o.public_token = ? AND o.is_deleted = 0
-      LIMIT 1`,
-    [token]
-  );
-  if (!rows.length) return null;
-  if (rows[0].service_kind !== 'renewal') return null;
-  return rows[0];
-}
-
-// ---- GET /api/public/renewal/:token --------------------------
-router.get('/renewal/:token', async (req, res, next) => {
+// ---- GET /api/public/invoice/:code ----------------------------
+// Tra du lieu hoa don bao gia (cho trang /invoice.html khach mo).
+// KHONG leak: cost_price, wage_amount, dealer info.
+router.get('/invoice/:code', async (req, res, next) => {
   try {
-    const order = await loadRenewalByToken(String(req.params.token || ''));
-    if (!order) return res.status(404).json({ error: 'Khong tim thay don' });
+    const code = String(req.params.code || '').trim();
+    if (!code) return res.status(400).json({ error: 'Thieu ma don' });
+
+    const [orderRows] = await db.query(
+      `SELECT o.id, o.code, o.status, o.progress_note, o.payment_status,
+              o.address, o.note,
+              o.subtotal, o.total_amount, o.paid_amount,
+              o.created_at, o.confirmed_at, o.completed_at,
+              c.full_name AS customer_name, c.phone AS customer_phone,
+              s.full_name AS staff_name
+         FROM orders o
+         LEFT JOIN customers c ON c.id = o.customer_id
+         LEFT JOIN staff     s ON s.id = o.assigned_staff_id
+        WHERE o.code = ? AND o.is_deleted = 0`,
+      [code]
+    );
+    if (!orderRows.length) return res.status(404).json({ error: 'Khong tim thay don' });
+    const order = orderRows[0];
+
+    const [lines] = await db.query(
+      `SELECT ol.id, ol.template_id, ol.seq, ol.subtotal, ol.note,
+              COALESCE(ol.custom_name, t.name) AS template_name
+         FROM order_lines ol
+         LEFT JOIN order_templates t ON t.id = ol.template_id
+        WHERE ol.order_id = ? AND ol.is_deleted = 0
+        ORDER BY ol.seq, ol.id`,
+      [order.id]
+    );
 
     const [items] = await db.query(
-      `SELECT oi.id, oi.qty, oi.unit_price,
-              oi.vehicle_plate, oi.imei, oi.subscription_account, oi.years, oi.phone,
-              p.code AS product_code, p.name AS product_name
+      `SELECT oi.line_id, oi.qty, oi.unit_price, oi.vat_percent,
+              p.id AS product_id, p.code AS product_code, p.name AS product_name,
+              p.image_url AS product_image, p.thumbnail_url AS product_thumb,
+              p.description AS product_description, p.warranty_months AS product_warranty_months
          FROM order_items oi
-         JOIN products p ON p.id = oi.product_id
-        WHERE oi.order_id = ?
-        ORDER BY oi.id ASC`,
+         LEFT JOIN products p ON p.id = oi.product_id
+        WHERE oi.order_id = ?`,
       [order.id]
     );
+    // An "Cong lap" tren bao gia khach
     const [charges] = await db.query(
-      `SELECT kind, label, amount FROM order_charges
-        WHERE order_id = ? AND is_deleted = 0 ORDER BY id ASC`,
+      `SELECT line_id, kind, label, amount FROM order_charges
+        WHERE order_id = ? AND is_deleted = 0 AND label != 'Công lắp'
+        ORDER BY id`,
+      [order.id]
+    );
+    const [fieldValues] = await db.query(
+      `SELECT line_id, label, value FROM order_field_values
+        WHERE order_id = ? AND is_deleted = 0 ORDER BY seq, id`,
       [order.id]
     );
 
-    // Lay app_settings ngan hang de FE hien QR + STK khi khach bam Chap nhan
-    const [bankRows] = await db.query(
-      `SELECT \`key\`, \`value\` FROM app_settings
-        WHERE \`key\` LIKE 'bank.%' OR \`key\` LIKE 'qr.%'`
+    // Group theo line
+    const lineMap = new Map(
+      lines.map(l => [l.id, { ...l, items: [], charges: [], field_values: [] }])
     );
-    const bankInfo = {};
-    bankRows.forEach(r => { bankInfo[r.key] = r.value; });
+    for (const it of items) if (lineMap.has(it.line_id)) lineMap.get(it.line_id).items.push(it);
+    for (const fv of fieldValues) if (lineMap.has(fv.line_id)) lineMap.get(fv.line_id).field_values.push(fv);
+    const orderCharges = [];
+    for (const c of charges) {
+      if (c.line_id == null) orderCharges.push(c);
+      else if (lineMap.has(c.line_id)) lineMap.get(c.line_id).charges.push(c);
+    }
 
-    const phone = order.customer_phone || '';
-    const phoneMasked = phone
-      ? phone.replace(/^(\d{2})\d{4,5}(\d{2,3})$/, '$1*****$2')
-      : null;
+    // Cong ty + bank info tu app_settings
+    const [settingRows] = await db.query(
+      `SELECT \`key\`, \`value\` FROM app_settings
+        WHERE \`key\` LIKE 'company.%' OR \`key\` LIKE 'bank.%'`
+    );
+    const settings = {};
+    for (const r of settingRows) settings[r.key] = r.value || '';
 
     res.json({
-      id: order.id,
-      code: order.code,
-      status: order.status,
-      service_kind: order.service_kind,
-      total_amount: order.total_amount,
-      paid_amount: order.paid_amount,
-      subtotal: order.subtotal,
-      payment_method: order.payment_method,
-      note: order.note,
-      customer_name: order.customer_name,
-      customer_phone: phoneMasked,
-      customer_type: order.customer_type, // 'retail' | 'dealer' — FE dung de canh bao mark-debt
-      items,
-      charges,
-      bank: bankInfo,
+      ...order,
+      lines: Array.from(lineMap.values()),
+      order_charges: orderCharges,
+      settings,
     });
   } catch (err) { next(err); }
-});
-
-// ---- POST /api/public/renewal/:token/accept ------------------
-// Khach bam "Chap nhan va chuyen khoan" -> awaiting_payment, payment_method='transfer'.
-router.post('/renewal/:token/accept', async (req, res, next) => {
-  const conn = await db.getConnection();
-  try {
-    const token = String(req.params.token || '');
-    await conn.beginTransaction();
-    const [rows] = await conn.query(
-      `SELECT id, status, service_kind FROM orders
-        WHERE public_token = ? AND is_deleted = 0 FOR UPDATE`,
-      [token]
-    );
-    if (!rows.length || rows[0].service_kind !== 'renewal') {
-      await conn.rollback();
-      return res.status(404).json({ error: 'Khong tim thay don' });
-    }
-    if (rows[0].status !== 'quoted') {
-      await conn.rollback();
-      return res.status(409).json({ error: `Don dang trang thai ${rows[0].status}, khong the chap nhan` });
-    }
-    await conn.query(
-      `UPDATE orders SET status = 'awaiting_payment', payment_method = 'transfer'
-        WHERE id = ?`,
-      [rows[0].id]
-    );
-    await conn.commit();
-    res.json({ ok: true, status: 'awaiting_payment' });
-  } catch (err) {
-    try { await conn.rollback(); } catch (_) {}
-    next(err);
-  } finally { conn.release(); }
-});
-
-// ---- POST /api/public/renewal/:token/mark-debt ---------------
-// Khach bam "Ghi no" -> awaiting_payment, payment_method='debt'.
-// Khong bat buoc dieu kien debt_limit — moi khach deu ghi no duoc (theo flow user xac nhan).
-router.post('/renewal/:token/mark-debt', async (req, res, next) => {
-  const conn = await db.getConnection();
-  try {
-    const token = String(req.params.token || '');
-    await conn.beginTransaction();
-    const [rows] = await conn.query(
-      `SELECT id, status, service_kind FROM orders
-        WHERE public_token = ? AND is_deleted = 0 FOR UPDATE`,
-      [token]
-    );
-    if (!rows.length || rows[0].service_kind !== 'renewal') {
-      await conn.rollback();
-      return res.status(404).json({ error: 'Khong tim thay don' });
-    }
-    if (rows[0].status !== 'quoted') {
-      await conn.rollback();
-      return res.status(409).json({ error: `Don dang trang thai ${rows[0].status}, khong the chuyen ghi no` });
-    }
-    await conn.query(
-      `UPDATE orders SET status = 'awaiting_payment', payment_method = 'debt'
-        WHERE id = ?`,
-      [rows[0].id]
-    );
-    await conn.commit();
-    res.json({ ok: true, status: 'awaiting_payment', payment_method: 'debt' });
-  } catch (err) {
-    try { await conn.rollback(); } catch (_) {}
-    next(err);
-  } finally { conn.release(); }
-});
-
-// ---- POST /api/public/renewal/:token/report-payment ----------
-// Khach bam "Toi da chuyen khoan" -> payment_reported, cho admin xac nhan + gia han.
-router.post('/renewal/:token/report-payment', async (req, res, next) => {
-  const conn = await db.getConnection();
-  try {
-    const token = String(req.params.token || '');
-    await conn.beginTransaction();
-    const [rows] = await conn.query(
-      `SELECT id, status, service_kind, payment_method FROM orders
-        WHERE public_token = ? AND is_deleted = 0 FOR UPDATE`,
-      [token]
-    );
-    if (!rows.length || rows[0].service_kind !== 'renewal') {
-      await conn.rollback();
-      return res.status(404).json({ error: 'Khong tim thay don' });
-    }
-    if (rows[0].status !== 'awaiting_payment' || rows[0].payment_method !== 'transfer') {
-      await conn.rollback();
-      return res.status(409).json({ error: 'Don chua o trang thai cho thanh toan chuyen khoan' });
-    }
-    await conn.query(
-      `UPDATE orders SET status = 'payment_reported' WHERE id = ?`,
-      [rows[0].id]
-    );
-    await conn.commit();
-    res.json({ ok: true, status: 'payment_reported' });
-  } catch (err) {
-    try { await conn.rollback(); } catch (_) {}
-    next(err);
-  } finally { conn.release(); }
 });
 
 module.exports = router;

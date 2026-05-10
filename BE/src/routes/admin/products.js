@@ -3,6 +3,7 @@
 
 const express = require('express');
 const db = require('../../db');
+const { resolvePriceMap } = require('../../utils/priceResolver');
 
 const router = express.Router();
 
@@ -85,8 +86,9 @@ router.get('/', async (req, res, next) => {
   try {
     const q          = (req.query.q || '').trim();
     const categoryId = req.query.category_id ? Number(req.query.category_id) : null;
+    const customerId = req.query.customer_id ? Number(req.query.customer_id) : null;
     const page       = Math.max(1, parseInt(req.query.page) || 1);
-    const limit      = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const limit      = Math.min(500, Math.max(1, parseInt(req.query.limit) || 20));
     const offset     = (page - 1) * limit;
 
     const where = ['p.is_deleted = 0'];
@@ -115,6 +117,10 @@ router.get('/', async (req, res, next) => {
       [...args, limit, offset]
     );
 
+    if (rows.length) {
+      const priceMap = await resolvePriceMap(db, rows.map(r => r.id), customerId);
+      rows.forEach(r => { r.price = priceMap.get(Number(r.id)) ?? 0; });
+    }
     res.json({ items: rows, total: count[0].total, page, limit });
   } catch (err) { next(err); }
 });

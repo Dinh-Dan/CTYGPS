@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Tài khoản của tôi – GPS Việt</title>
+<title>Tài khoản của tôi – VinaGPS</title>
 <link rel="stylesheet" href="/shared/css/style.css" />
 <style>
   .acc-grid{display:grid;grid-template-columns:1fr 2fr;gap:18px;align-items:start}
@@ -30,14 +30,14 @@
 
 <div class="topbar">
   <div class="container">
-    <div>☎ Hotline: 1900 2045</div>
+    <div>☎ (028) 6682 5658 — DĐ: 0949.155.160</div>
     <div id="topbarRight"></div>
   </div>
 </div>
 
 <header class="site">
   <div class="container">
-    <a class="logo" href="/customer/"><span class="logo-mark">GV</span> GPS VIỆT</a>
+    <a class="logo" href="/customer/"><span class="logo-mark">VG</span> VINAGPS</a>
     <button class="nav-toggle" aria-label="Mở menu" onclick="this.nextElementSibling.classList.toggle('open')">☰</button>
     <nav class="main">
       <a href="/customer/">Trang chủ</a>
@@ -99,12 +99,27 @@
       <h3 style="margin-top:18px">🔗 Truy cập nhanh</h3>
       <div class="qlinks">
         <a class="btn ghost sm" href="/customer/orders.html" id="qlOrders">📦 Đơn của tôi</a>
-        <a class="btn ghost sm" href="/customer/warranty.html">🛡 Tra bảo hành</a>
-        <a class="btn ghost sm" href="/customer/order.html" id="qlOrderNew">➕ Đặt dịch vụ</a>
+        <a class="btn ghost sm" href="/customer/order.html" id="qlOrderNew">➕ Tạo đơn yêu cầu</a>
       </div>
     </div>
 
-    <!-- Cot phai: form sua ho so -->
+    <!-- Cot phai: tai san + form sua ho so -->
+    <div style="display:flex;flex-direction:column;gap:18px">
+    <div class="acc-card">
+      <h3>📋 Tài sản của tôi</h3>
+      <p class="text-muted" style="font-size:12.5px;margin-bottom:8px">Tên tài khoản (ở hệ thống khác), biển số xe, số SIM thiết bị.</p>
+      <div style="display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:10px">
+        <button type="button" class="btn ghost sm tab on" data-ax-kind="account">Tài khoản</button>
+        <button type="button" class="btn ghost sm tab"    data-ax-kind="vehicle">Biển số xe</button>
+        <button type="button" class="btn ghost sm tab"    data-ax-kind="sim">SIM</button>
+      </div>
+      <div class="row" style="gap:6px;margin-bottom:10px">
+        <input id="cax_value" class="input" placeholder="Giá trị mới" style="flex:1">
+        <button type="button" class="btn sm" id="cax_add">+ Thêm</button>
+      </div>
+      <div id="cax_list" style="max-height:240px;overflow:auto"></div>
+    </div>
+
     <div class="acc-card">
       <h3>✏️ Sửa thông tin</h3>
       <form id="profileForm" onsubmit="return false">
@@ -133,10 +148,11 @@
         </div>
       </form>
     </div>
+    </div><!-- /right-column wrapper -->
   </div>
 </div>
 
-<footer class="site"><div class="container bottom">© 2026 GPS Việt</div></footer>
+<footer class="site"><div class="container bottom">© 2026 VinaGPS — 190 TTH 21, P. Tân Thới Hiệp, Q.12, TP.HCM</div></footer>
 
 <script src="/shared/js/ui.js"></script>
 <script src="/shared/js/api.js"></script>
@@ -282,6 +298,84 @@
   });
 
   loadProfile();
+
+  // ============================================================
+  // ASSETS — khach tu them/sua/xoa (khong qua duyet)
+  // ============================================================
+  const KIND_VAL_COL = { account: 'account_name', vehicle: 'plate', sim: 'sim_number' };
+  const KIND_LIST_KEY = { account: 'accounts', vehicle: 'vehicles', sim: 'sims' };
+  const KIND_LABEL = { account: 'tài khoản', vehicle: 'biển số', sim: 'SIM' };
+  const PLACEHOLDERS = { account: 'Tên tài khoản', vehicle: 'VD: 51A-12345', sim: 'Số SIM thiết bị' };
+  const axState = { kind: 'account', data: { accounts: [], vehicles: [], sims: [] } };
+
+  async function reloadAssets() {
+    const r = await api.get('/customer/assets', { silent: true }).catch(() => null);
+    if (!r) return;
+    axState.data = r;
+    renderAssetList();
+  }
+  function renderAssetList() {
+    const list = axState.data[KIND_LIST_KEY[axState.kind]] || [];
+    const valCol = KIND_VAL_COL[axState.kind];
+    document.getElementById('cax_value').placeholder = PLACEHOLDERS[axState.kind];
+    if (!list.length) {
+      document.getElementById('cax_list').innerHTML = `<div class="text-muted" style="padding:12px;text-align:center;font-size:13px">Chưa có ${KIND_LABEL[axState.kind]} nào</div>`;
+      return;
+    }
+    document.getElementById('cax_list').innerHTML = list.map(it => `
+      <div class="row" style="gap:6px;align-items:center;padding:6px 0;border-bottom:1px dashed #e2e8f0;font-size:13px">
+        <span style="flex:1"><b>${escapeHtml(it[valCol])}</b></span>
+        <button class="btn ghost sm" data-cax-act="edit" data-id="${it.id}" data-val="${escapeHtml(it[valCol])}">Sửa</button>
+        <button class="btn ghost sm" data-cax-act="del"  data-id="${it.id}" style="color:#dc2626">Xoá</button>
+      </div>
+    `).join('');
+  }
+  async function addAsset() {
+    const value = document.getElementById('cax_value').value.trim();
+    if (!value) return ui.toast('Nhập giá trị', 'warning');
+    const r = await api.post(`/customer/assets/${axState.kind}`, { value }, {
+      successMessage: `Đã thêm ${KIND_LABEL[axState.kind]}`,
+    }).catch(() => null);
+    if (!r) return;
+    document.getElementById('cax_value').value = '';
+    reloadAssets();
+  }
+
+  document.querySelectorAll('[data-ax-kind]').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('[data-ax-kind]').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      axState.kind = b.dataset.axKind;
+      renderAssetList();
+    });
+  });
+  document.getElementById('cax_add').addEventListener('click', addAsset);
+  document.getElementById('cax_value').addEventListener('keypress', (e) => { if (e.key === 'Enter') addAsset(); });
+  document.getElementById('cax_list').addEventListener('click', async (e) => {
+    const b = e.target.closest('button[data-cax-act]');
+    if (!b) return;
+    const id = b.dataset.id;
+    if (b.dataset.caxAct === 'edit') {
+      const cur = b.dataset.val;
+      const newVal = window.prompt(`Sửa ${KIND_LABEL[axState.kind]}:`, cur);
+      if (newVal == null) return;
+      const value = String(newVal).trim();
+      if (!value) return ui.toast('Giá trị rỗng', 'warning');
+      const r = await api.put(`/customer/assets/${axState.kind}/${id}`, { value }, {
+        successMessage: 'Đã cập nhật',
+      }).catch(() => null);
+      if (r) reloadAssets();
+    } else if (b.dataset.caxAct === 'del') {
+      if (!window.confirm(`Xoá ${KIND_LABEL[axState.kind]} này?`)) return;
+      const r = await api.delete(`/customer/assets/${axState.kind}/${id}`, {
+        successMessage: 'Đã xoá',
+      }).catch(() => null);
+      if (r) reloadAssets();
+    }
+  });
+
+  // load assets sau khi profile load (api.get tu xu ly auth)
+  setTimeout(reloadAssets, 500);
 </script>
 </body>
 </html>

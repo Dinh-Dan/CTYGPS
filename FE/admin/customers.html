@@ -3,8 +3,24 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Khách hàng – Admin GPS Việt</title>
+<title>Khách hàng – Admin VinaGPS</title>
 <link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  /* Compact lai bang khach hang — tranh row qua cao + nut Hanh dong xuong 2 hang */
+  #tbl td{padding:6px 10px;vertical-align:middle}
+  #tbl td .avatar-cell,
+  #tbl td .avatar-placeholder{width:32px;height:32px;font-size:12px}
+  #tbl td .pill{font-size:11px;padding:2px 8px}
+  #tbl .col-actions{white-space:nowrap;text-align:right}
+  #tbl .col-actions .btn{
+    padding:3px 8px;font-size:12px;border:none;background:transparent;
+    color:#1f6feb;font-weight:500;border-radius:4px
+  }
+  #tbl .col-actions .btn:hover{background:#eef2ff}
+  #tbl .col-actions .btn.danger{color:#dc2626}
+  #tbl .col-actions .btn.danger:hover{background:#fee2e2}
+  #tbl td.muted-dash{color:#cbd5e1;text-align:center}
+</style>
 </head>
 <body>
 <div class="shell">
@@ -16,20 +32,21 @@
     <div class="content flex-page">
       <div class="toolbar">
         <button class="btn sm" id="btnAdd">+ Thêm mới</button>
+        <button class="btn ghost sm" id="btnRequests">📝 Duyệt đề xuất KTV <span id="reqBadge" class="pill red" style="display:none;font-size:11px;margin-left:4px">0</span></button>
       </div>
       <div class="table-wrap">
         <table class="data" id="tbl">
           <thead>
             <tr>
-              <th style="width:60px">Avatar</th>
-              <th style="width:100px">Mã</th>
-              <th style="width:120px">Loại</th>
+              <th style="width:48px">Avatar</th>
+              <th style="width:90px">Mã</th>
+              <th style="width:110px">Loại</th>
               <th>Họ tên / Công ty</th>
-              <th style="width:130px">SĐT</th>
+              <th style="width:120px">SĐT</th>
               <th>Email</th>
-              <th style="width:130px">Hạn mức nợ</th>
-              <th style="width:100px">Hạn nợ</th>
-              <th style="width:140px">Hành động</th>
+              <th style="width:120px">Hạn mức nợ</th>
+              <th style="width:90px">Hạn nợ</th>
+              <th style="width:200px">Hành động</th>
             </tr>
             <tr class="filter-row">
               <th></th>
@@ -82,8 +99,8 @@
             </select>
           </div>
           <div class="field">
-            <label>Mã khách hàng *</label>
-            <input type="text" id="f_code" class="input" required placeholder="VD: KH001 / DL001">
+            <label>Mã khách hàng</label>
+            <input type="text" id="f_code" class="input" readonly placeholder="(Tự sinh sau khi lưu)">
           </div>
         </div>
 
@@ -124,7 +141,7 @@
           </div>
           <div class="grid cols-2">
             <div class="field"><label>Người liên hệ</label><input type="text" id="f_contact_person" class="input"></div>
-            <div class="field"><label>Hạn mức nợ (VND)</label><input type="number" id="f_debt_limit" class="input" min="0" step="1000"></div>
+            <div class="field"><label>Hạn mức nợ (VND)</label><input type="text" id="f_debt_limit" class="input money-input" inputmode="numeric"></div>
           </div>
           <div class="grid cols-2">
             <div class="field"><label>Số ngày được nợ</label><input type="number" id="f_credit_term_days" class="input" min="0" step="1"></div>
@@ -173,6 +190,42 @@
         <button type="submit" class="btn">Lưu mật khẩu</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- Modal tai san khach — 1 form gop (tai khoan + bien so + sim) -->
+<div id="assetsModal" class="modal-bg">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-head">
+      <h3>Tài sản khách: <span id="ax_name"></span></h3>
+      <button type="button" class="modal-close" id="ax_close" aria-label="Đóng">×</button>
+    </div>
+    <div class="modal-body" id="ax_body" style="max-height:60vh;overflow:auto"></div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="ax_done">Huỷ</button>
+      <button type="button" class="btn" id="ax_save">💾 Lưu thay đổi</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal duyet de xuat KTV -->
+<div id="reqModal" class="modal-bg">
+  <div class="modal" style="max-width:880px">
+    <div class="modal-head">
+      <h3>Đề xuất cập nhật khách (chờ duyệt)</h3>
+      <button type="button" class="modal-close" id="rq_close" aria-label="Đóng">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="row" style="gap:6px;margin-bottom:8px">
+        <button type="button" class="btn ghost sm tab on" data-status="pending">Chờ duyệt</button>
+        <button type="button" class="btn ghost sm tab"    data-status="approved">Đã duyệt</button>
+        <button type="button" class="btn ghost sm tab"    data-status="rejected">Từ chối</button>
+      </div>
+      <div id="rq_list" style="max-height:480px;overflow:auto"></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="rq_done">Đóng</button>
+    </div>
   </div>
 </div>
 

@@ -11,8 +11,6 @@
     { type: 'item', href: '/kithuat/',                icon: '📊', label: 'Dashboard',     key: 'dashboard' },
     { type: 'sep',  label: 'Công việc' },
     { type: 'item', href: '/kithuat/tasks.html',      icon: '🛠', label: 'Công việc',     key: 'tasks' },
-    { type: 'item', href: '/kithuat/warranty.html',   icon: '🛡', label: 'Bảo hành',      key: 'warranty' },
-    { type: 'item', href: '/kithuat/repair.html',     icon: '🔧', label: 'Sửa chữa',      key: 'repair' },
     { type: 'item', href: '/kithuat/inventory.html',  icon: '📦', label: 'Thiết bị',       key: 'inventory' },
     { type: 'sep',  label: 'Liên hệ' },
     { type: 'item', href: '/kithuat/chat.html',       icon: '💬', label: 'Chat khách',     key: 'chat' },
@@ -24,7 +22,6 @@
   const BOTTOM_NAV = [
     { href: '/kithuat/',                icon: '📊', label: 'Trang chủ', key: 'dashboard' },
     { href: '/kithuat/tasks.html',      icon: '🛠', label: 'Việc',      key: 'tasks' },
-    { href: '/kithuat/warranty.html',   icon: '🛡', label: 'Bảo hành',  key: 'warranty' },
     { href: '/kithuat/inventory.html',  icon: '📦', label: 'Thiết bị',  key: 'inventory' },
     { href: '/kithuat/profile.html',    icon: '👤', label: 'Hồ sơ',     key: 'profile' },
   ];

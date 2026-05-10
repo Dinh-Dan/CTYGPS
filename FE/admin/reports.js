@@ -96,11 +96,6 @@
     warehouse_released: 'Đã xuất kho', in_progress: 'Đang làm',
     done: 'Hoàn thành', cancelled: 'Huỷ',
   };
-  const SK_TEXT = {
-    install: 'Lắp mới', maintenance: 'Sửa chữa',
-    warranty: 'Bảo hành', renewal: 'Gia hạn',
-  };
-
   function destroyChart(key) {
     if (charts[key]) { charts[key].destroy(); delete charts[key]; }
   }
@@ -186,17 +181,17 @@
       });
     }
 
-    // 4. Service kind (pie)
-    const sk = await api.get('/admin/reports/orders-by-service-kind?' + p3.toString(), { silent: true }).catch(() => null);
+    // 4. Don theo template (pie)
+    const sk = await api.get('/admin/reports/orders-by-template?' + p3.toString(), { silent: true }).catch(() => null);
     if (sk) {
       destroyChart('sk');
       charts.sk = new Chart($('chartServiceKind'), {
         type: 'pie',
         data: {
-          labels: sk.items.map(r => SK_TEXT[r.service_kind] || r.service_kind),
+          labels: sk.items.map(r => r.template_name || ('Template #' + (r.template_id || '?'))),
           datasets: [{
             data: sk.items.map(r => Number(r.count)),
-            backgroundColor: ['#3b82f6', '#f59e0b', '#10b981', '#a855f7'],
+            backgroundColor: ['#3b82f6', '#f59e0b', '#10b981', '#a855f7', '#ec4899', '#8b5cf6'],
           }],
         },
         options: { responsive: true, plugins: { legend: { position: 'bottom' } } },

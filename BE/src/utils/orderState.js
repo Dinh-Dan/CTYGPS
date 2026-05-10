@@ -1,79 +1,191 @@
-// Helper state machine + tinh tong cho orders
-// Dung trong admin/orders.js, customer.js, daily.js, kithuat.js
+// Helper cho don hang v3 — mig 056 (status don gian).
+//
+// Trang thai don (5 gia tri):
+//   pending     — khach moi tao, cho admin duyet
+//   confirmed   — admin da duyet, gan KTV
+//   in_progress — KTV dang lam
+//   done        — hoan thanh
+//   cancelled   — huy
+//
+// KTV va admin deu chuyen duoc confirmed/in_progress/done/cancelled.
+// Admin duy nhat duoc duyet pending -> confirmed.
+// Khong con buoc trung gian (assigned/received/released).
+//
+// payment_status (cot rieng tu mig 046) khong lien quan status quy trinh.
 
-// Moi don (install/maintenance/warranty/renewal) deu BAT BUOC qua warehouse_released
-// truoc khi KTV co the bat dau. Don khong co vat tu van phai bam xuat kho (phieu rong)
-// de luu lich su QTV da xuat cai gi cho ai vao luc nao.
-// 3 status no (customer_owes / pending_admin_confirm / staff_owes) la "trang thai cuoi"
-// nhung co the flip lan nhau khi dong tien thay doi (KTV nop, admin xac nhan, khach tra them).
-// done la chot cuoi cung khi paid >= total va khong con unremitted/admin_pending.
-const TRANSITIONS = {
-  pending_review:        ['new', 'quoted', 'cancelled'],
-  new:                   ['assigned', 'cancelled'],
-  assigned:              ['warehouse_released', 'cancelled'],
-  warehouse_released:    ['in_progress', 'cancelled'],
-  in_progress:           ['done', 'customer_owes', 'pending_admin_confirm', 'staff_owes', 'cancelled'],
-  customer_owes:         ['pending_admin_confirm', 'staff_owes', 'done', 'cancelled'],
-  pending_admin_confirm: ['customer_owes', 'staff_owes', 'done', 'cancelled'],
-  staff_owes:            ['customer_owes', 'pending_admin_confirm', 'done', 'cancelled'],
-  // Renewal flow: pending_review -> quoted -> awaiting_payment -> payment_reported -> done
-  // Nhanh ghi no: quoted -> awaiting_payment (payment_method='debt') -> done (skip payment_reported).
-  quoted:                ['awaiting_payment', 'cancelled'],
-  awaiting_payment:      ['payment_reported', 'done', 'cancelled'],
-  payment_reported:      ['done', 'cancelled'],
-  done:                  [],
-  cancelled:             [],
+const PAYMENT_STATUSES = [
+  'unpaid', 'partial', 'paid',
+  'customer_owes', 'pending_admin_confirm', 'staff_owes',
+  'refunded',
+];
+
+const SYSTEM_STATUSES = ['pending', 'cancelled'];
+
+// Bo trang thai cung — khop voi mig 056 + bang order_workflow_steps.
+const ORDER_STATUSES = ['pending', 'confirmed', 'in_progress', 'done', 'cancelled'];
+
+// Quyen chuyen sang trang thai (theo role)
+const STATUS_ROLES = {
+  pending:     ['admin', 'customer'],
+  confirmed:   ['admin'],
+  in_progress: ['admin', 'ktv'],
+  done:        ['admin', 'ktv'],
+  cancelled:   ['admin'],
 };
 
-// Cac status duoc coi la "da hoan thien tac vu KTV" — dung de filter doanh thu, debts, ...
-const FINAL_STATUSES = ['done', 'customer_owes', 'pending_admin_confirm', 'staff_owes'];
+// Cap chuyen hop le (trong forward direction).
+// Cho phep:
+//   pending -> confirmed
+//   confirmed -> in_progress | cancelled
+//   in_progress -> done | cancelled
+//   done -> (chot, khong chuyen tiep)
+//   * -> cancelled (admin)
+const ALLOWED_TRANSITIONS = {
+  pending:     ['confirmed', 'cancelled'],
+  confirmed:   ['in_progress', 'done', 'cancelled'],
+  in_progress: ['done', 'confirmed', 'cancelled'],
+  done:        [],
+  cancelled:   [],
+};
 
-function canTransition(from, to) {
-  return (TRANSITIONS[from] || []).includes(to);
+// ----------------------------------------------------------
+// Workflow steps (global, doc tu DB de FE hien label)
+// ----------------------------------------------------------
+
+let _workflowCache = null;
+
+async function loadWorkflowSteps(conn) {
+  if (_workflowCache) return _workflowCache;
+  const [rows] = await conn.query(
+    `SELECT id, seq, code, label, requires_photo, photo_min_count,
+            update_roles, is_terminal, is_system
+       FROM order_workflow_steps
+      WHERE is_deleted = 0
+      ORDER BY seq, id`
+  );
+  _workflowCache = rows.map(r => ({
+    ...r,
+    update_roles:   parseRoles(r.update_roles),
+    requires_photo: !!r.requires_photo,
+    is_terminal:    !!r.is_terminal,
+    is_system:      !!r.is_system,
+  }));
+  return _workflowCache;
 }
 
-// Tinh status cuoi cua don dua tren tinh hinh dong tien.
-// Goi sau khi: KTV complete task cuoi, admin mark-paid, admin confirm admin-pending,
-// admin approve/reject remittance, admin tao/sua/xoa thanh toan thu cong.
+function clearWorkflowCache() { _workflowCache = null; }
+
+// Alias backward-compat
+async function loadTemplateSteps(conn) { return loadWorkflowSteps(conn); }
+
+function parseRoles(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  try { const v = JSON.parse(raw); return Array.isArray(v) ? v : []; }
+  catch (_) { return []; }
+}
+
+function firstStepCode() { return 'confirmed'; }
+
+function isTerminalStatus(_steps, status) {
+  return status === 'done' || status === 'cancelled';
+}
+
+// Validate chuyen trang thai. Tra ve { ok, error?, step? }
+function validateTransition(steps, currentStatus, targetStatus, role) {
+  if (!ORDER_STATUSES.includes(targetStatus)) {
+    return { ok: false, error: `Trang thai "${targetStatus}" khong hop le` };
+  }
+  const allowed = ALLOWED_TRANSITIONS[currentStatus] || [];
+  if (!allowed.includes(targetStatus)) {
+    return { ok: false, error: `Khong the chuyen tu "${currentStatus}" sang "${targetStatus}"` };
+  }
+  // Role check (admin bypass)
+  if (role !== 'admin') {
+    const roles = STATUS_ROLES[targetStatus] || [];
+    if (!roles.includes(role)) {
+      return { ok: false, error: `Vai tro "${role}" khong duoc chuyen sang "${targetStatus}"` };
+    }
+  }
+  const step = steps ? steps.find(s => s.code === targetStatus) : null;
+  return { ok: true, step };
+}
+
+// ----------------------------------------------------------
+// Tinh tien
+// ----------------------------------------------------------
+
+// Tinh lai subtotal (tu order_items) + total (cong order_charges).
+// Discount luu amount AM nen chi can SUM het.
+async function recalcOrderTotal(conn, orderId) {
+  const [items] = await conn.query(
+    `SELECT qty, unit_price, vat_percent FROM order_items WHERE order_id = ?`,
+    [orderId]
+  );
+  // Công lắp lưu lại de tinh luong KTV, KHONG cong vao total don
+  const [charges] = await conn.query(
+    `SELECT amount FROM order_charges
+      WHERE order_id = ? AND is_deleted = 0 AND label != 'Công lắp'`,
+    [orderId]
+  );
+  // subtotal da bao gom VAT cua tung item — cot "Thanh tien" tren hoa don.
+  const subtotal = items.reduce((s, it) => {
+    const line = Number(it.qty) * Number(it.unit_price);
+    const vat = line * (Number(it.vat_percent) || 0) / 100;
+    return s + Math.round(line + vat);
+  }, 0);
+  const chargeSum = charges.reduce((s, c) => s + Number(c.amount), 0);
+  const total = Math.max(0, subtotal + chargeSum);
+  await conn.query(
+    `UPDATE orders SET subtotal = ?, total_amount = ? WHERE id = ?`,
+    [subtotal, total, orderId]
+  );
+  return { subtotal, total };
+}
+
+// Dong bo charge "Cong lap" cua don voi tien cong KTV.
+// Goi sau khi admin gan/sua KTV de bill khach thay = wage_amount.
+async function syncLaborCharge(conn, orderId, wageAmount) {
+  const amount = Number(wageAmount) || 0;
+  await conn.query(
+    `UPDATE order_charges SET is_deleted = 1
+       WHERE order_id = ? AND label = 'Công lắp' AND is_deleted = 0`,
+    [orderId]
+  );
+  if (amount > 0) {
+    await conn.query(
+      `INSERT INTO order_charges (order_id, kind, label, amount)
+       VALUES (?, 'fee', 'Công lắp', ?)`,
+      [orderId, amount]
+    );
+  }
+}
+
+// Tinh payment_status dua tren paid_amount + collections + admin_pending vs total_amount.
+// Goi sau khi: ghi nhan thanh toan, KTV nop, admin xac nhan admin_pending, refund...
 //
-// Quy uoc:
-//   paid          = orders.paid_amount (tien DA vao quy chinh thuc)
-//   unremitted    = SUM(collections.amount WHERE remitted=0)        — KTV dang giu
-//   admin_pending = SUM(order_payments.amount WHERE source='admin_pending' AND confirmed=0)
-//                                                                    — admin chua bam xac nhan
-//   total         = orders.total_amount
-//
-// Uu tien: customer_owes > pending_admin_confirm > staff_owes > done
-async function recalcOrderFinalStatus(conn, orderId) {
+// Quy tac:
+//   debt_carried_at -> 'paid' (don da duoc ket vao phieu rolling balance)
+//   total <= 0 va paid <= 0 -> 'unpaid'
+//   effective < total -> 'customer_owes'
+//   admin_pending > 0 -> 'pending_admin_confirm'
+//   unremitted   > 0 -> 'staff_owes'
+//   else paid >= total -> 'paid'; paid > 0 -> 'partial'; else 'unpaid'
+async function recalcPaymentStatus(conn, orderId) {
   const [orderRows] = await conn.query(
-    `SELECT id, status, total_amount, paid_amount, debt_carried_at FROM orders
-      WHERE id = ? AND is_deleted = 0`,
+    `SELECT total_amount, paid_amount, debt_carried_at, payment_status
+       FROM orders WHERE id = ? AND is_deleted = 0`,
     [orderId]
   );
   if (!orderRows.length) return null;
   const o = orderRows[0];
 
-  // Don da duoc "ket" vao 1 phieu tat toan cong no (Rolling Balance) -> coi nhu da dong no.
-  // Phan no chua tra cua khach da chuyen vao customers.opening_balance, khong tinh tren don nay nua.
   if (o.debt_carried_at) {
-    if (o.status !== 'done') {
-      await conn.query(`UPDATE orders SET status = 'done' WHERE id = ?`, [orderId]);
+    if (o.payment_status !== 'paid') {
+      await conn.query(`UPDATE orders SET payment_status = 'paid' WHERE id = ?`, [orderId]);
     }
-    return 'done';
+    return 'paid';
   }
-
-  // Chi tinh khi don da qua giai doan KTV (warehouse_released tro di) va co task done.
-  // Giai doan truoc do giu nguyen status — khong tu chuyen sang done/owes.
-  if (!['warehouse_released', 'in_progress', 'done', 'customer_owes',
-        'pending_admin_confirm', 'staff_owes'].includes(o.status)) {
-    return o.status;
-  }
-
-  // KTV phai bam "Hoan thanh" (orders.completed_at duoc set) thi moi tinh status cuoi.
-  const [oRow] = await conn.query(
-    `SELECT completed_at FROM orders WHERE id = ?`, [orderId]
-  );
-  if (!oRow.length || !oRow[0].completed_at) return o.status;
 
   const [colSum] = await conn.query(
     `SELECT COALESCE(SUM(amount), 0) AS unremitted
@@ -95,57 +207,23 @@ async function recalcOrderFinalStatus(conn, orderId) {
   const effective    = paid + unremitted + adminPending;
 
   let next;
-  if (effective < total)        next = 'customer_owes';
+  if (total <= 0 && paid <= 0)  next = 'unpaid';
+  else if (effective < total)   next = 'customer_owes';
   else if (adminPending > 0)    next = 'pending_admin_confirm';
   else if (unremitted > 0)      next = 'staff_owes';
-  else                          next = 'done';
+  else if (paid >= total)       next = 'paid';
+  else if (paid > 0)            next = 'partial';
+  else                          next = 'unpaid';
 
-  if (next !== o.status) {
-    await conn.query(`UPDATE orders SET status = ? WHERE id = ?`, [next, orderId]);
+  if (next !== o.payment_status) {
+    await conn.query(`UPDATE orders SET payment_status = ? WHERE id = ?`, [next, orderId]);
   }
   return next;
 }
 
-// Tinh lai subtotal (tu order_items) + total (cong order_charges) cho 1 don
-// Discount luu amount AM nen chi can SUM het.
-// total >= 0 (clamp neu discount qua tay).
-async function recalcOrderTotal(conn, orderId) {
-  const [items] = await conn.query(
-    `SELECT qty, unit_price FROM order_items WHERE order_id = ?`,
-    [orderId]
-  );
-  const [charges] = await conn.query(
-    `SELECT amount FROM order_charges WHERE order_id = ? AND is_deleted = 0`,
-    [orderId]
-  );
-  const subtotal = items.reduce((s, it) => s + Number(it.qty) * Number(it.unit_price), 0);
-  const chargeSum = charges.reduce((s, c) => s + Number(c.amount), 0);
-  const total = Math.max(0, subtotal + chargeSum);
-  await conn.query(
-    `UPDATE orders SET subtotal = ?, total_amount = ? WHERE id = ?`,
-    [subtotal, total, orderId]
-  );
-  return { subtotal, total };
-}
-
-// Dong bo charge "Cong lap" cua don voi tien cong KTV.
-// Goi sau khi admin gan/sua KTV de bill khach thay = wage_amount.
-// Soft-delete cong lap cu (de giu lich su), chen 1 dong moi neu wage > 0.
-async function syncLaborCharge(conn, orderId, wageAmount) {
-  const amount = Number(wageAmount) || 0;
-  await conn.query(
-    `UPDATE order_charges SET is_deleted = 1
-       WHERE order_id = ? AND label = 'Công lắp' AND is_deleted = 0`,
-    [orderId]
-  );
-  if (amount > 0) {
-    await conn.query(
-      `INSERT INTO order_charges (order_id, kind, label, amount)
-       VALUES (?, 'fee', 'Công lắp', ?)`,
-      [orderId, amount]
-    );
-  }
-}
+// ----------------------------------------------------------
+// Sinh ma don
+// ----------------------------------------------------------
 
 // Sinh code don ORD-DDMM-NNN. attempt offset cho retry khi gap race.
 async function genOrderCode(conn, attempt = 0) {
@@ -165,8 +243,7 @@ async function genOrderCode(conn, attempt = 0) {
   return prefix + String(next + attempt).padStart(3, '0');
 }
 
-// Helper retry tren orders.code UNIQUE constraint: caller cung cap fn(code) -> Promise<insertResult>.
-// Goi trong transaction; bat ER_DUP_ENTRY de retry voi attempt+1.
+// Helper retry tren orders.code UNIQUE constraint.
 async function insertOrderWithRetry(conn, fn) {
   const MAX_RETRY = 5;
   for (let attempt = 0; attempt < MAX_RETRY; attempt++) {
@@ -183,12 +260,24 @@ async function insertOrderWithRetry(conn, fn) {
 }
 
 module.exports = {
-  canTransition,
+  // workflow
+  loadWorkflowSteps,
+  clearWorkflowCache,
+  loadTemplateSteps, // alias
+  firstStepCode,
+  isTerminalStatus,
+  validateTransition,
+  // money
   recalcOrderTotal,
-  recalcOrderFinalStatus,
   syncLaborCharge,
-  TRANSITIONS,
-  FINAL_STATUSES,
+  recalcPaymentStatus,
+  // code
   genOrderCode,
   insertOrderWithRetry,
+  // const
+  PAYMENT_STATUSES,
+  SYSTEM_STATUSES,
+  ORDER_STATUSES,
+  STATUS_ROLES,
+  ALLOWED_TRANSITIONS,
 };

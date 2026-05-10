@@ -264,15 +264,15 @@ async function genCode(prefix, table, codeCol = 'code') {
       const finalNote = (seed.note || '') + (seed.note ? '\n' : '') + tag;
       const [r] = await db.query(
         `INSERT INTO orders (code, customer_id, dealer_id, total_amount, subtotal, paid_amount,
-                             payment_method, status, area, address, vehicle_plate,
-                             service_kind, note, creator_type, creator_id,
+                             payment_method, status, address,
+                             note, creator_type, creator_id,
                              confirmed_at, confirmed_by)
-         VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           code, seed.customer_id, seed.dealer_id || null,
           seed.paid_amount || 0, seed.payment_method || 'cash',
-          seed.status, seed.area || null, seed.address || null, seed.vehicle_plate || null,
-          seed.service_kind || 'install', finalNote,
+          seed.status, seed.address || null,
+          finalNote,
           seed.creator_type || 'admin', seed.creator_id || staff.admin,
           seed.confirmed_at || null, seed.confirmed_by || null,
         ]

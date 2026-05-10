@@ -3,198 +3,78 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Đơn của tôi – GPS Việt</title>
+<title>Đơn của tôi – VinaGPS</title>
 <link rel="stylesheet" href="/shared/css/style.css" />
 <style>
-  .order-card{border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;background:#fff}
-  .order-card .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-  .order-card .meta{font-size:13px;color:#64748b;margin-bottom:6px}
-  .pill.purple{background:#ede9fe;color:#6d28d9}
-  .pill.cyan{background:#cffafe;color:#155e75}
-  .item-row{display:grid;grid-template-columns:1fr 80px 36px;gap:8px;align-items:end;margin-bottom:8px}
-  .att-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:6px;margin-top:6px}
-  .att-grid img{width:100%;height:100px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid var(--border)}
-  .stat-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
-  .dealer-only{display:none}
-  body.role-daily .dealer-only{display:block}
-  body.role-daily .stat-cards.dealer-only{display:grid}
+  .order-card { border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:12px; background:#fff; cursor:pointer; }
+  .order-card:hover { border-color:#93c5fd; }
+  .order-card .head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .order-card .meta { font-size:13px; color:#64748b; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11.5px; font-weight:600; }
+  .pill.gray  { background:#e2e8f0; color:#475569; }
+  .pill.amber { background:#fef3c7; color:#92400e; }
+  .pill.blue  { background:#dbeafe; color:#1e40af; }
+  .pill.green { background:#dcfce7; color:#166534; }
+  .pill.red   { background:#fee2e2; color:#991b1b; }
+  .od-section { margin-bottom:14px; padding-bottom:12px; border-bottom:1px dashed var(--border); }
+  .od-section:last-child { border-bottom:none; }
+  .od-section h4 { margin:0 0 8px; font-size:13px; text-transform:uppercase; color:#64748b; letter-spacing:.4px; }
+  .timeline-step {
+    display:flex; gap:8px; align-items:center; padding:8px;
+    border:1px solid var(--border); border-radius:8px; background:#f8fafc; margin-bottom:6px; font-size:13px;
+  }
+  .timeline-step.done    { background:#dcfce7; border-color:#86efac; }
+  .timeline-step.current { background:#dbeafe; border-color:#93c5fd; font-weight:600; }
+  .timeline-step .seq { width:22px; height:22px; border-radius:50%; background:#e2e8f0; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; }
+  .timeline-step.done    .seq { background:#16a34a; color:#fff; }
+  .timeline-step.current .seq { background:#1e40af; color:#fff; }
+  .item-row, .charge-row, .field-row { display:flex; gap:8px; padding:5px 0; font-size:13.5px; }
+  .photos { display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:8px; }
+  .photos img { width:100%; height:100px; object-fit:cover; border-radius:6px; cursor:pointer; }
 </style>
 </head>
 <body>
-<div class="topbar"><div class="container"><div>☎ Hotline: 1900 2045</div><div id="topbarRight"></div></div></div>
+<div class="topbar"><div class="container"><div>☎ (028) 6682 5658</div><div id="topbarRight"></div></div></div>
 <header class="site">
   <div class="container">
-    <a class="logo" href="index.html"><span class="logo-mark">GV</span> GPS VIỆT</a>
-    <button class="nav-toggle" aria-label="Mở menu" onclick="this.nextElementSibling.classList.toggle('open')">☰</button>
+    <a class="logo" href="index.html"><span class="logo-mark">VG</span> VINAGPS</a>
     <nav class="main">
       <a href="index.html">Trang chủ</a>
       <a href="products.html">Sản phẩm</a>
       <a href="orders.html" class="active">Đơn của tôi</a>
-      <a href="warranty.html">Bảo hành</a>
-      <a href="compliance.html">Nghị định 10</a>
       <a href="guide.html">Hướng dẫn</a>
       <a href="about.html">Về chúng tôi</a>
     </nav>
-    <div class="header-actions">
-      <div id="topUser" class="row" style="gap:10px"></div>
-    </div>
+    <div class="header-actions"><div id="topUser" class="row" style="gap:10px"></div></div>
   </div>
 </header>
 
-<div class="container" style="padding:30px 20px;max-width:1000px">
-  <div class="spread mb-2">
+<div class="container" style="padding:30px 20px;max-width:900px">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:18px">
     <div>
-      <h1 id="pageTitle" style="margin:0">Đơn của tôi</h1>
-      <p class="text-muted mb-0" id="userInfo">—</p>
+      <h1 style="margin:0">Đơn của tôi</h1>
+      <p class="text-muted" id="userInfo">—</p>
     </div>
-    <div class="row" style="gap:8px">
-      <button class="btn ghost" id="btnNewBadge">🪪 Đăng ký phù hiệu</button>
-      <button class="btn" id="btnNewOrder">+ Tạo đơn mới</button>
-    </div>
+    <a href="order.html" class="btn">+ Tạo đơn mới</a>
   </div>
 
-  <div class="stat-cards dealer-only" id="dealerStats">
-    <div class="stat"><div class="icon">📦</div>
-      <div><div class="label">Tổng đơn</div><div class="value" id="stat-total">—</div></div>
-    </div>
-    <div class="stat"><div class="icon green">✓</div>
-      <div><div class="label">Hoàn thành</div><div class="value" id="stat-done">—</div></div>
-    </div>
-    <div class="stat"><div class="icon red">💳</div>
-      <div><div class="label">Công nợ</div><div class="value" id="stat-debt">—</div></div>
-    </div>
-  </div>
-
-  <div id="ordersList"></div>
+  <div id="ordersList"><p class="text-muted">Đang tải…</p></div>
 </div>
 
-<!-- Modal tao don -->
 <div id="modal" class="modal-bg">
-  <div class="modal" style="max-width:680px">
+  <div class="modal" style="max-width:760px">
     <div class="modal-head">
-      <h3>Tạo đơn yêu cầu</h3>
-      <button type="button" class="modal-close" id="modalClose" aria-label="Đóng">×</button>
+      <h3 id="modalTitle">Chi tiết đơn</h3>
+      <button type="button" class="modal-close" id="modalClose">×</button>
     </div>
-    <form id="frm" style="display:contents">
-      <div class="modal-body">
-        <p class="help" id="orderModalHelp">Đơn của bạn sẽ được admin duyệt và liên hệ chốt giá. Giá hiển thị là gợi ý, có thể thay đổi.</p>
-        <div class="field">
-          <label><b>Loại dịch vụ *</b></label>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px">
-            <label style="cursor:pointer;padding:8px;border:1px solid var(--border);border-radius:6px"><input type="radio" name="service_kind" value="install" checked> 🛠️ Lắp mới</label>
-            <label style="cursor:pointer;padding:8px;border:1px solid var(--border);border-radius:6px"><input type="radio" name="service_kind" value="renewal"> 🔄 Gia hạn</label>
-            <label style="cursor:pointer;padding:8px;border:1px solid var(--border);border-radius:6px"><input type="radio" name="service_kind" value="maintenance"> 🔧 Sửa chữa</label>
-            <label style="cursor:pointer;padding:8px;border:1px solid var(--border);border-radius:6px"><input type="radio" name="service_kind" value="warranty"> 🛡️ Bảo hành</label>
-          </div>
-        </div>
-        <div class="field" id="itemsField">
-          <label>Sản phẩm cần mua *</label>
-          <div id="itemsList"></div>
-          <button type="button" class="btn ghost sm" id="btnAddItem">+ Thêm sản phẩm</button>
-        </div>
-        <div class="grid cols-2">
-          <div class="field">
-            <label>Khu vực</label>
-            <input type="text" id="f_area" class="input" placeholder="VD: Quận 1, TP HCM">
-          </div>
-          <div class="field">
-            <label>Biển số xe (nếu có)</label>
-            <input type="text" id="f_plate" class="input" placeholder="51A-12345">
-          </div>
-        </div>
-        <div id="renewalFields" style="display:none">
-          <div class="field">
-            <label>Tài khoản app theo dõi (nếu nhớ)</label>
-            <input type="text" id="f_sub_account" class="input" placeholder="VD: demoxetai">
-            <p class="help" style="margin:4px 0 0 0;font-size:12px">Dùng để admin tra trên hệ GoTrack. Để trống nếu không nhớ.</p>
-          </div>
-        </div>
-        <div class="field">
-          <label>Địa chỉ lắp đặt *</label>
-          <input type="text" id="f_address" class="input" required>
-        </div>
-        <div class="field">
-          <label>Ghi chú</label>
-          <textarea id="f_note" class="textarea" placeholder="VD: Lắp giùm sáng mai..."></textarea>
-        </div>
-      </div>
-      <div class="modal-foot">
-        <button type="button" class="btn ghost" id="btnCancel">Hủy</button>
-        <button type="submit" class="btn" id="btnSave">Gửi yêu cầu</button>
-      </div>
-    </form>
+    <div class="modal-body" id="odBody" style="padding:14px"></div>
   </div>
 </div>
-
-<!-- Modal chi tiet don -->
-<div id="detailModal" class="modal-bg">
-  <div class="modal" style="max-width:680px">
-    <div class="modal-head">
-      <h3 id="detailTitle" style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:0">Chi tiết đơn</h3>
-      <button type="button" class="modal-close" id="detailClose">×</button>
-    </div>
-    <div class="modal-body" id="detailBody"></div>
-    <div class="modal-foot">
-      <button type="button" class="btn ghost" id="detailCloseBtn">Đóng</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal dang ky phu hieu -->
-<div id="badgeModal" class="modal-bg">
-  <div class="modal" style="max-width:560px">
-    <div class="modal-head">
-      <h3>🪪 Đăng ký phù hiệu xe</h3>
-      <button type="button" class="modal-close" id="badgeClose">×</button>
-    </div>
-    <form id="badgeFrm" style="display:contents">
-      <div class="modal-body">
-        <p class="help">Phù hiệu xe theo Nghị định 10. Sau khi gửi, công ty sẽ tiếp nhận → nộp Sở GTVT → giao tận nơi. Phí dịch vụ sẽ được báo lại sau khi tiếp nhận hồ sơ.</p>
-        <div class="field">
-          <label>Biển số xe *</label>
-          <input type="text" id="bg_plate" class="input" required placeholder="51A-12345">
-        </div>
-        <div class="field">
-          <label>Ghi chú</label>
-          <textarea id="bg_note" class="textarea" placeholder="Ngày cấp đăng ký xe, kích cỡ..."></textarea>
-        </div>
-        <div class="field">
-          <label>Hồ sơ kèm theo</label>
-          <div style="background:#f8fafc;padding:10px;border-radius:8px;border:1px dashed var(--border)">
-            <p class="help mt-0 mb-2">📎 Đính kèm ảnh giấy đăng ký xe, GPKD vận tải, CCCD, hoặc bất kỳ tệp nào khác.</p>
-            <div id="bg_uploads" style="display:flex;flex-direction:column;gap:6px"></div>
-            <div class="row" style="gap:8px;margin-top:8px;align-items:center">
-              <input type="file" id="bg_file_input" accept="image/*" multiple style="display:none">
-              <button type="button" class="btn ghost sm" id="btnBgAddFile">+ Thêm tệp</button>
-              <span class="text-muted" style="font-size:12px">Tối đa 5MB / tệp · ảnh</span>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="modal-foot">
-        <button type="button" class="btn ghost" id="badgeCancel">Hủy</button>
-        <button type="submit" class="btn">Gửi yêu cầu</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- Modal xem anh -->
-<div id="imgModal" class="modal-bg" style="z-index:9999">
-  <div class="modal" style="max-width:90vw">
-    <div class="modal-head"><h3>Ảnh</h3><button type="button" class="modal-close" id="imgClose">×</button></div>
-    <div class="modal-body" style="text-align:center"><img id="imgEl" style="max-width:100%;max-height:75vh"></div>
-  </div>
-</div>
-
-<footer class="site"><div class="container bottom">© 2025 GPS Việt</div></footer>
 
 <script src="/shared/js/ui.js"></script>
 <script src="/shared/js/api.js"></script>
 <script src="/shared/js/auth.js"></script>
 <script src="/shared/js/customer-topbar.js"></script>
-<script src="/shared/js/chat-with-admin.js"></script>
-<script src="/shared/js/imgbb.js"></script>
 <script src="/customer/orders.js"></script>
 </body>
 </html>

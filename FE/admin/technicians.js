@@ -30,33 +30,37 @@
     const roleBadge = s.role === 'admin'
       ? '<span class="pill blue">Quản trị</span>'
       : '<span class="pill amber">Kỹ thuật</span>';
+    const active = s.active_tasks || 0;
+    const done   = s.completed_tasks || 0;
+    const hold   = s.holding_items || 0;
+    const isKtv  = s.role === 'kithuat';
     return `
       <div class="ktv-card" data-id="${s.id}">
+        <span class="role-tag">${roleBadge}</span>
         <div class="ktv-head">
           ${avatarHtml(s)}
           <div style="flex:1;min-width:0">
             <div class="ktv-name">${escape(s.full_name)}</div>
-            <div class="ktv-username">@${escape(s.username)} ${roleBadge}</div>
+            <div class="ktv-username">@${escape(s.username)}</div>
           </div>
         </div>
         <div class="ktv-meta">
           <span><span class="online-dot ${onlineCls}"></span>${onlineLabel}</span>
-          ${s.area ? `<span>📍 <b>${escape(s.area)}</b></span>` : '<span class="text-muted">Chưa gán khu vực</span>'}
+          ${s.area ? `<span>📍 <b>${escape(s.area)}</b></span>` : '<span class="text-muted">📍 Chưa gán</span>'}
           ${s.phone ? `<span>📞 ${escape(s.phone)}</span>` : ''}
         </div>
         <div class="ktv-stats">
-          <div style="flex:1"><span class="stat-num">${s.active_tasks || 0}</span><span class="text-muted">Đang làm</span></div>
-          <div style="flex:1"><span class="stat-num">${s.completed_tasks || 0}</span><span class="text-muted">Đã xong</span></div>
-          <div style="flex:1"><span class="stat-num">${s.holding_items || 0}</span><span class="text-muted">Đang giữ TB</span></div>
-        </div>
-        <div class="ktv-stats" style="border:none;padding:0">
-          <div style="flex:1">⭐ <b>${(s.rating || 0).toFixed ? (s.rating).toFixed(1) : Number(s.rating || 0).toFixed(1)}</b></div>
+          <div class="stat ${active ? '' : 'zero'}"><span class="stat-num">${active}</span><span class="stat-lbl">Đang làm</span></div>
+          <div class="stat ${done ? '' : 'zero'}"><span class="stat-num">${done}</span><span class="stat-lbl">Đã xong</span></div>
+          <div class="stat ${hold ? 'warn' : 'zero'}"><span class="stat-num">${hold}</span><span class="stat-lbl">Đang giữ TB</span></div>
         </div>
         <div class="ktv-actions">
-          ${s.role === 'kithuat' ? `<button class="btn sm" data-act="assign" data-id="${s.id}">Phân đơn</button>` : ''}
-          <button class="btn ghost sm" data-act="edit" data-id="${s.id}">Sửa</button>
-          <button class="btn ghost sm" data-act="pw" data-id="${s.id}">Đổi MK</button>
-          <button class="btn ghost sm" data-act="del" data-id="${s.id}" style="color:var(--danger)">Xóa</button>
+          ${isKtv ? `<button class="btn sm full" data-act="assign" data-id="${s.id}">📋 Phân đơn</button>` : ''}
+          ${isKtv ? `<button class="btn sm full" data-act="issue" data-id="${s.id}" style="background:#0ea5e9">📤 Cấp sản phẩm</button>` : ''}
+          ${isKtv ? `<a class="btn ghost sm full" href="/admin/payroll.html?staff=${s.id}" style="background:#16a34a;color:#fff;border-color:#16a34a">💵 Bảng lương</a>` : ''}
+          <button class="btn ghost sm" data-act="edit" data-id="${s.id}">✏️ Sửa</button>
+          <button class="btn ghost sm" data-act="pw" data-id="${s.id}">🔑 Đổi MK</button>
+          <button class="btn ghost sm full" data-act="del" data-id="${s.id}" style="color:var(--danger)">🗑️ Xóa</button>
         </div>
       </div>
     `;
@@ -182,7 +186,7 @@
             👤 ${escape(t.customer_name || '')}
             ${t.customer_phone ? '· 📞 ' + escape(t.customer_phone) : ''}
             ${t.area ? '· 📍 ' + escape(t.area) : ''}
-            ${t.vehicle_plate ? '· 🚗 ' + escape(t.vehicle_plate) : ''}
+            
           </div>
           <div class="text-muted" style="font-size:13px">
             💵 Tổng đơn: <b>${fmt.format(t.total_amount || 0)}đ</b>
@@ -211,6 +215,349 @@
     assigningKtv = null;
   }
 
+  // ==================== MODAL CAP SAN PHAM ====================
+  let issueKtv = null;
+  let issueProducts = [];   // [{id, code, name}]
+  let issueProductMap = {}; // by id
+  let issueProductLabelMap = {}; // by "CODE · NAME" -> id
+  let issueStockMap = {};   // product_id -> qty
+  let issueFilterStatus = '';
+  const STATUS_LABEL = {
+    draft:     { text: 'Chờ duyệt',    cls: 'cap-draft' },
+    approved:  { text: 'Đã duyệt',     cls: 'cap-approved' },
+    received:  { text: 'KTV đã nhận',  cls: 'cap-received' },
+    rejected:  { text: 'Từ chối',      cls: 'cap-rejected' },
+    cancelled: { text: 'Đã huỷ',       cls: 'cap-cancelled' },
+  };
+  function statusPill(s) {
+    const def = STATUS_LABEL[s] || { text: s, cls: 'cap-cancelled' };
+    return `<span class="pill ${def.cls}">${def.text}</span>`;
+  }
+  function fmtTime(d) {
+    if (!d) return '—';
+    const dt = new Date(d);
+    if (isNaN(dt)) return String(d).slice(0, 10);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(dt.getDate())}/${pad(dt.getMonth()+1)} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+  }
+  function productLabel(p) { return `${p.code} · ${p.name}`; }
+
+  async function openIssueModal(ktv) {
+    issueKtv = ktv;
+    $('issKtvName').textContent = ktv.full_name;
+    $('issueModal').classList.add('open');
+
+    if (!issueProducts.length) {
+      const [pr, st] = await Promise.all([
+        api.get('/admin/inventory/products/all', { silent: true }).catch(() => null),
+        api.get('/admin/inventory/stock?limit=500',     { silent: true }).catch(() => null),
+      ]);
+      issueProducts = (pr && (pr.items || pr)) || [];
+      issueProductMap = {};
+      issueProductLabelMap = {};
+      issueProducts.forEach(p => {
+        issueProductMap[p.id] = p;
+        issueProductLabelMap[productLabel(p)] = p.id;
+      });
+      issueStockMap = {};
+      const stockItems = (st && (st.items || st)) || [];
+      stockItems.forEach(s => { issueStockMap[s.product_id] = Number(s.quantity) || 0; });
+
+      // Render datalist 1 lan
+      $('issProdList').innerHTML = issueProducts.map(p =>
+        `<option value="${escape(productLabel(p))}">`).join('');
+    }
+    $('issLines').innerHTML = '';
+    addIssueLine();
+    $('issNote').value = '';
+    updateIssueSummary();
+    issueFilterStatus = '';
+    $('issFilter').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.st === ''));
+    loadIssueHistory();
+  }
+  function closeIssueModal() {
+    $('issueModal').classList.remove('open');
+    issueKtv = null;
+  }
+
+  function addIssueLine() {
+    const idx = Date.now() + Math.random();
+    const row = document.createElement('tr');
+    row.className = 'iss-create-row';
+    row.dataset.idx = idx;
+    row.innerHTML = `
+      <td class="iss-prod-cell">
+        <input type="text" class="input cProd" list="issProdList" placeholder="Gõ mã hoặc tên SP...">
+        <span class="stock-hint" style="display:none"></span>
+      </td>
+      <td><input type="number" class="input qty cQty" min="1" value="1"></td>
+      <td><textarea class="input imei cImei" rows="1" placeholder="868001&#10;868002 (mỗi IMEI 1 dòng)"></textarea></td>
+      <td><button type="button" class="rm" data-rm="${idx}" title="Xoá dòng">×</button></td>
+    `;
+    $('issLines').appendChild(row);
+    // Auto focus o SP cua dong moi
+    setTimeout(() => row.querySelector('.cProd').focus(), 30);
+  }
+
+  function updateRowStock(row) {
+    const val = row.querySelector('.cProd').value.trim();
+    const pid = issueProductLabelMap[val];
+    const hint = row.querySelector('.stock-hint');
+    const qtyInput = row.querySelector('.cQty');
+    if (!pid) {
+      hint.style.display = 'none';
+      qtyInput.removeAttribute('max');
+      return;
+    }
+    const stock = issueStockMap[pid] || 0;
+    hint.textContent = `Tồn: ${stock}`;
+    hint.style.display = '';
+    const qty = Number(qtyInput.value) || 0;
+    hint.classList.toggle('low', qty > stock || stock === 0);
+  }
+
+  function updateIssueSummary() {
+    let sum = 0;
+    for (const row of $('issLines').querySelectorAll('.iss-create-row')) {
+      const val = row.querySelector('.cProd').value.trim();
+      if (issueProductLabelMap[val]) sum += Number(row.querySelector('.cQty').value) || 0;
+    }
+    $('issSumQty').textContent = sum;
+  }
+
+  async function submitIssueCreate() {
+    if (!issueKtv) return;
+    const items = [];
+    const seen = new Set();
+    for (const row of $('issLines').querySelectorAll('.iss-create-row')) {
+      const val = row.querySelector('.cProd').value.trim();
+      if (!val) continue;
+      const pid = issueProductLabelMap[val];
+      if (!pid) { ui.toast(`Sản phẩm "${val}" không hợp lệ`, 'warning'); return; }
+      const qty = Number(row.querySelector('.cQty').value);
+      const imei = row.querySelector('.cImei').value.trim();
+      if (!qty || qty <= 0) { ui.toast('Số lượng phải > 0', 'warning'); return; }
+      if (seen.has(pid)) { ui.toast('Mỗi sản phẩm chỉ 1 dòng', 'warning'); return; }
+      seen.add(pid);
+      items.push({ product_id: pid, qty_requested: qty, imei_list: imei || null });
+    }
+    if (!items.length) { ui.toast('Chọn ít nhất 1 sản phẩm', 'warning'); return; }
+    const ok = await api.post('/admin/staff-issues', {
+      staff_id: issueKtv.id,
+      note: $('issNote').value.trim() || null,
+      items,
+    }, { successMessage: 'Đã tạo phiếu, chờ duyệt' }).catch(() => null);
+    if (!ok) return;
+    $('issLines').innerHTML = '';
+    addIssueLine();
+    $('issNote').value = '';
+    updateIssueSummary();
+    loadIssueHistory();
+  }
+
+  async function loadIssueHistory() {
+    if (!issueKtv) return;
+    const wrap = $('issHistory');
+    wrap.innerHTML = '<div class="iss-empty">Đang tải...</div>';
+    const params = new URLSearchParams();
+    params.set('staff_id', issueKtv.id);
+    params.set('limit', 50);
+    if (issueFilterStatus) params.set('status', issueFilterStatus);
+    const r = await api.get(`/admin/staff-issues?${params.toString()}`, { silent: true })
+      .catch(() => null);
+    const items = (r && r.items) || [];
+
+    // Lay so phieu draft tong (khong theo filter) cho badge
+    const rAll = issueFilterStatus
+      ? await api.get(`/admin/staff-issues?staff_id=${issueKtv.id}&status=draft&limit=1`, { silent: true }).catch(() => null)
+      : { total: items.filter(x => x.status === 'draft').length };
+    const draftCount = (rAll && rAll.total) || 0;
+    const badge = $('issDraftBadge');
+    if (draftCount > 0) {
+      badge.textContent = `${draftCount} chờ duyệt`;
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+
+    if (!items.length) {
+      wrap.innerHTML = '<div class="iss-empty">Chưa có phiếu nào</div>';
+      return;
+    }
+    wrap.innerHTML = items.map(it => `
+      <div class="iss-card ${it.status}" data-id="${it.id}">
+        <div class="iss-card-head">
+          <span class="code">${escape(it.code)}</span>
+          ${statusPill(it.status)}
+          <span class="meta">
+            ${it.line_count} dòng · YC <b>${it.total_requested || 0}</b>${it.status !== 'draft' ? ` · Duyệt <b>${it.total_approved || 0}</b>` : ''}
+            <br><small>${escape(fmtTime(it.created_at))}${it.created_by_name ? ' · ' + escape(it.created_by_name) : ''}</small>
+          </span>
+          <span class="arrow">▾</span>
+        </div>
+        <div class="iss-items"></div>
+      </div>
+    `).join('');
+  }
+
+  async function expandIssueCard(card) {
+    const id = Number(card.dataset.id);
+    const slot = card.querySelector('.iss-items');
+    if (card.classList.contains('open')) {
+      card.classList.remove('open');
+      return;
+    }
+    card.classList.add('open');
+    slot.innerHTML = '<div class="iss-empty">Đang tải...</div>';
+    const d = await api.get(`/admin/staff-issues/${id}`, { silent: true }).catch(() => null);
+    if (!d) { slot.innerHTML = '<div class="iss-empty">Lỗi tải</div>'; return; }
+    const editable = d.status === 'draft';
+    const head = editable
+      ? `<tr><th>Sản phẩm</th><th style="width:90px">SL YC</th><th style="width:80px">Tồn kho</th><th style="width:90px">SL duyệt</th><th>IMEI</th></tr>`
+      : `<tr><th>Sản phẩm</th><th style="width:90px">SL YC</th><th style="width:90px">SL duyệt</th><th>IMEI</th></tr>`;
+    const body = d.items.map(it => {
+      if (editable) {
+        const ok = it.stock_qty >= it.qty_requested;
+        return `<tr data-item-id="${it.id}" data-req="${it.qty_requested}">
+          <td>${escape(it.product_code)} · ${escape(it.product_name)}</td>
+          <td>${it.qty_requested}</td>
+          <td><span class="${ok ? 'iss-ok' : 'iss-low'}">${it.stock_qty}</span></td>
+          <td><input type="number" class="input qty" min="0" max="${it.qty_requested}" value="${Math.min(it.qty_requested, it.stock_qty)}"></td>
+          <td class="imei">${escape(it.imei_list || '')}</td>
+        </tr>`;
+      }
+      return `<tr>
+        <td>${escape(it.product_code)} · ${escape(it.product_name)}</td>
+        <td>${it.qty_requested}</td>
+        <td>${it.qty_approved == null ? '—' : it.qty_approved}</td>
+        <td class="imei">${escape(it.imei_list || '')}</td>
+      </tr>`;
+    }).join('');
+
+    let extra = '';
+    if (d.note) {
+      extra += `<div class="extra"><b>Ghi chú:</b> ${escape(d.note)}</div>`;
+    }
+    if (d.approved_at) {
+      extra += `<div class="extra"><b>Duyệt:</b> ${escape(d.approved_by_name || '')} · ${escape(fmtTime(d.approved_at))}${d.receipt_code ? ' · phiếu xuất ' + escape(d.receipt_code) : ''}</div>`;
+    }
+    if (d.received_at) {
+      extra += `<div class="extra"><b>KTV nhận:</b> ${escape(fmtTime(d.received_at))}</div>`;
+    }
+    if (d.received_photo_url) {
+      extra += `<div class="extra"><b>Ảnh nhận:</b><br><a href="${escape(d.received_photo_url)}" target="_blank" class="iss-photo"><img src="${escape(d.received_photo_url)}"></a></div>`;
+    }
+    if (d.rejected_reason) {
+      extra += `<div class="extra" style="color:#dc2626"><b>Lý do từ chối:</b> ${escape(d.rejected_reason)}</div>`;
+    }
+
+    const acts = editable ? `
+      <div class="acts">
+        <button type="button" class="btn ghost sm" data-act="iss-reject">Từ chối</button>
+        <button type="button" class="btn primary sm" data-act="iss-approve">Duyệt phiếu</button>
+      </div>
+    ` : '';
+
+    slot.innerHTML = `
+      <table><thead>${head}</thead><tbody>${body}</tbody></table>
+      ${extra}
+      ${acts}
+    `;
+  }
+
+  async function approveIssue(card) {
+    const id = Number(card.dataset.id);
+    const approvals = [];
+    for (const tr of card.querySelectorAll('tr[data-item-id]')) {
+      const itemId = Number(tr.dataset.itemId);
+      const qa = Number(tr.querySelector('.qty').value);
+      if (!Number.isFinite(qa) || qa < 0) {
+        ui.toast('Số lượng duyệt không hợp lệ', 'warning'); return;
+      }
+      approvals.push({ item_id: itemId, qty_approved: qa });
+    }
+    const total = approvals.reduce((s, a) => s + a.qty_approved, 0);
+    if (total === 0) {
+      const ok = await ui.confirm({
+        title: 'Tất cả dòng = 0',
+        message: 'Phiếu sẽ chuyển sang TỪ CHỐI. Tiếp tục?',
+        type: 'warning',
+      });
+      if (!ok) return;
+    }
+    const ok = await api.post(`/admin/staff-issues/${id}/approve`, { approvals },
+      { successMessage: total > 0 ? 'Đã duyệt + xuất kho' : 'Đã chuyển sang từ chối' })
+      .catch(() => null);
+    if (ok) loadIssueHistory();
+  }
+
+  async function rejectIssue(card) {
+    const id = Number(card.dataset.id);
+    const reason = prompt('Lý do từ chối:');
+    if (!reason || !reason.trim()) return;
+    const ok = await api.post(`/admin/staff-issues/${id}/reject`, { reason: reason.trim() },
+      { successMessage: 'Đã từ chối phiếu' }).catch(() => null);
+    if (ok) loadIssueHistory();
+  }
+
+  function bindIssueModal() {
+    $('issClose').addEventListener('click', closeIssueModal);
+    $('issueModal').addEventListener('click', (e) => {
+      if (e.target.id === 'issueModal') closeIssueModal();
+    });
+    $('issAddLine').addEventListener('click', addIssueLine);
+
+    // Form events: xoa dong, update stock hint + summary realtime
+    $('issLines').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-rm]');
+      if (!btn) return;
+      const row = $('issLines').querySelector(`.iss-create-row[data-idx="${btn.dataset.rm}"]`);
+      if (row && $('issLines').children.length > 1) {
+        row.remove();
+        updateIssueSummary();
+      }
+    });
+    $('issLines').addEventListener('input', (e) => {
+      const row = e.target.closest('.iss-create-row');
+      if (!row) return;
+      if (e.target.classList.contains('cProd') || e.target.classList.contains('cQty')) {
+        updateRowStock(row);
+        updateIssueSummary();
+      }
+    });
+    $('issLines').addEventListener('change', (e) => {
+      const row = e.target.closest('.iss-create-row');
+      if (!row) return;
+      if (e.target.classList.contains('cProd')) {
+        // Khi user chon datalist option, qty input van giu nguyen — chi update hint
+        updateRowStock(row);
+        updateIssueSummary();
+      }
+    });
+
+    $('issSubmit').addEventListener('click', submitIssueCreate);
+
+    // Filter
+    $('issFilter').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-st]');
+      if (!btn) return;
+      $('issFilter').querySelectorAll('button').forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+      issueFilterStatus = btn.dataset.st;
+      loadIssueHistory();
+    });
+
+    // History click
+    $('issHistory').addEventListener('click', (e) => {
+      const approveBtn = e.target.closest('button[data-act="iss-approve"]');
+      const rejectBtn  = e.target.closest('button[data-act="iss-reject"]');
+      if (approveBtn) { approveIssue(approveBtn.closest('.iss-card')); return; }
+      if (rejectBtn)  { rejectIssue(rejectBtn.closest('.iss-card'));  return; }
+      const card = e.target.closest('.iss-card');
+      if (card && !e.target.closest('input, button, a')) expandIssueCard(card);
+    });
+  }
+
   // ---- Click handler -----------------------------------------
   async function handleGridClick(e) {
     const btn = e.target.closest('button[data-act]');
@@ -224,6 +571,8 @@
       openModal(s);
     } else if (act === 'assign') {
       openAssignModal(s);
+    } else if (act === 'issue') {
+      openIssueModal(s);
     } else if (act === 'pw') {
       const newPw = prompt(`Nhập mật khẩu mới cho @${s.username}:`);
       if (!newPw) return;
@@ -271,6 +620,8 @@
     $('assignModal').addEventListener('click', (e) => { if (e.target.id === 'assignModal') closeAssignModal(); });
 
     $('ktvGrid').addEventListener('click', handleGridClick);
+
+    bindIssueModal();
 
     load();
   }

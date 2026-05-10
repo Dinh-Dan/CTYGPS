@@ -7,7 +7,10 @@ const path = require('path');
 const crypto = require('crypto');
 const db = require('../db');
 const { verifyToken, requireRole } = require('../middleware/auth');
-const { recalcOrderFinalStatus, recalcOrderTotal } = require('../utils/orderState');
+const {
+  recalcPaymentStatus, recalcOrderTotal,
+  loadTemplateSteps, validateTransition,
+} = require('../utils/orderState');
 const notify = require('../utils/notify');
 
 const router = express.Router();
@@ -73,11 +76,11 @@ router.get('/me', async (req, res, next) => {
 
     const [stats] = await db.query(
       `SELECT
-        SUM(CASE WHEN status IN ('assigned','warehouse_released','in_progress') THEN 1 ELSE 0 END) AS active_tasks,
-        SUM(CASE WHEN status IN ('done','customer_owes','staff_owes','pending_admin_confirm') THEN 1 ELSE 0 END) AS completed_tasks,
-        SUM(CASE WHEN status IN ('done','customer_owes','staff_owes','pending_admin_confirm')
-              AND DATE(completed_at)=CURDATE() THEN 1 ELSE 0 END) AS done_today,
-        SUM(CASE WHEN status IN ('done','customer_owes','staff_owes','pending_admin_confirm')
+        SUM(CASE WHEN status IN ('confirmed','in_progress') THEN 1 ELSE 0 END) AS active_tasks,
+        SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS completed_tasks,
+        SUM(CASE WHEN status = 'done'
+              AND DATE(completed_at) = CURDATE() THEN 1 ELSE 0 END) AS done_today,
+        SUM(CASE WHEN status = 'done'
               AND YEAR(completed_at)=YEAR(CURDATE()) AND MONTH(completed_at)=MONTH(CURDATE())
               THEN wage_amount ELSE 0 END) AS wage_this_month
        FROM orders WHERE assigned_staff_id = ? AND is_deleted = 0`, [id]
@@ -160,72 +163,60 @@ router.get('/me/reviews', async (req, res, next) => {
 // /orders — danh sach don cua KTV (sau refactor merge tasks->orders)
 // ==========================================================
 //
-// Status filter (group theo y nghia voi KTV, map sang orders.status):
-//   ?status=new          -> 'assigned','warehouse_released' (chua bat dau)
-//   ?status=in_progress  -> 'in_progress'
-//   ?status=done         -> done + 3 status no (FINAL_STATUSES)
-//   ?status=cancelled    -> 'cancelled'
-//
-const STATUS_GROUP = {
-  new:         ['assigned','warehouse_released'],
-  in_progress: ['in_progress'],
-  done:        ['done','customer_owes','staff_owes','pending_admin_confirm'],
-  cancelled:   ['cancelled'],
-};
-
+// Filter ?bucket: active = chua done (completed_at IS NULL), done = da done, cancelled = huy.
+// Hoac truyen ?status=<step.code> de loc dung 1 buoc cu the cua template.
 router.get('/orders', async (req, res, next) => {
   try {
-    const status   = req.query.status;
+    const bucket   = req.query.bucket;
+    const status   = req.query.status;     // step.code cu the
     const today    = req.query.today === '1';
-    const kind     = req.query.kind;
-    const payment  = req.query.payment;   // unpaid | paid | none
+    const tplId    = Number(req.query.template_id) || 0;
+    const payment  = req.query.payment;
     const dateFrom = req.query.date_from || null;
     const dateTo   = req.query.date_to   || null;
     const q        = (req.query.q || '').trim();
 
     const where = ['o.assigned_staff_id = ?', 'o.is_deleted = 0'];
     const args = [req.user.sub];
-    if (status && STATUS_GROUP[status]) {
-      const list = STATUS_GROUP[status];
-      where.push(`o.status IN (${list.map(() => '?').join(',')})`);
-      args.push(...list);
-    }
-    if (today) {
-      where.push(`(DATE(o.due_at) = CURDATE() OR (o.due_at IS NULL AND o.status IN ('assigned','warehouse_released','in_progress')))`);
-    }
-    if (kind && ['install','maintenance','renew','uninstall'].includes(kind)) {
-      where.push('o.kind = ?'); args.push(kind);
-    }
-    if (dateFrom) {
-      where.push('DATE(COALESCE(o.completed_at, o.due_at, o.started_at)) >= ?');
-      args.push(dateFrom);
-    }
-    if (dateTo) {
-      where.push('DATE(COALESCE(o.completed_at, o.due_at, o.started_at)) <= ?');
-      args.push(dateTo);
-    }
-    if (q) {
-      where.push('(o.code LIKE ? OR c.full_name LIKE ? OR c.phone LIKE ? OR o.vehicle_plate LIKE ?)');
-      const like = '%' + q + '%';
-      args.push(like, like, like, like);
+
+    if (status) {
+      where.push('o.status = ?'); args.push(status);
+    } else if (bucket === 'active') {
+      where.push(`o.status NOT IN ('pending','cancelled') AND o.completed_at IS NULL`);
+    } else if (bucket === 'done') {
+      where.push('o.completed_at IS NOT NULL AND o.status != ' + "'cancelled'");
+    } else if (bucket === 'cancelled') {
+      where.push("o.status = 'cancelled'");
     }
 
-    // payment filter dua tren collection cua don
-    if (payment === 'unpaid') {
-      where.push('col.id IS NOT NULL AND col.remitted = 0');
-    } else if (payment === 'paid') {
-      where.push('col.id IS NOT NULL AND col.remitted = 1');
-    } else if (payment === 'none') {
-      where.push('col.id IS NULL');
+    if (tplId)   {
+      where.push('EXISTS (SELECT 1 FROM order_lines ol WHERE ol.order_id = o.id AND ol.template_id = ? AND ol.is_deleted = 0)');
+      args.push(tplId);
     }
+    if (today)   { where.push(`(DATE(o.due_at) = CURDATE() OR (o.due_at IS NULL AND o.completed_at IS NULL AND o.status NOT IN ('pending','cancelled')))`); }
+    if (dateFrom){ where.push('DATE(COALESCE(o.completed_at, o.due_at, o.started_at)) >= ?'); args.push(dateFrom); }
+    if (dateTo)  { where.push('DATE(COALESCE(o.completed_at, o.due_at, o.started_at)) <= ?'); args.push(dateTo); }
+    if (q) {
+      where.push('(o.code LIKE ? OR c.full_name LIKE ? OR c.phone LIKE ?)');
+      const like = '%' + q + '%';
+      args.push(like, like, like);
+    }
+    if (payment === 'unpaid')      where.push('col.id IS NOT NULL AND col.remitted = 0');
+    else if (payment === 'paid')   where.push('col.id IS NOT NULL AND col.remitted = 1');
+    else if (payment === 'none')   where.push('col.id IS NULL');
 
     const whereSql = 'WHERE ' + where.join(' AND ');
 
     const [rows] = await db.query(
-      `SELECT o.id, o.code, o.kind, o.status, o.due_at, o.started_at, o.completed_at,
+      `SELECT o.id, o.code, o.status, o.payment_status,
+              o.due_at, o.started_at, o.completed_at,
               o.wage_amount, o.ktv_note,
-              o.area, o.address, o.vehicle_plate,
+              o.address,
               o.total_amount, o.paid_amount,
+              (SELECT GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ')
+                 FROM order_lines ol
+                 LEFT JOIN order_templates t ON t.id = ol.template_id
+                WHERE ol.order_id = o.id AND ol.is_deleted = 0) AS template_names,
               c.full_name AS customer_name, c.phone AS customer_phone, c.id AS customer_id,
               col.id AS collection_id, col.remitted AS collection_remitted,
               col.amount AS collection_amount,
@@ -233,19 +224,13 @@ router.get('/orders', async (req, res, next) => {
                 WHEN col.id IS NULL          THEN 'none'
                 WHEN col.remitted = 0        THEN 'unpaid'
                 ELSE                              'paid'
-              END AS payment_status
+              END AS collect_state
          FROM orders o
          LEFT JOIN customers c ON c.id = o.customer_id
          LEFT JOIN collections col ON col.order_id = o.id AND col.is_deleted = 0
          ${whereSql}
          ORDER BY
-           CASE o.status
-             WHEN 'in_progress' THEN 1
-             WHEN 'warehouse_released' THEN 2
-             WHEN 'assigned' THEN 3
-             WHEN 'done' THEN 4
-             ELSE 5
-           END,
+           CASE WHEN o.completed_at IS NULL THEN 0 ELSE 1 END,
            COALESCE(o.due_at, o.completed_at, '9999-12-31') DESC,
            o.id DESC`,
       args
@@ -257,9 +242,10 @@ router.get('/orders', async (req, res, next) => {
 router.get('/orders/:id', async (req, res, next) => {
   try {
     const [rows] = await db.query(
-      `SELECT o.id, o.code, o.kind, o.status, o.due_at, o.started_at, o.completed_at,
+      `SELECT o.id, o.code, o.status, o.payment_status,
+              o.due_at, o.started_at, o.completed_at,
               o.wage_amount, o.ktv_note, o.assigned_staff_id,
-              o.area, o.address, o.vehicle_plate,
+              o.address,
               o.total_amount, o.subtotal, o.paid_amount, o.payment_method, o.note,
               c.id AS customer_id, c.full_name AS customer_name,
               c.phone AS customer_phone, c.address AS customer_address
@@ -270,165 +256,200 @@ router.get('/orders/:id', async (req, res, next) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'Khong tim thay don' });
 
-    const [checklist] = await db.query(
-      `SELECT id, step, is_done, done_at, sort_order
-         FROM order_checklist WHERE order_id = ? ORDER BY sort_order, id`,
-      [req.params.id]
-    );
-    const [attachments] = await db.query(
-      `SELECT id, url, caption, stage, uploaded_at
-         FROM order_attachments WHERE order_id = ? ORDER BY id`,
-      [req.params.id]
+    const [lines] = await db.query(
+      `SELECT ol.id, ol.template_id, ol.custom_name, ol.seq, ol.subtotal, ol.note,
+              COALESCE(ol.custom_name, t.name) AS template_name
+         FROM order_lines ol
+         LEFT JOIN order_templates t ON t.id = ol.template_id
+        WHERE ol.order_id = ? AND ol.is_deleted = 0
+        ORDER BY ol.seq, ol.id`, [req.params.id]
     );
     const [items] = await db.query(
       `SELECT oi.*, p.code AS product_code, p.name AS product_name
          FROM order_items oi
          JOIN products p ON p.id = oi.product_id
-        WHERE oi.order_id = ?`,
-      [req.params.id]
+        WHERE oi.order_id = ?`, [req.params.id]
     );
     const [charges] = await db.query(
-      `SELECT id, kind, label, amount
-         FROM order_charges
-        WHERE order_id = ? AND is_deleted = 0
-        ORDER BY id`,
-      [req.params.id]
+      `SELECT id, line_id, kind, label, amount FROM order_charges
+        WHERE order_id = ? AND is_deleted = 0 AND label != 'Công lắp'
+        ORDER BY id`, [req.params.id]
     );
-    res.json({ ...rows[0], checklist, attachments, items, order_charges: charges });
+    const [fieldValues] = await db.query(
+      `SELECT id, line_id, label, value, seq FROM order_field_values
+        WHERE order_id = ? AND is_deleted = 0 ORDER BY seq, id`, [req.params.id]
+    );
+    const [photos] = await db.query(
+      `SELECT id, step_code, url, caption, uploaded_at
+         FROM order_step_photos WHERE order_id = ? AND is_deleted = 0
+        ORDER BY uploaded_at, id`, [req.params.id]
+    );
+
+    const lineMap = new Map(lines.map(l => [l.id, { ...l, items: [], charges: [], field_values: [] }]));
+    for (const it of items) if (lineMap.has(it.line_id)) lineMap.get(it.line_id).items.push(it);
+    for (const fv of fieldValues) if (lineMap.has(fv.line_id)) lineMap.get(fv.line_id).field_values.push(fv);
+    const orderCharges = [];
+    for (const c of charges) {
+      if (c.line_id == null) orderCharges.push(c);
+      else if (lineMap.has(c.line_id)) lineMap.get(c.line_id).charges.push(c);
+    }
+
+    const steps = await loadTemplateSteps(db);
+    res.json({
+      ...rows[0],
+      lines: Array.from(lineMap.values()),
+      order_charges: orderCharges,
+      step_photos: photos,
+      workflow_steps: steps,
+    });
   } catch (err) { next(err); }
 });
 
-// PATCH /orders/:id/start
-router.patch('/orders/:id/start', async (req, res, next) => {
+// POST /orders/:id/transition — KTV chuyen status (4 trang thai cung).
+// Body: { step_code, progress_note? }
+// done -> auto tru staff_holdings + tao stock_receipt(out, reason='order_consume').
+router.post('/orders/:id/transition', async (req, res, next) => {
+  const conn = await db.getConnection();
   try {
-    const [exist] = await db.query(
+    const id = Number(req.params.id);
+    const target = String(req.body.step_code || '').trim();
+    if (!target) throw httpErr(400, 'Thieu step_code');
+
+    const [rows] = await conn.query(
+      `SELECT id, status, completed_at FROM orders
+        WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
+      [id, req.user.sub]
+    );
+    if (!rows.length) throw httpErr(404, 'Khong tim thay don');
+
+    const steps = await loadTemplateSteps(conn);
+    const v = validateTransition(steps, rows[0].status, target, 'ktv');
+    if (!v.ok) throw httpErr(403, v.error);
+
+    await conn.beginTransaction();
+
+    // Khi chuyen sang done: tru holdings cho moi product trong don.
+    if (target === 'done') {
+      const [needs] = await conn.query(
+        `SELECT product_id, SUM(qty) AS need
+           FROM order_items WHERE order_id = ? GROUP BY product_id`, [id]
+      );
+      if (needs.length) {
+        const code = await genReceiptCode(conn, 'out');
+        const [rIns] = await conn.query(
+          `INSERT INTO stock_receipts
+             (code, kind, reason_code, ref_order_id, ref_staff_id, created_by_staff_id)
+           VALUES (?, 'out', 'order_consume', ?, ?, ?)`,
+          [code, id, req.user.sub, req.user.sub]
+        );
+        const receiptId = rIns.insertId;
+        for (const n of needs) {
+          const need = Number(n.need);
+          const [shRows] = await conn.query(
+            `SELECT id, qty FROM staff_holdings
+              WHERE staff_id = ? AND product_id = ? FOR UPDATE`,
+            [req.user.sub, n.product_id]
+          );
+          if (!shRows.length || Number(shRows[0].qty) < need) {
+            throw httpErr(409, `Khong du SP id=${n.product_id} de hoan thanh (can ${need}, co ${shRows[0]?.qty || 0})`);
+          }
+          if (Number(shRows[0].qty) === need) {
+            await conn.query(`DELETE FROM staff_holdings WHERE id = ?`, [shRows[0].id]);
+          } else {
+            await conn.query(`UPDATE staff_holdings SET qty = qty - ? WHERE id = ?`, [need, shRows[0].id]);
+          }
+          await conn.query(
+            `INSERT INTO stock_receipt_items (receipt_id, product_id, qty)
+             VALUES (?, ?, ?)`, [receiptId, n.product_id, need]
+          );
+        }
+      }
+    }
+
+    const sets = ['status = ?'];
+    const args = [target];
+    if (req.body.progress_note != null) { sets.push('progress_note = ?'); args.push(String(req.body.progress_note)); }
+    if (target === 'done')          sets.push('completed_at = COALESCE(completed_at, NOW())');
+    if (target === 'in_progress')   sets.push('started_at = COALESCE(started_at, NOW())');
+    args.push(id);
+    await conn.query(`UPDATE orders SET ${sets.join(', ')} WHERE id = ?`, args);
+    await conn.commit();
+    res.json({ ok: true, status: target });
+  } catch (err) {
+    try { await conn.rollback(); } catch (_) {}
+    next(err);
+  } finally { conn.release(); }
+});
+
+// PATCH /orders/:id/progress-note
+router.patch('/orders/:id/progress-note', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const note = req.body.progress_note != null ? String(req.body.progress_note) : null;
+    const [r] = await db.query(
+      `UPDATE orders SET progress_note = ?
+        WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
+      [note, id, req.user.sub]
+    );
+    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay don' });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// POST /orders/:id/photos — KTV upload anh tu do gan vao don.
+// Body: { url, caption? }
+router.post('/orders/:id/photos', async (req, res, next) => {
+  try {
+    const [t] = await db.query(
       `SELECT id, status FROM orders
         WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
       [req.params.id, req.user.sub]
     );
-    if (!exist.length) return res.status(404).json({ error: 'Khong tim thay don' });
-    const o = exist[0];
-    if (['done','customer_owes','staff_owes','pending_admin_confirm'].includes(o.status)) {
-      return res.status(400).json({ error: 'Don da hoan thanh' });
-    }
-    if (o.status === 'cancelled') return res.status(400).json({ error: 'Don da huy' });
-    // BAT BUOC: don phai duoc QTV xuat kho truoc khi KTV bam Nhan don.
-    if (o.status !== 'warehouse_released' && o.status !== 'in_progress') {
-      return res.status(409).json({
-        error: 'Don chua xuat kho — QTV phai bam "Xuat kho" truoc khi ban nhan don',
-      });
-    }
-
-    await db.query(
-      `UPDATE orders SET status = 'in_progress', started_at = COALESCE(started_at, NOW())
-        WHERE id = ? AND status = 'warehouse_released'`, [req.params.id]
-    );
-    const [rows] = await db.query(`SELECT * FROM orders WHERE id = ?`, [req.params.id]);
-    res.json(rows[0]);
-  } catch (err) { next(err); }
-});
-
-// PATCH /orders/:id/checklist/:stepId — toggle done
-router.patch('/orders/:id/checklist/:stepId', async (req, res, next) => {
-  try {
-    // Verify don la cua KTV nay
-    const [t] = await db.query(
-      `SELECT id FROM orders WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
-      [req.params.id, req.user.sub]
-    );
     if (!t.length) return res.status(404).json({ error: 'Khong tim thay don' });
+    if (t[0].status === 'cancelled') return res.status(400).json({ error: 'Don da huy' });
 
-    const isDone = req.body.is_done ? 1 : 0;
-    await db.query(
-      `UPDATE order_checklist
-          SET is_done = ?, done_at = ?
-        WHERE id = ? AND order_id = ?`,
-      [isDone, isDone ? new Date() : null, req.params.stepId, req.params.id]
-    );
-    const [rows] = await db.query(`SELECT * FROM order_checklist WHERE id = ?`, [req.params.stepId]);
-    res.json(rows[0]);
-  } catch (err) { next(err); }
-});
-
-// POST /tasks/:id/upload — luu URL anh proof (anh da upload san len imgbb tu FE)
-// Body: { url, caption?, stage? }
-// stage: 'receive' | 'deliver' | 'other' (mac dinh 'other')
-// url phai la https://i.ibb.co/... hoac https://image.ibb.co/...
-router.post('/orders/:id/upload', async (req, res, next) => {
-  try {
-    const [t] = await db.query(
-      `SELECT id, status FROM orders
-        WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
-      [req.params.id, req.user.sub]
-    );
-    if (!t.length) return res.status(404).json({ error: 'Khong tim thay don' });
-    if (t[0].status === 'cancelled') {
-      return res.status(400).json({ error: 'Don da huy' });
-    }
-
-    const { url, caption } = req.body || {};
-    const stage = ['receive', 'deliver', 'other'].includes(req.body.stage)
-      ? req.body.stage : 'other';
-
-    // Phan quyen theo stage:
-    //   - receive: cho upload tu khi don 'assigned' (truoc khi admin xuat kho).
-    //              KTV phai chup anh nhan hang TRUOC, admin xem xong moi xuat kho.
-    //   - deliver/other: phai sau khi xuat kho (warehouse_released tro di).
-    const allowedStatuses = stage === 'receive'
-      ? ['assigned', 'warehouse_released', 'in_progress', 'done', 'customer_owes', 'staff_owes', 'pending_admin_confirm']
-      : ['warehouse_released', 'in_progress', 'done', 'customer_owes', 'staff_owes', 'pending_admin_confirm'];
-    if (!allowedStatuses.includes(t[0].status)) {
-      const msg = stage === 'receive'
-        ? 'Don chua duoc gan KTV — chua the upload anh nhan hang.'
-        : 'Don chua xuat kho — KTV chua duoc upload anh giao. Doi admin bam "Xuat kho" truoc.';
-      return res.status(409).json({ error: msg });
-    }
-
-    if (typeof url !== 'string' || url.length < 10 || url.length > 500) {
-      return res.status(400).json({ error: 'URL anh khong hop le' });
-    }
+    const url     = String(req.body.url || '').trim();
+    const caption = req.body.caption ? String(req.body.caption) : null;
+    if (url.length < 10 || url.length > 500) return res.status(400).json({ error: 'URL anh khong hop le' });
     if (!/^https:\/\/(i\.ibb\.co|image\.ibb\.co)\//i.test(url)) {
       return res.status(400).json({ error: 'URL phai la link imgbb (i.ibb.co)' });
     }
 
     const [result] = await db.query(
-      `INSERT INTO order_attachments (order_id, url, caption, stage) VALUES (?, ?, ?, ?)`,
-      [req.params.id, url, caption || null, stage]
+      `INSERT INTO order_step_photos (order_id, step_code, url, caption, uploaded_by)
+       VALUES (?, '', ?, ?, ?)`,
+      [req.params.id, url, caption, req.user.sub]
     );
-    const [rows] = await db.query(`SELECT * FROM order_attachments WHERE id = ?`, [result.insertId]);
+    const [rows] = await db.query(`SELECT * FROM order_step_photos WHERE id = ?`, [result.insertId]);
 
-    // Notify admin lan dau KTV upload anh receive (tranh spam khi upload nhieu anh)
-    if (stage === 'receive') {
-      try {
-        const [prev] = await db.query(
-          `SELECT COUNT(*) AS c FROM order_attachments
-            WHERE order_id = ? AND stage = 'receive' AND id < ?`,
-          [req.params.id, result.insertId]
+    // Notify admin lan dau KTV upload (chong spam neu upload nhieu lan)
+    try {
+      const [prev] = await db.query(
+        `SELECT COUNT(*) AS c FROM order_step_photos
+          WHERE order_id = ? AND id < ?`,
+        [req.params.id, result.insertId]
+      );
+      if (Number(prev[0].c) === 0) {
+        const [info] = await db.query(
+          `SELECT o.code, o.customer_id,
+                  c.full_name AS customer_name, s.full_name AS staff_name
+             FROM orders o
+             LEFT JOIN customers c ON c.id = o.customer_id
+             LEFT JOIN staff s     ON s.id = o.assigned_staff_id
+            WHERE o.id = ?`, [req.params.id]
         );
-        if (Number(prev[0].c) === 0) {
-          const [info] = await db.query(
-            `SELECT o.code, o.customer_id,
-                    c.full_name AS customer_name,
-                    s.full_name AS staff_name
-               FROM orders o
-               LEFT JOIN customers c ON c.id = o.customer_id
-               LEFT JOIN staff s     ON s.id = o.assigned_staff_id
-              WHERE o.id = ?`,
-            [req.params.id]
-          );
-          const o = info[0] || {};
-          await notify.create(db, {
-            type: 'order_receive_uploaded',
-            title: `${o.code || 'Đơn'}: KTV đã chụp ảnh nhận hàng`,
-            message: `${o.staff_name || 'KTV'} — chờ xuất kho cho ${o.customer_name || 'khách'}`,
-            link_url: `/admin/orders.html#order-${req.params.id}`,
-            ref_order_id: Number(req.params.id),
-            ref_customer_id: o.customer_id || null,
-            ref_staff_id: req.user.sub,
-          });
-        }
-      } catch (_) {}
-    }
+        const o = info[0] || {};
+        await notify.create(db, {
+          type: 'order_receive_uploaded',
+          title: `${o.code || 'Don'}: KTV upload anh`,
+          message: `${o.staff_name || 'KTV'} — ${o.customer_name || 'khach'}`,
+          link_url: `/admin/orders.html#order-${req.params.id}`,
+          ref_order_id: Number(req.params.id),
+          ref_customer_id: o.customer_id || null,
+          ref_staff_id: req.user.sub,
+        });
+      }
+    } catch (_) {}
 
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
@@ -444,7 +465,7 @@ router.post('/orders/:id/upload', async (req, res, next) => {
 //                                                                    // tong 3 phan PHAI = expected_amount
 //   discount_amount?: number,                                        // giam gia don luc chot (khach khong lay 1 phan/thuong luong)
 //                                                                    // > 0 -> sinh order_charges am, total_amount giam, remaining tinh lai
-//   note?, vehicle_plate?
+//   note?, target_step_code?  // KTV chon buoc terminal (mac dinh: buoc terminal dau tien co role 'ktv')
 // }
 //
 // Hau qua:
@@ -454,33 +475,25 @@ router.post('/orders/:id/upload', async (req, res, next) => {
 //                     -> doi admin bam confirm-admin-pending de cong paid
 //   - debt > 0     -> khong tao gi, suy ra tu (total - paid - unremitted - admin_pending)
 //
-// Status don sau do tinh boi recalcOrderFinalStatus() — uu tien:
-//   customer_owes > pending_admin_confirm > staff_owes > done.
-//
-// Backward-compat: van chap nhan body cu { customer_paid_to, collect_amount, collect_method }
-// (chuyen ngam thanh body moi voi 1 phan duy nhat).
+// payment_status sau do tinh boi recalcPaymentStatus() — uu tien:
+//   customer_owes > pending_admin_confirm > staff_owes > paid/partial/unpaid.
 router.patch('/orders/:id/complete', async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const id = Number(req.params.id);
 
-    // ---- Convert legacy body sang body moi -------------------
     let toStaff      = Number(req.body.to_staff_amount) || 0;
     let toStaffMethod= req.body.to_staff_method || null;
     let toAdmin      = Number(req.body.to_admin_amount) || 0;
     let debt         = Number(req.body.debt_amount) || 0;
     let expected     = req.body.expected_amount != null ? Number(req.body.expected_amount) : null;
+    const targetStepCode = String(req.body.target_step_code || '').trim();
 
     if (req.body.customer_paid_to && !req.body.to_staff_amount && !req.body.to_admin_amount) {
       const legacy = req.body.customer_paid_to;
-      if (legacy === 'staff') {
-        toStaff       = Number(req.body.collect_amount) || 0;
-        toStaffMethod = req.body.collect_method || null;
-      } else if (legacy === 'admin') {
-        toAdmin = -1; // sentinel: lay theo remaining
-      } else if (legacy === 'debt') {
-        debt = -1; // sentinel: lay theo remaining
-      }
+      if (legacy === 'staff') { toStaff = Number(req.body.collect_amount) || 0; toStaffMethod = req.body.collect_method || null; }
+      else if (legacy === 'admin') toAdmin = -1;
+      else if (legacy === 'debt')  debt = -1;
     }
 
     if (toStaff < 0) throw httpErr(400, 'to_staff_amount khong duoc am');
@@ -495,35 +508,18 @@ router.patch('/orders/:id/complete', async (req, res, next) => {
     await conn.beginTransaction();
 
     const [orderRows] = await conn.query(
-      `SELECT id, status, total_amount, paid_amount, ktv_note FROM orders
+      `SELECT id, status, total_amount, paid_amount, ktv_note,
+              completed_at FROM orders
         WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0 FOR UPDATE`,
       [id, req.user.sub]
     );
     if (!orderRows.length) throw httpErr(404, 'Khong tim thay don');
     const order = orderRows[0];
-    if (['done','customer_owes','staff_owes','pending_admin_confirm'].includes(order.status)) {
-      throw httpErr(400, 'Don da hoan thanh');
-    }
+    if (order.completed_at) throw httpErr(400, 'Don da hoan thanh');
     if (order.status === 'cancelled') throw httpErr(400, 'Don da huy');
-    if (order.status !== 'in_progress') {
-      throw httpErr(409, 'Phai bam "Nhan don" truoc khi hoan thanh');
-    }
 
-    // ---- Giam gia chot tai cho -----
-    const discount = Number(req.body.discount_amount) || 0;
-    if (discount < 0) throw httpErr(400, 'discount_amount khong duoc am');
-    if (discount > 0) {
-      await conn.query(
-        `INSERT INTO order_charges (order_id, kind, label, amount)
-         VALUES (?, 'fee', 'Giảm — KTV chốt tại chỗ', ?)`,
-        [id, -discount]
-      );
-      await recalcOrderTotal(conn, id);
-      const [o2] = await conn.query(
-        `SELECT total_amount FROM orders WHERE id = ?`, [id]
-      );
-      order.total_amount = o2[0].total_amount;
-    }
+    // Trang thai ket thuc duy nhat = 'done'
+    const terminalStep = { code: 'done' };
 
     const remaining = Math.max(0, Number(order.total_amount) - Number(order.paid_amount));
     if (expected == null) expected = remaining;
@@ -546,10 +542,46 @@ router.patch('/orders/:id/complete', async (req, res, next) => {
 
     const finalNote = note != null ? note : order.ktv_note;
 
-    // Set completed_at + ktv_note
+    // Tru staff_holdings (auto) cho moi product trong don
+    const [needs] = await conn.query(
+      `SELECT product_id, SUM(qty) AS need
+         FROM order_items WHERE order_id = ? GROUP BY product_id`, [id]
+    );
+    if (needs.length) {
+      const consumeCode = await genReceiptCode(conn, 'out');
+      const [rIns] = await conn.query(
+        `INSERT INTO stock_receipts
+           (code, kind, reason_code, ref_order_id, ref_staff_id, created_by_staff_id)
+         VALUES (?, 'out', 'order_consume', ?, ?, ?)`,
+        [consumeCode, id, req.user.sub, req.user.sub]
+      );
+      const consumeRid = rIns.insertId;
+      for (const n of needs) {
+        const need = Number(n.need);
+        const [shRows] = await conn.query(
+          `SELECT id, qty FROM staff_holdings
+            WHERE staff_id = ? AND product_id = ? FOR UPDATE`,
+          [req.user.sub, n.product_id]
+        );
+        if (!shRows.length || Number(shRows[0].qty) < need) {
+          throw httpErr(409, `Khong du SP id=${n.product_id} de hoan thanh (can ${need}, co ${shRows[0]?.qty || 0})`);
+        }
+        if (Number(shRows[0].qty) === need) {
+          await conn.query(`DELETE FROM staff_holdings WHERE id = ?`, [shRows[0].id]);
+        } else {
+          await conn.query(`UPDATE staff_holdings SET qty = qty - ? WHERE id = ?`, [need, shRows[0].id]);
+        }
+        await conn.query(
+          `INSERT INTO stock_receipt_items (receipt_id, product_id, qty)
+           VALUES (?, ?, ?)`, [consumeRid, n.product_id, need]
+        );
+      }
+    }
+
+    // Set completed_at + ktv_note + status='done'
     await conn.query(
-      `UPDATE orders SET completed_at = NOW(), ktv_note = ? WHERE id = ?`,
-      [finalNote, id]
+      `UPDATE orders SET completed_at = NOW(), ktv_note = ?, status = ? WHERE id = ?`,
+      [finalNote, terminalStep.code, id]
     );
 
     // 1. KTV thu -> collection + payment confirmed + cong paid_amount
@@ -583,13 +615,6 @@ router.patch('/orders/:id/complete', async (req, res, next) => {
     }
 
     // 3. Debt: khong tao gi, suy ra dong tu (total - paid - unremitted - admin_pending)
-
-    if (req.body.vehicle_plate) {
-      await conn.query(
-        `UPDATE orders SET vehicle_plate = ? WHERE id = ?`,
-        [String(req.body.vehicle_plate).trim(), id]
-      );
-    }
 
     // Tra do thua ve kho
     const returns = Array.isArray(req.body.returns) ? req.body.returns : [];
@@ -643,8 +668,7 @@ router.patch('/orders/:id/complete', async (req, res, next) => {
       }
     }
 
-    // Tinh status cuoi (customer_owes / pending_admin_confirm / staff_owes / done)
-    await recalcOrderFinalStatus(conn, id);
+    await recalcPaymentStatus(conn, id);
 
     await conn.commit();
 
@@ -688,26 +712,30 @@ router.patch('/orders/:id/complete', async (req, res, next) => {
 // ==========================================================
 // /history — lich su don da xong cua KTV
 // ==========================================================
-const FINAL_DONE = "('done','customer_owes','staff_owes','pending_admin_confirm')";
+// (FINAL_DONE da thay = `completed_at IS NOT NULL` sau mig 045)
 
 router.get('/history', async (req, res, next) => {
   try {
     const dateFrom = req.query.date_from || null;
     const dateTo   = req.query.date_to   || null;
-    const kind     = req.query.kind;
+    const tplId    = Number(req.query.template_id) || 0;
 
-    const where = ['o.assigned_staff_id = ?', 'o.is_deleted = 0', `o.status IN ${FINAL_DONE}`];
+    const where = ['o.assigned_staff_id = ?', 'o.is_deleted = 0', `o.completed_at IS NOT NULL`];
     const args = [req.user.sub];
     if (dateFrom) { where.push('DATE(o.completed_at) >= ?'); args.push(dateFrom); }
     if (dateTo)   { where.push('DATE(o.completed_at) <= ?'); args.push(dateTo); }
-    if (kind && ['install','maintenance','renew','uninstall'].includes(kind)) {
-      where.push('o.kind = ?'); args.push(kind);
+    if (tplId)    {
+      where.push('EXISTS (SELECT 1 FROM order_lines ol WHERE ol.order_id = o.id AND ol.template_id = ? AND ol.is_deleted = 0)');
+      args.push(tplId);
     }
     const whereSql = 'WHERE ' + where.join(' AND ');
 
     const [rows] = await db.query(
-      `SELECT o.id, o.code, o.kind, o.completed_at, o.wage_amount,
-              o.vehicle_plate AS order_plate,
+      `SELECT o.id, o.code, o.completed_at, o.wage_amount,
+              (SELECT GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ')
+                 FROM order_lines ol
+                 LEFT JOIN order_templates t ON t.id = ol.template_id
+                WHERE ol.order_id = o.id AND ol.is_deleted = 0) AS template_names,
               c.full_name AS customer_name, c.phone AS customer_phone,
               COALESCE((SELECT SUM(amount) FROM collections
                           WHERE order_id = o.id AND staff_id = ? AND is_deleted = 0), 0) AS collect_amount,
@@ -727,13 +755,17 @@ router.get('/history', async (req, res, next) => {
 
 router.get('/history/export', async (req, res, next) => {
   try {
-    const where = ['o.assigned_staff_id = ?', 'o.is_deleted = 0', `o.status IN ${FINAL_DONE}`];
+    const where = ['o.assigned_staff_id = ?', 'o.is_deleted = 0', `o.completed_at IS NOT NULL`];
     const args = [req.user.sub];
     if (req.query.date_from) { where.push('DATE(o.completed_at) >= ?'); args.push(req.query.date_from); }
     if (req.query.date_to)   { where.push('DATE(o.completed_at) <= ?'); args.push(req.query.date_to); }
     const [rows] = await db.query(
-      `SELECT o.completed_at, o.code AS order_code, o.kind,
-              c.full_name AS customer_name, o.vehicle_plate,
+      `SELECT o.completed_at, o.code AS order_code,
+              (SELECT GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ')
+                 FROM order_lines ol
+                 LEFT JOIN order_templates t ON t.id = ol.template_id
+                WHERE ol.order_id = o.id AND ol.is_deleted = 0) AS template_name,
+              c.full_name AS customer_name,
               COALESCE((SELECT SUM(amount) FROM collections
                           WHERE order_id = o.id AND staff_id = ? AND is_deleted = 0), 0) AS collect_amount,
               o.wage_amount,
@@ -747,11 +779,11 @@ router.get('/history/export', async (req, res, next) => {
         ORDER BY o.completed_at DESC`,
       [req.user.sub, ...args]
     );
-    const head = 'Ngay,Don,Loai,Khach,Bien so,San pham,Thu tien,Cong lap';
+    const head = 'Ngay,Don,Loai,Khach,San pham,Thu tien,Cong lap';
     const esc = (v) => `"${String(v == null ? '' : v).replaceAll('"', '""')}"`;
     const lines = rows.map(r => [
-      r.completed_at, r.order_code, r.kind, r.customer_name || '',
-      r.vehicle_plate || '', r.products || '', r.collect_amount, r.wage_amount,
+      r.completed_at, r.order_code, r.template_name || '', r.customer_name || '',
+      r.products || '', r.collect_amount, r.wage_amount,
     ].map(esc).join(','));
     const csv = '﻿' + head + '\n' + lines.join('\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -794,8 +826,8 @@ router.get('/inventory/available', async (req, res, next) => {
     const [rows] = await db.query(
       `SELECT rp.id, rp.order_id, rp.product_id, rp.qty, rp.created_at,
               p.code AS product_code, p.name AS product_name, p.thumbnail_url,
-              o.code AS order_code, o.kind AS order_kind, o.due_at,
-              o.address, o.area, o.vehicle_plate,
+              o.code AS order_code, o.due_at,
+              o.address,
               c.full_name AS customer_name, c.phone AS customer_phone
          FROM release_pool rp
          JOIN products p ON p.id = rp.product_id
@@ -1015,7 +1047,6 @@ router.post('/inventory/install', async (req, res, next) => {
     const orderId = Number(req.body.order_id);
     const productId = Number(req.body.product_id);
     const qty = Number(req.body.qty);
-    const vehiclePlate = req.body.vehicle_plate ? String(req.body.vehicle_plate).trim() : null;
     const imeiList = req.body.imei_list ? String(req.body.imei_list).trim() : null;
     if (!orderId)          throw httpErr(400, 'Thieu order_id');
     if (!productId)        throw httpErr(400, 'Thieu product_id');
@@ -1059,10 +1090,6 @@ router.post('/inventory/install', async (req, res, next) => {
        VALUES (?, ?, ?, ?)`,
       [rIns.insertId, productId, qty, imeiList]
     );
-
-    if (orderId && vehiclePlate) {
-      await conn.query(`UPDATE orders SET vehicle_plate = ? WHERE id = ?`, [vehiclePlate, orderId]);
-    }
 
     await conn.commit();
     res.json({ ok: true, receipt_id: rIns.insertId, code });
@@ -1111,11 +1138,11 @@ router.get('/wages', async (req, res, next) => {
   // Cong lap (wage_amount) cua KTV theo thang
   try {
     const [rows] = await db.query(
-      `SELECT o.id, o.code AS order_code, o.kind, o.completed_at, o.wage_amount,
+      `SELECT o.id, o.code AS order_code, o.completed_at, o.wage_amount,
               c.full_name AS customer_name
          FROM orders o
          LEFT JOIN customers c ON c.id = o.customer_id
-        WHERE o.assigned_staff_id = ? AND o.status IN ${FINAL_DONE} AND o.is_deleted = 0
+        WHERE o.assigned_staff_id = ? AND o.completed_at IS NOT NULL AND o.is_deleted = 0
         ORDER BY o.completed_at DESC
         LIMIT 200`,
       [req.user.sub]
@@ -1125,7 +1152,7 @@ router.get('/wages', async (req, res, next) => {
          SUM(CASE WHEN MONTH(completed_at)=MONTH(CURDATE()) AND YEAR(completed_at)=YEAR(CURDATE())
               THEN wage_amount ELSE 0 END) AS this_month_total,
          SUM(wage_amount) AS lifetime_total
-         FROM orders WHERE assigned_staff_id = ? AND status IN ${FINAL_DONE} AND is_deleted = 0`,
+         FROM orders WHERE assigned_staff_id = ? AND completed_at IS NOT NULL AND is_deleted = 0`,
       [req.user.sub]
     );
     res.json({ items: rows, summary: sumRow[0] });
@@ -1177,7 +1204,7 @@ router.post('/remittances', async (req, res, next) => {
         WHERE id IN (${placeholders})`,
       ids
     );
-    for (const r of orderIdRows) await recalcOrderFinalStatus(conn, r.order_id);
+    for (const r of orderIdRows) await recalcPaymentStatus(conn, r.order_id);
 
     await conn.commit();
 
@@ -1336,640 +1363,219 @@ router.patch('/conversations/:id/read', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ==========================================================
-// /warranty-orders — KTV xu ly don bao hanh duoc gan
-// Anh upload truc tiep FE -> imgbb, BE chi nhan URL.
-// Endpoints:
-//   GET    /                       -> list don gan cho KTV nay
-//   GET    /:id                    -> detail
-//   POST   /:id/recover            -> received -> recovered { recovered_image_url }
-//   POST   /:id/start-deliver      -> recovered|warranty_done -> delivering
-//   POST   /:id/complete           -> delivering -> completed { delivered_image_url?, paid_amount? }
-// ==========================================================
-const {
-  WARRANTY_STATUSES,
-  TERMINAL_STATUSES: WARRANTY_TERMINAL,
-  ITEM_KINDS_FOR_TECH,
-  canWarrantyTransition,
-  loadWarrantyItems,
-} = require('../utils/warrantyState');
+// ===============================================================
+// PHIEU CAP SAN PHAM (staff_stock_issues) — KTV
+// ===============================================================
+// KTV chi xem duoc phieu cua minh.
+// approved -> KTV xac nhan da nhan -> received (kem anh imgbb)
 
-async function loadAssignedWarranty(connOrDb, id, staffId, forUpdate = false) {
-  const lock = forUpdate ? 'FOR UPDATE' : '';
-  const [rows] = await connOrDb.query(
-    `SELECT * FROM warranty_orders
-      WHERE id = ? AND is_deleted = 0 AND assigned_staff_id = ? ${lock}`,
+async function loadKtvIssueDetail(id, staffId) {
+  const [rows] = await db.query(
+    `SELECT i.*,
+            s.full_name AS staff_name,
+            r.code AS receipt_code
+       FROM staff_stock_issues i
+       JOIN staff s ON s.id = i.staff_id
+       LEFT JOIN stock_receipts r ON r.id = i.ref_receipt_id
+      WHERE i.id = ? AND i.staff_id = ? AND i.is_deleted = 0
+      LIMIT 1`,
     [id, staffId]
   );
-  return rows[0] || null;
+  if (!rows.length) return null;
+  const head = rows[0];
+  const [items] = await db.query(
+    `SELECT it.*, p.code AS product_code, p.name AS product_name, p.thumbnail_url
+       FROM staff_stock_issue_items it
+       JOIN products p ON p.id = it.product_id
+      WHERE it.issue_id = ?
+      ORDER BY it.id`,
+    [head.id]
+  );
+  return { ...head, items };
 }
 
-router.get('/warranty-orders', async (req, res, next) => {
+// GET /staff-issues — list phieu cap cua KTV hien tai
+router.get('/staff-issues', async (req, res, next) => {
   try {
-    const status = req.query.status;
-    const where = ['w.assigned_staff_id = ?', 'w.is_deleted = 0'];
-    const args = [req.user.sub];
-    if (status && WARRANTY_STATUSES.includes(status)) {
-      where.push('w.status = ?'); args.push(status);
+    const staffId = req.user.sub;
+    const where = ['i.staff_id = ?', 'i.is_deleted = 0'];
+    const args = [staffId];
+    if (req.query.status) {
+      where.push('i.status = ?');
+      args.push(req.query.status);
     }
+    const whereSql = 'WHERE ' + where.join(' AND ');
+    const page  = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 30));
+    const offset = (page - 1) * limit;
+
+    const [countRows] = await db.query(
+      `SELECT COUNT(*) AS total FROM staff_stock_issues i ${whereSql}`, args
+    );
     const [rows] = await db.query(
-      `SELECT w.id, w.code,
-              w.license_plate, w.device_name, w.imei_search,
-              w.reason_text, w.note_text, w.address,
-              w.recovered_image_url, w.delivered_image_url,
-              w.warranty_partner, w.sent_at, w.returned_at,
-              w.cost_amount, w.paid_amount,
-              w.status, w.request_date,
-              c.code AS customer_code, c.full_name AS customer_name,
-              c.phone AS customer_phone, c.address AS customer_address
-         FROM warranty_orders w
-         LEFT JOIN customers c ON c.id = w.customer_id
-        WHERE ${where.join(' AND ')}
-        ORDER BY w.id DESC`,
-      args
+      `SELECT i.id, i.code, i.status, i.note,
+              i.created_at, i.approved_at, i.received_at,
+              creator.full_name AS created_by_name,
+              (SELECT COUNT(*) FROM staff_stock_issue_items it WHERE it.issue_id = i.id) AS line_count,
+              (SELECT COALESCE(SUM(qty_approved),0) FROM staff_stock_issue_items it WHERE it.issue_id = i.id) AS total_approved
+         FROM staff_stock_issues i
+         LEFT JOIN staff creator ON creator.id = i.created_by_staff_id
+         ${whereSql}
+         ORDER BY i.id DESC
+         LIMIT ? OFFSET ?`,
+      [...args, limit, offset]
     );
-    res.json({ items: rows });
+    res.json({ items: rows, total: countRows[0].total, page, limit });
   } catch (err) { next(err); }
 });
 
-router.get('/warranty-orders/:id', async (req, res, next) => {
+// GET /staff-issues/:id
+router.get('/staff-issues/:id', async (req, res, next) => {
   try {
-    const wo = await loadAssignedWarranty(db, req.params.id, req.user.sub);
-    if (!wo) return res.status(404).json({ error: 'Khong tim thay don bao hanh' });
-    const [cust] = await db.query(
-      `SELECT id, code, full_name, phone, address FROM customers WHERE id = ?`,
-      [wo.customer_id]
-    );
-    wo.customer = cust[0] || null;
-    wo.items = await loadWarrantyItems(db, wo.id);
-    res.json(wo);
+    const detail = await loadKtvIssueDetail(Number(req.params.id), req.user.sub);
+    if (!detail) return res.status(404).json({ error: 'Khong tim thay phieu cap' });
+    res.json(detail);
   } catch (err) { next(err); }
 });
 
-// ---- POST /:id/items -----------------------------------------
-// KTV chi cham 2 kind: received_from_customer / delivered_to_customer.
-// Body: { kind, product_id?, name?, imei?, qty?, unit_price?, note? }
-router.post('/warranty-orders/:id/items', async (req, res, next) => {
+// POST /staff-issues/:id/receive — KTV xac nhan da nhan hang
+// Body: { photo_url? }  (URL imgbb hoac /uploads/...)
+// Yeu cau status = 'approved' va phieu cua chinh KTV.
+router.post('/staff-issues/:id/receive', async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const id = Number(req.params.id);
-    const kind = String(req.body.kind || '').trim();
-    if (!ITEM_KINDS_FOR_TECH.includes(kind)) {
-      throw httpErr(403, `KTV chi duoc them item kind: ${ITEM_KINDS_FOR_TECH.join(', ')}`);
-    }
-    const wo = await loadAssignedWarranty(conn, id, req.user.sub);
-    if (!wo) throw httpErr(404, 'Khong tim thay don bao hanh');
-    if (WARRANTY_TERMINAL.includes(wo.status)) {
-      throw httpErr(409, 'Don da ket thuc');
-    }
-
-    let productId = req.body.product_id ? Number(req.body.product_id) : null;
-    let name = req.body.name ? String(req.body.name).trim() : '';
-    if (productId) {
-      const [pRows] = await conn.query(`SELECT name FROM products WHERE id = ?`, [productId]);
-      if (!pRows.length) throw httpErr(404, 'San pham khong ton tai');
-      if (!name) name = pRows[0].name;
-    }
-    if (!name) throw httpErr(400, 'Thieu ten san pham');
-
-    const qty = Math.max(1, Number(req.body.qty) || 1);
-    const unitPrice = Math.max(0, Number(req.body.unit_price) || 0);
-    const imei = req.body.imei ? String(req.body.imei).trim() : null;
-    const note = req.body.note ? String(req.body.note).trim() : null;
-
-    const [ins] = await conn.query(
-      `INSERT INTO warranty_order_items
-         (warranty_order_id, kind, product_id, name, imei, qty, unit_price, note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, kind, productId, name, imei, qty, unitPrice, note]
-    );
-    const [rows] = await conn.query(`SELECT * FROM warranty_order_items WHERE id = ?`, [ins.insertId]);
-    res.status(201).json(rows[0]);
-  } catch (err) { next(err); } finally { conn.release(); }
-});
-
-// ---- PUT /warranty-orders/items/:itemId ----------------------
-// KTV chi sua duoc item kind=received_from_customer/delivered_to_customer
-// va don phai duoc gan cho minh.
-router.put('/warranty-orders/items/:itemId', async (req, res, next) => {
-  const conn = await db.getConnection();
-  try {
-    const itemId = Number(req.params.itemId);
-    const [iRows] = await conn.query(
-      `SELECT i.id, i.kind, i.released_at, w.status AS wo_status, w.assigned_staff_id
-         FROM warranty_order_items i
-         LEFT JOIN warranty_orders w ON w.id = i.warranty_order_id
-        WHERE i.id = ? AND i.is_deleted = 0`, [itemId]
-    );
-    if (!iRows.length) throw httpErr(404, 'Khong tim thay item');
-    const item = iRows[0];
-    if (item.assigned_staff_id !== req.user.sub) throw httpErr(403, 'Don khong duoc gan cho ban');
-    if (!ITEM_KINDS_FOR_TECH.includes(item.kind)) throw httpErr(403, 'Item nay khong thuoc pham vi cua KTV');
-    if (WARRANTY_TERMINAL.includes(item.wo_status)) throw httpErr(409, 'Don da ket thuc');
-
-    const updates = {};
-    if (req.body.product_id !== undefined) {
-      const pid = req.body.product_id ? Number(req.body.product_id) : null;
-      if (pid) {
-        const [pRows] = await conn.query(`SELECT id FROM products WHERE id = ?`, [pid]);
-        if (!pRows.length) throw httpErr(404, 'San pham khong ton tai');
-      }
-      updates.product_id = pid;
-    }
-    if (req.body.name !== undefined) {
-      const v = String(req.body.name || '').trim();
-      if (!v) throw httpErr(400, 'name khong duoc rong');
-      updates.name = v;
-    }
-    if (req.body.imei !== undefined) updates.imei = req.body.imei ? String(req.body.imei).trim() : null;
-    if (req.body.qty !== undefined) updates.qty = Math.max(1, Number(req.body.qty) || 1);
-    if (req.body.unit_price !== undefined) updates.unit_price = Math.max(0, Number(req.body.unit_price) || 0);
-    if (req.body.note !== undefined) updates.note = req.body.note ? String(req.body.note).trim() : null;
-
-    const cols = Object.keys(updates);
-    if (!cols.length) return res.status(400).json({ error: 'Khong co truong de cap nhat' });
-    const setSql = cols.map(c => `${c} = ?`).join(', ');
-    const values = cols.map(c => updates[c]);
-    await conn.query(
-      `UPDATE warranty_order_items SET ${setSql} WHERE id = ?`,
-      [...values, itemId]
-    );
-    const [rows] = await conn.query(`SELECT * FROM warranty_order_items WHERE id = ?`, [itemId]);
-    res.json(rows[0]);
-  } catch (err) { next(err); } finally { conn.release(); }
-});
-
-// ---- DELETE /warranty-orders/items/:itemId -------------------
-router.delete('/warranty-orders/items/:itemId', async (req, res, next) => {
-  try {
-    const itemId = Number(req.params.itemId);
-    const [iRows] = await db.query(
-      `SELECT i.id, i.kind, w.status AS wo_status, w.assigned_staff_id
-         FROM warranty_order_items i
-         LEFT JOIN warranty_orders w ON w.id = i.warranty_order_id
-        WHERE i.id = ? AND i.is_deleted = 0`, [itemId]
-    );
-    if (!iRows.length) return res.status(404).json({ error: 'Khong tim thay item' });
-    const item = iRows[0];
-    if (item.assigned_staff_id !== req.user.sub) return res.status(403).json({ error: 'Don khong duoc gan cho ban' });
-    if (!ITEM_KINDS_FOR_TECH.includes(item.kind)) return res.status(403).json({ error: 'Item nay khong thuoc pham vi cua KTV' });
-    if (WARRANTY_TERMINAL.includes(item.wo_status)) return res.status(409).json({ error: 'Don da ket thuc' });
-    await db.query(`UPDATE warranty_order_items SET is_deleted = 1 WHERE id = ?`, [itemId]);
-    res.json({ ok: true });
-  } catch (err) { next(err); }
-});
-
-// Body: { recovered_image_url, items?: [{product_id?, name, imei?, qty?, unit_price?, note?}] }
-// items[] (neu co) duoc insert kind=received_from_customer truoc khi chuyen status.
-router.post('/warranty-orders/:id/recover', async (req, res, next) => {
-  const conn = await db.getConnection();
-  try {
-    const id = req.params.id;
-    const imageUrl = String(req.body.recovered_image_url || '').trim();
-    if (!imageUrl) throw httpErr(400, 'Thieu anh thu hoi');
-    const itemsRaw = Array.isArray(req.body.items) ? req.body.items : [];
+    const staffId = req.user.sub;
+    const photoUrl = req.body && req.body.photo_url ? String(req.body.photo_url).trim() : null;
+    if (!photoUrl) throw httpErr(400, 'Phai upload anh xac nhan');
 
     await conn.beginTransaction();
-    const wo = await loadAssignedWarranty(conn, id, req.user.sub, true);
-    if (!wo) throw httpErr(404, 'Khong tim thay don bao hanh');
-    if (!canWarrantyTransition(wo.status, 'recovered')) {
-      throw httpErr(409, `Khong the thu hoi khi don dang ${wo.status}`);
-    }
-
-    // Insert items kind=received_from_customer (neu co)
-    for (const raw of itemsRaw) {
-      let productId = raw.product_id ? Number(raw.product_id) : null;
-      let name = raw.name ? String(raw.name).trim() : '';
-      if (productId) {
-        const [pRows] = await conn.query(`SELECT name FROM products WHERE id = ?`, [productId]);
-        if (!pRows.length) throw httpErr(404, `San pham id=${productId} khong ton tai`);
-        if (!name) name = pRows[0].name;
-      }
-      if (!name) throw httpErr(400, 'Item thieu ten');
-      const qty = Math.max(1, Number(raw.qty) || 1);
-      const unitPrice = Math.max(0, Number(raw.unit_price) || 0);
-      const imei = raw.imei ? String(raw.imei).trim() : null;
-      const note = raw.note ? String(raw.note).trim() : null;
-      await conn.query(
-        `INSERT INTO warranty_order_items
-           (warranty_order_id, kind, product_id, name, imei, qty, unit_price, note)
-         VALUES (?, 'received_from_customer', ?, ?, ?, ?, ?, ?)`,
-        [id, productId, name, imei, qty, unitPrice, note]
-      );
-    }
+    const [rows] = await conn.query(
+      `SELECT id, staff_id, status FROM staff_stock_issues
+        WHERE id = ? AND is_deleted = 0 FOR UPDATE`, [id]
+    );
+    if (!rows.length) throw httpErr(404, 'Khong tim thay phieu cap');
+    const head = rows[0];
+    if (head.staff_id !== staffId) throw httpErr(403, 'Khong phai phieu cua ban');
+    if (head.status !== 'approved') throw httpErr(400, 'Chi xac nhan duoc phieu da duyet');
 
     await conn.query(
-      `UPDATE warranty_orders SET status = 'recovered', recovered_image_url = ? WHERE id = ?`,
-      [imageUrl, id]
-    );
-    await conn.commit();
-    const [after] = await conn.query(`SELECT * FROM warranty_orders WHERE id = ?`, [id]);
-    res.json(after[0]);
-  } catch (err) {
-    try { await conn.rollback(); } catch (_) {}
-    next(err);
-  } finally { conn.release(); }
-});
-
-router.post('/warranty-orders/:id/start-deliver', async (req, res, next) => {
-  const conn = await db.getConnection();
-  try {
-    const id = req.params.id;
-    await conn.beginTransaction();
-    const wo = await loadAssignedWarranty(conn, id, req.user.sub, true);
-    if (!wo) throw httpErr(404, 'Khong tim thay don bao hanh');
-    if (!canWarrantyTransition(wo.status, 'delivering')) {
-      throw httpErr(409, `Khong the bat dau giao khi don dang ${wo.status}`);
-    }
-    await conn.query(`UPDATE warranty_orders SET status = 'delivering' WHERE id = ?`, [id]);
-    await conn.commit();
-    const [after] = await conn.query(`SELECT * FROM warranty_orders WHERE id = ?`, [id]);
-    res.json(after[0]);
-  } catch (err) {
-    try { await conn.rollback(); } catch (_) {}
-    next(err);
-  } finally { conn.release(); }
-});
-
-// Body: {
-//   delivered_image_url?,
-//   to_staff_amount?, to_staff_method?,
-//   to_admin_amount?, debt_amount?,
-//   expected_amount?,
-//   items?: [{...kind delivered_to_customer}]
-// }
-// Backward-compat: { paid_amount } cu duoc coi nhu to_admin_amount.
-router.post('/warranty-orders/:id/complete', async (req, res, next) => {
-  const conn = await db.getConnection();
-  try {
-    const id = Number(req.params.id);
-    const deliveredImage = req.body.delivered_image_url
-      ? String(req.body.delivered_image_url).trim() : null;
-    const itemsRaw = Array.isArray(req.body.items) ? req.body.items : [];
-
-    let toStaff       = Math.max(0, Number(req.body.to_staff_amount) || 0);
-    let toStaffMethod = req.body.to_staff_method || null;
-    let toAdmin       = Math.max(0, Number(req.body.to_admin_amount) || 0);
-    let debt          = Math.max(0, Number(req.body.debt_amount) || 0);
-    let expected      = req.body.expected_amount != null ? Number(req.body.expected_amount) : null;
-
-    if (!toStaff && !toAdmin && !debt && req.body.paid_amount !== undefined) {
-      toAdmin = Math.max(0, Number(req.body.paid_amount) || 0);
-    }
-    if (toStaff > 0 && !['cash', 'transfer'].includes(toStaffMethod)) {
-      throw httpErr(400, "Khi co tien KTV thu, to_staff_method phai la 'cash' hoac 'transfer'");
-    }
-
-    await conn.beginTransaction();
-    const wo = await loadAssignedWarranty(conn, id, req.user.sub, true);
-    if (!wo) throw httpErr(404, 'Khong tim thay don bao hanh');
-    if (!canWarrantyTransition(wo.status, 'completed')) {
-      throw httpErr(409, `Khong the hoan tat khi don dang ${wo.status}`);
-    }
-
-    const cost = Number(wo.cost_amount) || 0;
-    const paidBefore = Number(wo.paid_amount) || 0;
-    const remaining = Math.max(0, cost - paidBefore);
-    if (expected == null) expected = remaining;
-    if (expected < 0) throw httpErr(400, 'expected_amount khong duoc am');
-    if (expected > remaining) {
-      throw httpErr(400, `Don chi con thieu ${remaining}d, khong the chia ${expected}d`);
-    }
-    const sum = toStaff + toAdmin + debt;
-    if (sum !== expected) {
-      throw httpErr(400,
-        `Tong 3 phan (${sum}d) phai bang phan can thu (${expected}d). KTV: ${toStaff}, Admin: ${toAdmin}, No: ${debt}`);
-    }
-
-    // Insert items kind=delivered_to_customer
-    for (const raw of itemsRaw) {
-      let productId = raw.product_id ? Number(raw.product_id) : null;
-      let name = raw.name ? String(raw.name).trim() : '';
-      if (productId) {
-        const [pRows] = await conn.query(`SELECT name FROM products WHERE id = ?`, [productId]);
-        if (!pRows.length) throw httpErr(404, `San pham id=${productId} khong ton tai`);
-        if (!name) name = pRows[0].name;
-      }
-      if (!name) throw httpErr(400, 'Item thieu ten');
-      const qty = Math.max(1, Number(raw.qty) || 1);
-      const unitPrice = Math.max(0, Number(raw.unit_price) || 0);
-      const imei = raw.imei ? String(raw.imei).trim() : null;
-      const note = raw.note ? String(raw.note).trim() : null;
-      await conn.query(
-        `INSERT INTO warranty_order_items
-           (warranty_order_id, kind, product_id, name, imei, qty, unit_price, note)
-         VALUES (?, 'delivered_to_customer', ?, ?, ?, ?, ?, ?)`,
-        [id, productId, name, imei, qty, unitPrice, note]
-      );
-    }
-
-    if (toStaff > 0) {
-      await conn.query(
-        `INSERT INTO collections (task_id, ref_warranty_order_id, staff_id, amount, method)
-         VALUES (NULL, ?, ?, ?, ?)`,
-        [id, req.user.sub, toStaff, toStaffMethod]
-      );
-      await conn.query(
-        `UPDATE warranty_orders SET paid_amount = paid_amount + ? WHERE id = ?`,
-        [toStaff, id]
-      );
-    }
-    if (toAdmin > 0) {
-      await conn.query(
-        `UPDATE warranty_orders SET paid_amount = paid_amount + ? WHERE id = ?`,
-        [toAdmin, id]
-      );
-    }
-
-    const setParts = ['status = ?'];
-    const values = ['completed'];
-    if (deliveredImage) { setParts.push('delivered_image_url = ?'); values.push(deliveredImage); }
-    values.push(id);
-    await conn.query(`UPDATE warranty_orders SET ${setParts.join(', ')} WHERE id = ?`, values);
-
-    await conn.commit();
-    const [after] = await conn.query(`SELECT * FROM warranty_orders WHERE id = ?`, [id]);
-    res.json(after[0]);
-  } catch (err) {
-    try { await conn.rollback(); } catch (_) {}
-    next(err);
-  } finally { conn.release(); }
-});
-
-
-// ==========================================================
-// /repair-orders — KTV xu ly don sua chua duoc gan
-// Anh upload truc tiep FE -> imgbb, BE chi nhan URL.
-// Endpoints:
-//   GET    /                       -> list don gan cho KTV nay
-//   GET    /:id                    -> detail (kem items + charges)
-//   POST   /:id/receive            -> assigned -> diagnosing { recovered_image_url }
-//   POST   /:id/submit-quote       -> diagnosing -> quoted { diagnose_text, items?, service_fee? }
-//   POST   /:id/done               -> repairing -> done (KHOA BILL)
-//   POST   /:id/start-deliver      -> done -> delivering
-//   POST   /:id/complete           -> delivering -> completed { delivered_image_url?, paid_amount? }
-// ==========================================================
-const {
-  REPAIR_STATUSES,
-  canRepairTransition,
-  recalcRepairTotal,
-} = require('../utils/repairState');
-
-async function loadAssignedRepair(connOrDb, id, staffId, forUpdate = false) {
-  const lock = forUpdate ? 'FOR UPDATE' : '';
-  const [rows] = await connOrDb.query(
-    `SELECT * FROM repair_orders
-      WHERE id = ? AND is_deleted = 0 AND assigned_staff_id = ? ${lock}`,
-    [id, staffId]
-  );
-  return rows[0] || null;
-}
-
-async function syncServiceFeeChargeKT(conn, repairOrderId, serviceFee) {
-  const fee = Math.max(0, Number(serviceFee) || 0);
-  const [exist] = await conn.query(
-    `SELECT id FROM repair_charges
-       WHERE repair_order_id = ? AND kind = 'service' AND label = 'Công sửa' AND is_deleted = 0
-       LIMIT 1`,
-    [repairOrderId]
-  );
-  if (fee > 0) {
-    if (exist.length) {
-      await conn.query(`UPDATE repair_charges SET amount = ? WHERE id = ?`, [fee, exist[0].id]);
-    } else {
-      await conn.query(
-        `INSERT INTO repair_charges (repair_order_id, kind, label, amount)
-         VALUES (?, 'service', 'Công sửa', ?)`,
-        [repairOrderId, fee]
-      );
-    }
-  } else if (exist.length) {
-    await conn.query(`UPDATE repair_charges SET is_deleted = 1 WHERE id = ?`, [exist[0].id]);
-  }
-}
-
-router.get('/repair-orders', async (req, res, next) => {
-  try {
-    const status = req.query.status;
-    const where = ['r.assigned_staff_id = ?', 'r.is_deleted = 0'];
-    const args = [req.user.sub];
-    if (status && REPAIR_STATUSES.includes(status)) {
-      where.push('r.status = ?'); args.push(status);
-    }
-    const [rows] = await db.query(
-      `SELECT r.id, r.code,
-              r.license_plate, r.device_name, r.imei_search,
-              r.reason_text, r.note_text, r.address,
-              r.diagnose_text,
-              r.recovered_image_url, r.delivered_image_url,
-              r.service_fee, r.parts_total, r.total_amount, r.paid_amount,
-              r.status, r.request_date,
-              c.code AS customer_code, c.full_name AS customer_name,
-              c.phone AS customer_phone, c.address AS customer_address
-         FROM repair_orders r
-         LEFT JOIN customers c ON c.id = r.customer_id
-        WHERE ${where.join(' AND ')}
-        ORDER BY r.id DESC`,
-      args
-    );
-    res.json({ items: rows });
-  } catch (err) { next(err); }
-});
-
-router.get('/repair-orders/:id', async (req, res, next) => {
-  try {
-    const ro = await loadAssignedRepair(db, req.params.id, req.user.sub);
-    if (!ro) return res.status(404).json({ error: 'Khong tim thay don sua chua' });
-
-    const [cust] = await db.query(
-      `SELECT id, code, full_name, phone, address FROM customers WHERE id = ?`,
-      [ro.customer_id]
-    );
-    ro.customer = cust[0] || null;
-
-    const [items] = await db.query(
-      `SELECT ri.id, ri.product_id, ri.qty, ri.unit_price, ri.imei, ri.note,
-              p.code AS product_code, p.name AS product_name
-         FROM repair_items ri
-         LEFT JOIN products p ON p.id = ri.product_id
-        WHERE ri.repair_order_id = ? AND ri.is_deleted = 0
-        ORDER BY ri.id ASC`,
-      [ro.id]
-    );
-    ro.items = items;
-
-    const [charges] = await db.query(
-      `SELECT id, kind, label, amount FROM repair_charges
-        WHERE repair_order_id = ? AND is_deleted = 0
-        ORDER BY id ASC`,
-      [ro.id]
-    );
-    ro.charges = charges;
-
-    res.json(ro);
-  } catch (err) { next(err); }
-});
-
-// KTV nhan may + chuyen sang chan doan. Bat buoc co anh nhan.
-router.post('/repair-orders/:id/receive', async (req, res, next) => {
-  const conn = await db.getConnection();
-  try {
-    const id = req.params.id;
-    const imageUrl = String(req.body.recovered_image_url || '').trim();
-    if (!imageUrl) throw httpErr(400, 'Thieu anh nhan may');
-
-    await conn.beginTransaction();
-    const ro = await loadAssignedRepair(conn, id, req.user.sub, true);
-    if (!ro) throw httpErr(404, 'Khong tim thay don sua chua');
-    if (!canRepairTransition(ro.status, 'diagnosing')) {
-      throw httpErr(409, `Khong the nhan may khi don dang ${ro.status}`);
-    }
-    await conn.query(
-      `UPDATE repair_orders
-          SET status = 'diagnosing', recovered_image_url = ?
+      `UPDATE staff_stock_issues
+          SET status = 'received',
+              received_at = NOW(),
+              received_photo_url = ?
         WHERE id = ?`,
-      [imageUrl, id]
+      [photoUrl, id]
     );
     await conn.commit();
-    const [after] = await conn.query(`SELECT * FROM repair_orders WHERE id = ?`, [id]);
-    res.json(after[0]);
+    res.json(await loadKtvIssueDetail(id, staffId));
   } catch (err) {
     try { await conn.rollback(); } catch (_) {}
     next(err);
   } finally { conn.release(); }
 });
 
-// KTV nop bao gia (chan doan + items + cong sua de xuat).
-// Body: { diagnose_text, items?: [{product_id, qty, unit_price, imei?, note?}], service_fee? }
-router.post('/repair-orders/:id/submit-quote', async (req, res, next) => {
-  const conn = await db.getConnection();
+// ============================================================
+// CUSTOMER ASSETS — KTV xem + de xuat thay doi (qua duyet admin)
+// ============================================================
+
+const ASSET_KIND_CFG = {
+  account: { table: 'customer_accounts', valueCol: 'account_name' },
+  vehicle: { table: 'customer_vehicles', valueCol: 'plate' },
+  sim:     { table: 'customer_sims',     valueCol: 'sim_number' },
+};
+
+// GET /api/kithuat/customers/:id/assets
+router.get('/customers/:id/assets', async (req, res, next) => {
   try {
-    const id = req.params.id;
-    const diagnose = String(req.body.diagnose_text || '').trim();
-    if (!diagnose) throw httpErr(400, 'Thieu noi dung chan doan');
-
-    const items = Array.isArray(req.body.items) ? req.body.items : null;
-    const serviceFee = req.body.service_fee !== undefined
-      ? Math.max(0, Number(req.body.service_fee) || 0) : null;
-
-    await conn.beginTransaction();
-    const ro = await loadAssignedRepair(conn, id, req.user.sub, true);
-    if (!ro) throw httpErr(404, 'Khong tim thay don sua chua');
-    if (!canRepairTransition(ro.status, 'quoted')) {
-      throw httpErr(409, `Khong the nop bao gia khi don dang ${ro.status}`);
-    }
-
-    if (items) {
-      await conn.query(`UPDATE repair_items SET is_deleted = 1 WHERE repair_order_id = ?`, [id]);
-      for (const raw of items) {
-        const productId = Number(raw.product_id);
-        const qty = Math.max(1, Number(raw.qty) || 1);
-        const unitPrice = Math.max(0, Number(raw.unit_price) || 0);
-        if (!productId) throw httpErr(400, 'Item thieu product_id');
-        const imei = raw.imei ? String(raw.imei).trim() : null;
-        const note = raw.note ? String(raw.note).trim() : null;
-        await conn.query(
-          `INSERT INTO repair_items (repair_order_id, product_id, qty, unit_price, imei, note)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [id, productId, qty, unitPrice, imei, note]
-        );
-      }
-    }
-
-    const updates = ['status = ?', 'diagnose_text = ?', 'quoted_at = NOW()'];
-    const values = ['quoted', diagnose];
-    if (serviceFee !== null) {
-      updates.push('service_fee = ?');
-      values.push(serviceFee);
-    }
-    values.push(id);
-    await conn.query(`UPDATE repair_orders SET ${updates.join(', ')} WHERE id = ?`, values);
-
-    if (serviceFee !== null) await syncServiceFeeChargeKT(conn, id, serviceFee);
-    await recalcRepairTotal(conn, id);
-    await conn.commit();
-
-    const [after] = await conn.query(`SELECT * FROM repair_orders WHERE id = ?`, [id]);
-    res.json(after[0]);
-  } catch (err) {
-    try { await conn.rollback(); } catch (_) {}
-    next(err);
-  } finally { conn.release(); }
-});
-
-router.post('/repair-orders/:id/done', async (req, res, next) => {
-  const conn = await db.getConnection();
-  try {
-    const id = req.params.id;
-    await conn.beginTransaction();
-    const ro = await loadAssignedRepair(conn, id, req.user.sub, true);
-    if (!ro) throw httpErr(404, 'Khong tim thay don sua chua');
-    if (!canRepairTransition(ro.status, 'done')) {
-      throw httpErr(409, `Khong the bao xong khi don dang ${ro.status}`);
-    }
-    await conn.query(
-      `UPDATE repair_orders SET status = 'done', done_at = NOW() WHERE id = ?`, [id]
+    const cid = Number(req.params.id);
+    if (!cid) return res.status(400).json({ error: 'id khong hop le' });
+    const [accounts] = await db.query(
+      `SELECT id, account_name, note FROM customer_accounts
+        WHERE customer_id = ? AND is_deleted = 0 ORDER BY id DESC`, [cid]
     );
-    await conn.commit();
-    const [after] = await conn.query(`SELECT * FROM repair_orders WHERE id = ?`, [id]);
-    res.json(after[0]);
-  } catch (err) {
-    try { await conn.rollback(); } catch (_) {}
-    next(err);
-  } finally { conn.release(); }
+    const [vehicles] = await db.query(
+      `SELECT id, plate, note FROM customer_vehicles
+        WHERE customer_id = ? AND is_deleted = 0 ORDER BY id DESC`, [cid]
+    );
+    const [sims] = await db.query(
+      `SELECT id, sim_number, note FROM customer_sims
+        WHERE customer_id = ? AND is_deleted = 0 ORDER BY id DESC`, [cid]
+    );
+
+    // pending requests cua KTV nay (de FE biet da gui chua)
+    const [pending] = await db.query(
+      `SELECT id, asset_kind, action, target_id, value, note, ref_order_id, status
+         FROM customer_update_requests
+        WHERE customer_id = ? AND requested_by_role = 'kithuat'
+          AND requested_by_id = ? AND status = 'pending' AND is_deleted = 0`,
+      [cid, req.user.sub]
+    );
+    res.json({ accounts, vehicles, sims, pending_requests: pending });
+  } catch (err) { next(err); }
 });
 
-router.post('/repair-orders/:id/start-deliver', async (req, res, next) => {
-  const conn = await db.getConnection();
+// POST /api/kithuat/customers/:id/asset-requests
+// Body: { asset_kind, action, target_id?, value?, note?, ref_order_id? }
+router.post('/customers/:id/asset-requests', async (req, res, next) => {
   try {
-    const id = req.params.id;
-    await conn.beginTransaction();
-    const ro = await loadAssignedRepair(conn, id, req.user.sub, true);
-    if (!ro) throw httpErr(404, 'Khong tim thay don sua chua');
-    if (!canRepairTransition(ro.status, 'delivering')) {
-      throw httpErr(409, `Khong the bat dau giao khi don dang ${ro.status}`);
+    const cid = Number(req.params.id);
+    if (!cid) return res.status(400).json({ error: 'id khong hop le' });
+
+    const kind = req.body && req.body.asset_kind;
+    const action = req.body && req.body.action;
+    if (!ASSET_KIND_CFG[kind]) return res.status(400).json({ error: 'asset_kind khong hop le' });
+    if (!['add','update','delete'].includes(action)) {
+      return res.status(400).json({ error: 'action khong hop le' });
     }
-    await conn.query(`UPDATE repair_orders SET status = 'delivering' WHERE id = ?`, [id]);
-    await conn.commit();
-    const [after] = await conn.query(`SELECT * FROM repair_orders WHERE id = ?`, [id]);
-    res.json(after[0]);
-  } catch (err) {
-    try { await conn.rollback(); } catch (_) {}
-    next(err);
-  } finally { conn.release(); }
+
+    let value = null;
+    if (action === 'add' || action === 'update') {
+      const v = String(req.body.value == null ? '' : req.body.value).trim();
+      if (!v) return res.status(400).json({ error: 'Thieu gia tri' });
+      if (v.length > 255) return res.status(400).json({ error: 'Gia tri qua dai' });
+      if (/[<>]/.test(v)) return res.status(400).json({ error: 'Gia tri co ky tu khong hop le' });
+      value = v;
+    }
+    let target_id = null;
+    if (action === 'update' || action === 'delete') {
+      target_id = Number(req.body.target_id) || null;
+      if (!target_id) return res.status(400).json({ error: 'Thieu target_id' });
+    }
+    const note = req.body.note ? String(req.body.note).slice(0, 500) : null;
+    const ref_order_id = req.body.ref_order_id ? Number(req.body.ref_order_id) : null;
+
+    // verify khach ton tai
+    const [cust] = await db.query(
+      `SELECT id, full_name FROM customers WHERE id = ? AND is_deleted = 0`, [cid]
+    );
+    if (!cust.length) return res.status(404).json({ error: 'Khong tim thay khach' });
+
+    const [r] = await db.query(
+      `INSERT INTO customer_update_requests
+        (customer_id, asset_kind, action, target_id, value, note,
+         requested_by_role, requested_by_id, ref_order_id, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'kithuat', ?, ?, 'pending')`,
+      [cid, kind, action, target_id, value, note, req.user.sub, ref_order_id]
+    );
+
+    // Notify admin
+    try {
+      const labels = { account: 'tai khoan', vehicle: 'bien so', sim: 'so SIM' };
+      const actLabels = { add: 'them', update: 'sua', delete: 'xoa' };
+      await notify.create(db, {
+        type: 'customer_asset_request',
+        title: `KTV de xuat ${actLabels[action]} ${labels[kind]}`,
+        message: `${cust[0].full_name}: ${value || '(xoa muc)'}${note ? ' — ' + note : ''}`,
+        link_url: `/admin/customers.html?customer_id=${cid}&tab=requests`,
+        ref_customer_id: cid,
+        ref_staff_id: req.user.sub,
+        ref_order_id,
+      });
+    } catch (_) {}
+
+    res.status(201).json({ id: r.insertId, ok: true });
+  } catch (err) { next(err); }
 });
-
-router.post('/repair-orders/:id/complete', async (req, res, next) => {
-  const conn = await db.getConnection();
-  try {
-    const id = req.params.id;
-    const deliveredImage = req.body.delivered_image_url
-      ? String(req.body.delivered_image_url).trim() : null;
-
-    const updates = ['status = ?', 'delivered_at = NOW()'];
-    const values = ['completed'];
-    if (deliveredImage) { updates.push('delivered_image_url = ?'); values.push(deliveredImage); }
-    if (req.body.paid_amount !== undefined) {
-      updates.push('paid_amount = ?');
-      values.push(Math.max(0, Number(req.body.paid_amount) || 0));
-    }
-    values.push(id);
-
-    await conn.beginTransaction();
-    const ro = await loadAssignedRepair(conn, id, req.user.sub, true);
-    if (!ro) throw httpErr(404, 'Khong tim thay don sua chua');
-    if (!canRepairTransition(ro.status, 'completed')) {
-      throw httpErr(409, `Khong the hoan tat khi don dang ${ro.status}`);
-    }
-    await conn.query(`UPDATE repair_orders SET ${updates.join(', ')} WHERE id = ?`, values);
-    await conn.commit();
-    const [after] = await conn.query(`SELECT * FROM repair_orders WHERE id = ?`, [id]);
-    res.json(after[0]);
-  } catch (err) {
-    try { await conn.rollback(); } catch (_) {}
-    next(err);
-  } finally { conn.release(); }
-});
-
 
 module.exports = router;

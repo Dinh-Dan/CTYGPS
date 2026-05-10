@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Theo dõi đơn — GPS Việt</title>
+<title>Theo dõi đơn — VinaGPS</title>
 <link rel="stylesheet" href="/shared/css/style.css" />
 <style>
   body{background:#f1f5f9}
@@ -51,7 +51,7 @@
 <div class="track-wrap">
   <div class="brand">
     <span class="logo-mark">GV</span>
-    <span>GPS VIỆT — Theo dõi đơn hàng</span>
+    <span>VinaGPS — Theo dõi đơn hàng</span>
   </div>
 
   <div class="panel">
@@ -88,12 +88,10 @@
     renew: 'Gia hạn', uninstall: 'Tháo gỡ',
   };
   const STEPS = [
-    { key: 'pending_review',     label: '📝 Tiếp nhận yêu cầu' },
-    { key: 'new',                label: '✓ Đã duyệt đơn' },
-    { key: 'assigned',           label: '👨‍🔧 Đã giao kỹ thuật viên' },
-    { key: 'warehouse_released', label: '📦 Đã xuất kho' },
-    { key: 'in_progress',        label: '🛠 Đang lắp đặt' },
-    { key: 'done',               label: '🎉 Hoàn thành' },
+    { key: 'pending',     label: '⏳ Đang chờ' },
+    { key: 'confirmed',   label: '✓ Đã lên đơn' },
+    { key: 'in_progress', label: '🛠 Đang xử lý' },
+    { key: 'done',        label: '🎉 Hoàn thành' },
   ];
 
   function escape(s) {
@@ -191,8 +189,7 @@
         <div class="summary-grid">
           ${o.customer_name ? `<div><b>Khách:</b> ${escape(o.customer_name)}</div>` : ''}
           ${o.customer_phone ? `<div><b>SĐT:</b> ${escape(o.customer_phone)}</div>` : ''}
-          ${o.area ? `<div><b>Khu vực:</b> ${escape(o.area)}</div>` : ''}
-          ${o.vehicle_plate ? `<div><b>Biển số:</b> ${escape(o.vehicle_plate)}</div>` : ''}
+
         </div>
         ${o.address ? `<div style="margin-top:6px"><b>Địa chỉ:</b> ${escape(o.address)}</div>` : ''}
       </div>

@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Máy chủ: 127.0.0.1
--- Thời gian đã tạo: Th4 29, 2026 lúc 09:15 AM
+-- Thời gian đã tạo: Th5 10, 2026 lúc 12:22 PM
 -- Phiên bản máy phục vụ: 10.4.32-MariaDB
 -- Phiên bản PHP: 8.0.30
 
@@ -20,6 +20,39 @@ SET time_zone = "+00:00";
 --
 -- Cơ sở dữ liệu: `gpsviet`
 --
+
+-- --------------------------------------------------------
+
+--
+-- Cấu trúc bảng cho bảng `agency_collections`
+--
+
+CREATE TABLE `agency_collections` (
+  `id` int(11) NOT NULL,
+  `code` varchar(30) NOT NULL,
+  `dealer_id` int(11) NOT NULL,
+  `retail_customer_id` int(11) DEFAULT NULL,
+  `amount` bigint(20) NOT NULL,
+  `source` enum('admin','staff') NOT NULL,
+  `staff_id` int(11) DEFAULT NULL,
+  `handed_over` tinyint(1) NOT NULL DEFAULT 0,
+  `handed_over_at` datetime DEFAULT NULL,
+  `method` enum('cash','transfer') NOT NULL DEFAULT 'cash',
+  `note` varchar(500) DEFAULT NULL,
+  `receipt_url` varchar(500) DEFAULT NULL,
+  `collected_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `debt_settlement_id` int(11) DEFAULT NULL,
+  `created_by` int(11) DEFAULT NULL,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Đang đổ dữ liệu cho bảng `agency_collections`
+--
+
+INSERT INTO `agency_collections` (`id`, `code`, `dealer_id`, `retail_customer_id`, `amount`, `source`, `staff_id`, `handed_over`, `handed_over_at`, `method`, `note`, `receipt_url`, `collected_at`, `debt_settlement_id`, `created_by`, `is_deleted`) VALUES
+(1, 'TH-0705-001', 4, NULL, 500000, 'admin', NULL, 1, '2026-05-07 12:19:31', 'transfer', NULL, NULL, '2026-05-07 12:19:00', 4, 1, 0),
+(2, 'TH-0805-001', 4, 6, 500000, 'admin', NULL, 1, '2026-05-08 22:19:26', 'cash', NULL, NULL, '2026-05-08 22:19:00', 4, 1, 0);
 
 -- --------------------------------------------------------
 
@@ -57,44 +90,34 @@ INSERT INTO `app_settings` (`key`, `value`, `changed_at`, `changed_by`) VALUES
 -- --------------------------------------------------------
 
 --
--- Cấu trúc bảng cho bảng `badges`
+-- Cấu trúc bảng cho bảng `badge_order_attachments`
 --
 
-CREATE TABLE `badges` (
+CREATE TABLE `badge_order_attachments` (
   `id` int(11) NOT NULL,
-  `code` varchar(30) NOT NULL,
-  `customer_id` int(11) NOT NULL,
-  `dealer_id` int(11) DEFAULT NULL,
-  `order_id` int(11) DEFAULT NULL,
-  `vehicle_plate` varchar(30) NOT NULL,
-  `vehicle_type` enum('truck_under_3.5t','truck_over_3.5t','passenger','contract','taxi','other') NOT NULL DEFAULT 'truck_under_3.5t',
-  `status` enum('pending_review','submitted','approved','rejected','delivered','cancelled') NOT NULL DEFAULT 'pending_review',
-  `fee_amount` bigint(20) NOT NULL DEFAULT 0,
-  `paid_amount` bigint(20) NOT NULL DEFAULT 0,
-  `submitted_at` datetime DEFAULT NULL,
-  `result_at` datetime DEFAULT NULL,
-  `delivered_at` datetime DEFAULT NULL,
-  `reject_reason` varchar(500) DEFAULT NULL,
-  `note` text DEFAULT NULL,
-  `creator_type` enum('customer','dealer','admin','staff') NOT NULL DEFAULT 'admin',
-  `creator_id` int(11) DEFAULT NULL,
+  `badge_order_id` int(11) NOT NULL,
+  `uploader_type` enum('customer','dealer','admin','staff') NOT NULL,
+  `uploader_id` int(11) DEFAULT NULL,
+  `kind` enum('vehicle_reg','inspection','insurance','cccd','license','biz_license','biz_register','rent_contract','old_badge','other_in','dot_receipt','dot_result','badge_photo','delivery_proof','other_out') NOT NULL,
+  `url` varchar(500) NOT NULL,
+  `caption` varchar(255) DEFAULT NULL,
   `is_deleted` tinyint(1) NOT NULL DEFAULT 0,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `uploaded_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
 --
--- Cấu trúc bảng cho bảng `badge_attachments`
+-- Cấu trúc bảng cho bảng `badge_order_charges`
 --
 
-CREATE TABLE `badge_attachments` (
+CREATE TABLE `badge_order_charges` (
   `id` int(11) NOT NULL,
-  `badge_id` int(11) NOT NULL,
-  `url` varchar(500) NOT NULL,
-  `caption` varchar(255) DEFAULT NULL,
-  `kind` enum('vehicle_reg','cccd','license','other') NOT NULL DEFAULT 'other',
-  `uploaded_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `badge_order_id` int(11) NOT NULL,
+  `kind` enum('service','dot_fee','delivery','fee','discount') NOT NULL DEFAULT 'fee',
+  `label` varchar(150) NOT NULL,
+  `amount` bigint(20) NOT NULL DEFAULT 0,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -150,8 +173,8 @@ INSERT INTO `collections` (`id`, `order_id`, `staff_id`, `amount`, `method`, `re
 (2, 6, 3, 123157000, 'cash', NULL, '2026-04-28 02:50:02', 1, 2, 0),
 (3, 8, 3, 7040000, 'cash', NULL, '2026-04-28 13:54:37', 1, 3, 0),
 (4, 14, 3, 260000, 'transfer', NULL, '2026-04-28 20:52:58', 1, 4, 0),
-(5, 6, 3, 7777000, 'cash', NULL, '2026-04-29 10:52:51', 0, NULL, 0),
-(6, 15, 3, 5082002, 'cash', NULL, '2026-04-29 11:47:25', 0, NULL, 0);
+(5, 6, 3, 7777000, 'cash', NULL, '2026-04-29 10:52:51', 1, 5, 0),
+(6, 15, 3, 5082002, 'cash', NULL, '2026-04-29 11:47:25', 1, 5, 0);
 
 -- --------------------------------------------------------
 
@@ -172,7 +195,10 @@ CREATE TABLE `conversations` (
 
 INSERT INTO `conversations` (`id`, `customer_id`, `last_message_at`, `is_deleted`) VALUES
 (1, 7, '2026-04-28 13:26:45', 0),
-(2, 4, '2026-04-29 12:50:02', 0);
+(2, 4, '2026-04-29 12:50:02', 0),
+(3, 6, NULL, 0),
+(4, 5, NULL, 0),
+(5, 10, '2026-05-08 22:53:58', 0);
 
 -- --------------------------------------------------------
 
@@ -196,7 +222,10 @@ CREATE TABLE `conversation_members` (
 INSERT INTO `conversation_members` (`id`, `conversation_id`, `staff_id`, `joined_at`, `removed_at`, `added_by`) VALUES
 (1, 1, 3, '2026-04-29 10:46:05', NULL, 1),
 (2, 2, 4, '2026-04-29 12:30:30', NULL, 1),
-(5, 2, 3, '2026-04-29 12:36:04', NULL, 1);
+(5, 2, 3, '2026-05-05 23:28:44', NULL, 1),
+(12, 3, 3, '2026-05-05 03:04:30', NULL, 1),
+(14, 4, 3, '2026-05-06 00:51:24', NULL, 1),
+(16, 1, 4, '2026-05-08 22:44:08', NULL, 1);
 
 -- --------------------------------------------------------
 
@@ -241,7 +270,29 @@ INSERT INTO `customers` (`id`, `code`, `type`, `full_name`, `phone`, `email`, `a
 (5, 'KH003', 'retail', 'Lê Hoàng Cường', '0923456789', NULL, 'Q.7, TP.HCM', NULL, NULL, NULL, NULL, NULL, 0, 0, 0, 0.00, 1, NULL, 0, '2026-04-26 02:30:52', '2026-04-25 16:30:31', '2026-04-26 11:54:41'),
 (6, 'KH004', 'retail', 'Phạm Thanh Dũng', '0934567890', NULL, 'Bình Dương', NULL, NULL, NULL, NULL, NULL, 0, 0, 0, 0.00, 1, NULL, 0, '2026-04-26 02:30:52', '2026-04-25 16:30:31', '2026-04-26 11:54:41'),
 (7, 'KH0005', 'retail', 'ngueyén van a', '0312313123', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, 0.00, 1, NULL, 0, '2026-04-26 11:35:23', '2026-04-26 04:33:39', '2026-04-28 13:18:55'),
-(9, 'KH0006', 'retail', 'alo', '0362469321', NULL, 'đia chỉ', NULL, NULL, NULL, NULL, NULL, 0, 0, 0, 0.00, 1, NULL, 0, '2026-04-26 17:43:31', '2026-04-26 10:36:26', '2026-04-26 11:54:41');
+(9, 'KH0006', 'retail', 'alo', '0362469321', NULL, 'đia chỉ', NULL, NULL, NULL, NULL, NULL, 0, 0, 0, 0.00, 1, NULL, 0, '2026-04-26 17:43:31', '2026-04-26 10:36:26', '2026-04-26 11:54:41'),
+(10, 'KH0007', 'retail', '123123', '0932743900', NULL, '123123', NULL, NULL, NULL, NULL, NULL, 0, 0, 0, 0.00, NULL, NULL, 0, '2026-05-10 00:08:28', '2026-05-08 15:53:57', '2026-05-09 17:08:28');
+
+-- --------------------------------------------------------
+
+--
+-- Cấu trúc bảng cho bảng `customer_accounts`
+--
+
+CREATE TABLE `customer_accounts` (
+  `id` int(11) NOT NULL,
+  `customer_id` int(11) NOT NULL,
+  `account_name` varchar(255) NOT NULL,
+  `note` varchar(500) DEFAULT NULL,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Đang đổ dữ liệu cho bảng `customer_accounts`
+--
+
+INSERT INTO `customer_accounts` (`id`, `customer_id`, `account_name`, `note`, `is_deleted`) VALUES
+(1, 10, 'nguyenavc', NULL, 0);
 
 -- --------------------------------------------------------
 
@@ -261,7 +312,67 @@ CREATE TABLE `customer_product_prices` (
 --
 
 INSERT INTO `customer_product_prices` (`id`, `customer_id`, `product_id`, `price`) VALUES
-(3, 4, 1, 0.00);
+(3, 4, 1, 0.00),
+(4, 4, 8, 0.00);
+
+-- --------------------------------------------------------
+
+--
+-- Cấu trúc bảng cho bảng `customer_sims`
+--
+
+CREATE TABLE `customer_sims` (
+  `id` int(11) NOT NULL,
+  `customer_id` int(11) NOT NULL,
+  `sim_number` varchar(30) NOT NULL,
+  `note` varchar(500) DEFAULT NULL,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Cấu trúc bảng cho bảng `customer_update_requests`
+--
+
+CREATE TABLE `customer_update_requests` (
+  `id` int(11) NOT NULL,
+  `customer_id` int(11) NOT NULL,
+  `asset_kind` enum('account','vehicle','sim') NOT NULL,
+  `action` enum('add','update','delete') NOT NULL,
+  `target_id` int(11) DEFAULT NULL,
+  `value` varchar(255) DEFAULT NULL,
+  `note` varchar(500) DEFAULT NULL,
+  `requested_by_role` enum('admin','kithuat','customer','daily') NOT NULL,
+  `requested_by_id` int(11) DEFAULT NULL,
+  `ref_order_id` int(11) DEFAULT NULL,
+  `status` enum('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+  `reviewed_by` int(11) DEFAULT NULL,
+  `reviewed_at` timestamp NULL DEFAULT NULL,
+  `review_note` varchar(500) DEFAULT NULL,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Đang đổ dữ liệu cho bảng `customer_update_requests`
+--
+
+INSERT INTO `customer_update_requests` (`id`, `customer_id`, `asset_kind`, `action`, `target_id`, `value`, `note`, `requested_by_role`, `requested_by_id`, `ref_order_id`, `status`, `reviewed_by`, `reviewed_at`, `review_note`, `is_deleted`) VALUES
+(1, 10, 'account', 'add', NULL, 'nguyenavc', NULL, 'kithuat', 3, 35, 'approved', 1, '2026-05-10 08:31:23', NULL, 0);
+
+-- --------------------------------------------------------
+
+--
+-- Cấu trúc bảng cho bảng `customer_vehicles`
+--
+
+CREATE TABLE `customer_vehicles` (
+  `id` int(11) NOT NULL,
+  `customer_id` int(11) NOT NULL,
+  `plate` varchar(30) NOT NULL,
+  `note` varchar(500) DEFAULT NULL,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -292,7 +403,8 @@ CREATE TABLE `debt_settlements` (
 INSERT INTO `debt_settlements` (`id`, `code`, `customer_id`, `total_debt`, `amount_paid`, `remaining`, `qr_slot`, `pay_method`, `receipt_url`, `note`, `created_by`, `paid_at`, `is_deleted`) VALUES
 (1, 'TT-2804-001', 4, 213000, 213000, 0, 1, 'mixed', NULL, NULL, 1, '2026-04-28 20:07:53', 0),
 (2, 'TT-2804-002', 7, 389980, 200000, 189980, 1, 'transfer', NULL, NULL, 1, '2026-04-28 20:10:54', 0),
-(3, 'TT-2804-003', 7, 189980, 189980, 0, 1, 'cash', NULL, NULL, 1, '2026-04-28 20:18:55', 0);
+(3, 'TT-2804-003', 7, 189980, 189980, 0, 1, 'cash', NULL, NULL, 1, '2026-04-28 20:18:55', 0),
+(4, 'TT-0805-001', 4, 581000, 581000, 0, 1, 'cash', NULL, NULL, 1, '2026-05-08 22:24:46', 0);
 
 -- --------------------------------------------------------
 
@@ -375,7 +487,6 @@ CREATE TABLE `messages` (
   `id` int(11) NOT NULL,
   `conversation_id` int(11) NOT NULL,
   `order_id` int(11) DEFAULT NULL,
-  `repair_order_id` int(11) DEFAULT NULL,
   `sender_type` enum('customer','staff') NOT NULL,
   `sender_id` int(11) NOT NULL,
   `content` text NOT NULL,
@@ -388,14 +499,15 @@ CREATE TABLE `messages` (
 -- Đang đổ dữ liệu cho bảng `messages`
 --
 
-INSERT INTO `messages` (`id`, `conversation_id`, `order_id`, `repair_order_id`, `sender_type`, `sender_id`, `content`, `visibility`, `sent_at`, `read_at`) VALUES
-(1, 1, NULL, NULL, 'customer', 7, 'Xin chào, mình quan tâm sản phẩm:\n• Thiet bi dinh vi VT-01 (Mã cccd)\n• Giá: 15.000đ\n• http://localhost:5170/customer/product-detail.html?id=8\nMình cần được tư vấn thêm.', 'all', '2026-04-28 13:26:26', '2026-04-28 13:26:35'),
-(2, 1, NULL, NULL, 'staff', 1, 'tu cái gì mà tư', 'all', '2026-04-28 13:26:45', NULL),
-(3, 2, NULL, NULL, 'customer', 4, 'aloo', 'all', '2026-04-29 12:43:41', '2026-04-29 12:43:46'),
-(4, 2, NULL, NULL, 'staff', 1, 'dạ', 'all', '2026-04-29 12:43:49', NULL),
-(5, 2, NULL, NULL, 'customer', 4, 'alooooooo', 'all', '2026-04-29 12:44:08', '2026-04-29 12:44:08'),
-(6, 2, NULL, NULL, 'customer', 4, 'https://i.ibb.co/KczVZfjM/cv2-1777441761632.jpg', 'staff_only', '2026-04-29 12:49:23', '2026-04-29 12:49:24'),
-(7, 2, NULL, NULL, 'customer', 4, 'https://i.ibb.co/KczVZfjM/cv2-1777441761632.jpg', 'staff_only', '2026-04-29 12:50:02', '2026-04-29 12:50:03');
+INSERT INTO `messages` (`id`, `conversation_id`, `order_id`, `sender_type`, `sender_id`, `content`, `visibility`, `sent_at`, `read_at`) VALUES
+(1, 1, NULL, 'customer', 7, 'Xin chào, mình quan tâm sản phẩm:\n• Thiet bi dinh vi VT-01 (Mã cccd)\n• Giá: 15.000đ\n• http://localhost:5170/customer/product-detail.html?id=8\nMình cần được tư vấn thêm.', 'all', '2026-04-28 13:26:26', '2026-04-28 13:26:35'),
+(2, 1, NULL, 'staff', 1, 'tu cái gì mà tư', 'all', '2026-04-28 13:26:45', NULL),
+(3, 2, NULL, 'customer', 4, 'aloo', 'all', '2026-04-29 12:43:41', '2026-04-29 12:43:46'),
+(4, 2, NULL, 'staff', 1, 'dạ', 'all', '2026-04-29 12:43:49', NULL),
+(5, 2, NULL, 'customer', 4, 'alooooooo', 'all', '2026-04-29 12:44:08', '2026-04-29 12:44:08'),
+(6, 2, NULL, 'customer', 4, 'https://i.ibb.co/KczVZfjM/cv2-1777441761632.jpg', 'staff_only', '2026-04-29 12:49:23', '2026-04-29 12:49:24'),
+(7, 2, NULL, 'customer', 4, 'https://i.ibb.co/KczVZfjM/cv2-1777441761632.jpg', 'staff_only', '2026-04-29 12:50:02', '2026-04-29 12:50:03'),
+(8, 5, NULL, 'customer', 10, 'Xin chào, mình quan tâm sản phẩm:\n• Thiet bi dinh vi VT-01 (Mã cccd)\n• Giá: 15.000đ\n• http://localhost:5179/customer/product-detail.html?id=8\nMình cần được tư vấn thêm.', 'all', '2026-05-08 22:53:58', '2026-05-08 22:54:02');
 
 -- --------------------------------------------------------
 
@@ -423,8 +535,11 @@ CREATE TABLE `notifications` (
 --
 
 INSERT INTO `notifications` (`id`, `type`, `title`, `message`, `link_url`, `ref_order_id`, `ref_customer_id`, `ref_staff_id`, `is_read`, `read_at`, `is_deleted`, `created_at`) VALUES
-(1, 'order_completed', 'ORD-2904-001: KTV hoàn thành', 'Lê Văn Hùng — Pham Thi Dung — 120.000đ', '/admin/orders.html#order-17', 17, 4, 3, 1, '2026-04-29 12:31:44', 0, '2026-04-29 05:31:33'),
-(2, 'order_new', 'Đơn mới ORD-2904-003', 'Pham Thi Dung vừa tạo đơn Bảo hành', '/admin/orders.html#order-19', 19, 4, NULL, 1, '2026-04-29 12:32:51', 0, '2026-04-29 05:32:47');
+(1, 'order_completed', 'ORD-2904-001: KTV hoàn thành', 'Lê Văn Hùng — Pham Thi Dung — 120.000đ', '/admin/orders.html#order-17', NULL, 4, 3, 1, '2026-04-29 12:31:44', 0, '2026-04-29 05:31:33'),
+(2, 'order_new', 'Đơn mới ORD-2904-003', 'Pham Thi Dung vừa tạo đơn Bảo hành', '/admin/orders.html#order-19', NULL, 4, NULL, 1, '2026-04-29 12:32:51', 0, '2026-04-29 05:32:47'),
+(3, 'order_receive_uploaded', 'ORD-0605-001: KTV đã chụp ảnh nhận hàng', 'Lê Văn Hùng — chờ xuất kho cho Lê Hoàng Cường', '/admin/orders.html#order-25', NULL, 5, 3, 1, '2026-05-08 22:36:52', 0, '2026-05-06 09:09:25'),
+(4, 'order_completed', 'ORD-1005-004: KTV hoàn thành', 'Lê Văn Hùng — 123123 — 7.184.333đ', '/admin/orders.html#order-35', 35, 10, 3, 0, NULL, 0, '2026-05-10 08:20:38'),
+(5, 'customer_asset_request', 'KTV de xuat them tai khoan', '123123: nguyenavc', '/admin/customers.html?customer_id=10&tab=requests', 35, 10, 3, 1, '2026-05-10 15:31:08', 0, '2026-05-10 08:22:40');
 
 -- --------------------------------------------------------
 
@@ -443,17 +558,14 @@ CREATE TABLE `orders` (
   `debt_carried_at` datetime DEFAULT NULL,
   `debt_settlement_id` int(11) DEFAULT NULL,
   `payment_method` enum('cash','transfer','debt') NOT NULL DEFAULT 'cash',
-  `status` enum('pending_review','new','assigned','warehouse_released','in_progress','done','cancelled','customer_owes','pending_admin_confirm','staff_owes','quoted','awaiting_payment','payment_reported') NOT NULL DEFAULT 'new',
+  `status` varchar(50) NOT NULL DEFAULT 'pending',
+  `progress_note` text DEFAULT NULL,
+  `payment_status` enum('unpaid','partial','paid','customer_owes','pending_admin_confirm','staff_owes','refunded') NOT NULL DEFAULT 'unpaid',
+  `collected_for_dealer` tinyint(1) NOT NULL DEFAULT 0,
   `has_return` tinyint(1) NOT NULL DEFAULT 0,
   `seen_at` datetime DEFAULT NULL,
-  `area` varchar(100) DEFAULT NULL,
   `address` varchar(500) DEFAULT NULL,
-  `vehicle_plate` varchar(30) DEFAULT NULL,
-  `subscription_account` varchar(64) DEFAULT NULL,
-  `public_token` varchar(64) DEFAULT NULL,
-  `service_kind` enum('install','maintenance','warranty','renewal','badge') NOT NULL DEFAULT 'install',
   `assigned_staff_id` int(11) DEFAULT NULL,
-  `kind` enum('install','maintenance','renew','uninstall') NOT NULL DEFAULT 'install',
   `due_at` datetime DEFAULT NULL,
   `started_at` datetime DEFAULT NULL,
   `completed_at` datetime DEFAULT NULL,
@@ -472,25 +584,11 @@ CREATE TABLE `orders` (
 -- Đang đổ dữ liệu cho bảng `orders`
 --
 
-INSERT INTO `orders` (`id`, `code`, `customer_id`, `dealer_id`, `total_amount`, `subtotal`, `paid_amount`, `debt_carried_at`, `debt_settlement_id`, `payment_method`, `status`, `has_return`, `seen_at`, `area`, `address`, `vehicle_plate`, `subscription_account`, `public_token`, `service_kind`, `assigned_staff_id`, `kind`, `due_at`, `started_at`, `completed_at`, `wage_amount`, `ktv_note`, `note`, `creator_type`, `creator_id`, `confirmed_at`, `confirmed_by`, `is_deleted`, `created_at`) VALUES
-(1, 'ORD-2604-001', 7, NULL, 7100000, 7000000, 0, NULL, NULL, 'debt', 'new', 0, '2026-04-26 11:34:07', 'mỹ', NULL, NULL, NULL, NULL, 'renewal', NULL, 'install', NULL, NULL, NULL, 0, NULL, '[Tu van TV-2604-005]', 'admin', 1, '2026-04-27 23:24:09', 1, 0, '2026-04-27 16:24:09'),
-(2, 'ORD-2604-002', 9, NULL, 248378002, 246379000, 0, NULL, NULL, 'debt', 'cancelled', 0, '2026-04-26 22:30:46', NULL, 'hehehe', NULL, NULL, NULL, 'install', 3, 'install', NULL, '2026-04-28 00:55:33', NULL, 0, NULL, '[CANCEL] không có lí do gì', 'customer', 9, '2026-04-27 18:20:46', 1, 0, '2026-04-27 11:20:46'),
-(3, 'ORD-2704-001', 7, NULL, 16000000, 16000000, 0, NULL, NULL, 'debt', 'new', 0, '2026-04-27 18:53:20', NULL, 'bang tex', NULL, NULL, NULL, 'install', NULL, 'install', NULL, NULL, NULL, 0, NULL, NULL, 'customer', 7, '2026-04-27 22:53:18', 1, 0, '2026-04-27 15:53:18'),
-(4, 'ORD-2804-001', 7, NULL, 7790000, 7100000, 0, NULL, NULL, 'debt', 'new', 0, '2026-04-28 01:36:50', NULL, 'bang tex', NULL, NULL, NULL, 'install', NULL, 'install', NULL, NULL, NULL, 0, NULL, 'ghi chú', 'customer', 7, '2026-04-28 01:37:39', 1, 0, '2026-04-27 18:37:39'),
-(5, 'ORD-2804-002', 7, NULL, 2500000, 2500000, 2500000, NULL, NULL, 'debt', 'done', 0, '2026-04-28 01:39:12', 'quậnk 2', 'wqeda ád ác', NULL, NULL, NULL, 'install', 3, 'install', NULL, NULL, '2026-04-28 01:54:33', 10000, NULL, 'áđưa', 'customer', 7, '2026-04-28 01:44:08', 1, 0, '2026-04-27 18:44:08'),
-(6, 'ORD-2804-003', 7, NULL, 130934000, 123147000, 130934000, NULL, NULL, 'debt', 'staff_owes', 0, '2026-04-28 02:09:14', NULL, 'bang tex', NULL, NULL, NULL, 'install', 3, 'install', NULL, '2026-04-29 10:51:45', '2026-04-29 10:52:51', 50000, NULL, 'ghi chú', 'customer', 7, '2026-04-28 02:18:31', 1, 0, '2026-04-27 19:18:31'),
-(7, 'ORD-2804-004', 7, NULL, 4510000, 4510000, 0, NULL, NULL, 'debt', 'cancelled', 0, '2026-04-28 12:41:45', NULL, 'jmjhmm', NULL, NULL, NULL, 'install', 3, 'install', NULL, NULL, NULL, 200000, NULL, '[CANCEL] sad', 'customer', 7, '2026-04-28 12:42:23', 1, 0, '2026-04-28 05:42:23'),
-(8, 'ORD-2804-005', 7, NULL, 7040000, 7000000, 7040000, NULL, NULL, 'debt', 'done', 0, '2026-04-28 13:14:17', NULL, 'frg tfrt', NULL, NULL, NULL, 'install', 3, 'install', NULL, '2026-04-28 13:49:58', '2026-04-28 13:54:37', 330000, NULL, NULL, 'customer', 7, '2026-04-28 13:16:07', 1, 0, '2026-04-28 06:16:07'),
-(9, 'ORD-2804-006', 7, NULL, 515000, 115000, 0, NULL, NULL, 'debt', 'pending_admin_confirm', 0, '2026-04-28 13:34:43', NULL, 'ssfsdf', NULL, NULL, NULL, 'install', 3, 'install', NULL, '2026-04-28 13:53:42', '2026-04-28 14:27:20', 60000, NULL, NULL, 'customer', 7, '2026-04-28 13:39:28', 1, 0, '2026-04-28 06:39:28'),
-(10, 'ORD-2804-007', 7, NULL, 389980, 200000, 0, '2026-04-28 20:10:54', 2, 'debt', 'done', 0, '2026-04-28 14:40:42', 'uk', 'k,', NULL, NULL, NULL, 'install', 3, 'install', NULL, '2026-04-28 15:06:45', '2026-04-28 23:54:35', 200000, NULL, NULL, 'customer', 7, '2026-04-28 14:41:30', 1, 0, '2026-04-28 07:41:30'),
-(11, 'ORD-2804-008', 4, NULL, 90000, 90000, 90000, NULL, NULL, 'transfer', 'done', 0, '2026-04-28 19:48:44', NULL, NULL, '34432', 'rvsdg', 'e68e51c673e2975b39b5937a5d96165925897c843dc2a617', 'renewal', NULL, 'install', NULL, NULL, '2026-04-28 23:54:35', 0, NULL, 'Gia hạn 1 năm\nSự cố: ưqưdq\ndưqđứ', 'dealer', 4, '2026-04-28 19:49:50', 1, 0, '2026-04-28 12:49:50'),
-(12, 'ORD-2804-009', 4, NULL, 213000, 213000, 0, '2026-04-28 20:07:53', 1, 'debt', 'done', 0, '2026-04-28 20:00:07', NULL, NULL, '34432', 'rvsdg', '639f40e00d8ae51898ce4a8b5a4c4357acf0ce29b3cde2ec', 'renewal', NULL, 'install', NULL, NULL, '2026-04-28 23:54:35', 0, NULL, 'Gia hạn 1 năm', 'dealer', 4, '2026-04-28 20:01:09', 1, 0, '2026-04-28 12:59:42'),
-(14, 'ORD-2804-010', 4, NULL, 260000, 200000, 260000, NULL, NULL, 'debt', 'done', 0, '2026-04-28 20:20:42', NULL, 'đáád', NULL, NULL, NULL, 'install', 3, 'install', NULL, '2026-04-28 20:31:47', '2026-04-28 20:52:58', 100000, NULL, 'áđá', 'dealer', 4, '2026-04-28 20:21:09', 1, 0, '2026-04-28 13:18:10'),
-(15, 'ORD-2804-011', 4, NULL, 5082002, 4880000, 5082002, NULL, NULL, 'debt', 'staff_owes', 0, '2026-04-28 20:22:30', NULL, 'Da Nang', NULL, NULL, NULL, 'install', 3, 'install', NULL, '2026-04-29 11:11:36', '2026-04-29 11:47:25', 200002, NULL, 'ád', 'dealer', 4, '2026-04-28 20:23:27', 1, 0, '2026-04-28 13:22:24'),
-(16, 'ORD-2804-012', 4, NULL, 110000, 90000, 0, NULL, NULL, 'debt', 'customer_owes', 0, '2026-04-28 21:37:30', NULL, 'Da Nang', NULL, NULL, NULL, 'install', 3, 'install', NULL, '2026-04-29 10:29:22', '2026-04-29 11:09:37', 20000, NULL, NULL, 'dealer', 4, '2026-04-28 21:37:37', 1, 0, '2026-04-28 14:37:26'),
-(17, 'ORD-2904-001', 4, NULL, 120000, 100000, 0, NULL, NULL, 'debt', 'customer_owes', 0, '2026-04-29 11:01:40', NULL, 'Da Nang', NULL, NULL, NULL, 'install', 3, 'install', NULL, '2026-04-29 12:30:56', '2026-04-29 12:31:33', 20000, NULL, 'qưeqưeqưe', 'dealer', 4, '2026-04-29 12:30:30', 1, 0, '2026-04-29 03:43:56'),
-(18, 'ORD-2904-002', 4, NULL, 1351000, 100000, 0, NULL, NULL, 'debt', 'customer_owes', 0, '2026-04-29 11:19:53', NULL, 'iôi.', '34432', 'rvsdg', NULL, 'maintenance', 3, 'install', NULL, '2026-04-29 11:30:17', '2026-04-29 11:31:19', 20000, NULL, 'Sự cố: oyi;.', 'dealer', 4, '2026-04-29 11:20:45', 1, 0, '2026-04-29 04:19:17'),
-(19, 'ORD-2904-003', 4, NULL, 100000, 100000, 0, NULL, NULL, 'debt', 'assigned', 0, '2026-04-29 12:32:52', NULL, NULL, '34432', 'rvsdg', NULL, 'warranty', 3, 'install', NULL, NULL, NULL, 0, NULL, 'Sự cố: 56ụ5ỵ\n565rjhr', 'dealer', 4, '2026-04-29 12:35:49', 1, 0, '2026-04-29 05:32:47');
+INSERT INTO `orders` (`id`, `code`, `customer_id`, `dealer_id`, `total_amount`, `subtotal`, `paid_amount`, `debt_carried_at`, `debt_settlement_id`, `payment_method`, `status`, `progress_note`, `payment_status`, `collected_for_dealer`, `has_return`, `seen_at`, `address`, `assigned_staff_id`, `due_at`, `started_at`, `completed_at`, `wage_amount`, `ktv_note`, `note`, `creator_type`, `creator_id`, `confirmed_at`, `confirmed_by`, `is_deleted`, `created_at`) VALUES
+(32, 'ORD-1005-001', 10, NULL, 2640000, 2580000, 0, NULL, NULL, 'cash', 'confirmed', NULL, 'customer_owes', 0, 0, NULL, 'đia chỉ', 3, NULL, NULL, NULL, 200000, NULL, 'ghi chú', 'admin', 1, NULL, NULL, 0, '2026-05-10 04:38:07'),
+(33, 'ORD-1005-002', 2, NULL, 4843000, 4510000, 0, NULL, NULL, 'debt', 'in_progress', NULL, 'customer_owes', 0, 0, NULL, 'Da Nang', 3, NULL, NULL, NULL, 200000, NULL, NULL, 'admin', 1, NULL, NULL, 0, '2026-05-10 05:08:06'),
+(34, 'ORD-1005-003', 10, NULL, 5120000, 5100000, 0, NULL, NULL, 'debt', 'confirmed', NULL, 'customer_owes', 0, 0, NULL, '123123', 3, NULL, NULL, NULL, 20000, NULL, NULL, 'admin', 1, NULL, NULL, 0, '2026-05-10 05:36:39'),
+(35, 'ORD-1005-004', 10, NULL, 7184333, 4540000, 0, NULL, NULL, 'debt', 'done', 'đang cập nhật\n', 'customer_owes', 0, 0, NULL, '123123', 3, NULL, '2026-05-10 14:18:33', '2026-05-10 15:20:38', 20000, NULL, NULL, 'admin', 1, NULL, NULL, 0, '2026-05-10 06:38:14');
 
 -- --------------------------------------------------------
 
@@ -527,7 +625,8 @@ INSERT INTO `order_attachments` (`id`, `order_id`, `url`, `caption`, `stage`, `u
 (13, 15, 'https://i.ibb.co/DPyMTX3c/task-5-deliver.jpg', NULL, 'receive', '2026-04-29 04:10:13'),
 (14, 18, 'https://i.ibb.co/DPyMTX3c/task-5-deliver.jpg', NULL, 'deliver', '2026-04-29 04:31:14'),
 (15, 15, 'https://i.ibb.co/WpgWkkpj/order-15-deliver.jpg', NULL, 'deliver', '2026-04-29 04:47:24'),
-(16, 17, 'https://i.ibb.co/xSM3BCkG/order-17-deliver.jpg', NULL, 'deliver', '2026-04-29 05:31:28');
+(16, 17, 'https://i.ibb.co/xSM3BCkG/order-17-deliver.jpg', NULL, 'deliver', '2026-04-29 05:31:28'),
+(17, 25, 'https://i.ibb.co/N6KgpC9f/order-25-receive.jpg', NULL, 'receive', '2026-05-06 09:09:25');
 
 -- --------------------------------------------------------
 
@@ -538,6 +637,7 @@ INSERT INTO `order_attachments` (`id`, `order_id`, `url`, `caption`, `stage`, `u
 CREATE TABLE `order_charges` (
   `id` int(11) NOT NULL,
   `order_id` int(11) NOT NULL,
+  `line_id` int(11) DEFAULT NULL,
   `kind` enum('shipping','discount','fee') NOT NULL DEFAULT 'fee',
   `label` varchar(150) NOT NULL,
   `amount` bigint(20) NOT NULL DEFAULT 0,
@@ -548,34 +648,20 @@ CREATE TABLE `order_charges` (
 -- Đang đổ dữ liệu cho bảng `order_charges`
 --
 
-INSERT INTO `order_charges` (`id`, `order_id`, `kind`, `label`, `amount`, `is_deleted`) VALUES
-(2, 1, 'shipping', 'ship', 100000, 0),
-(9, 2, 'shipping', 'phí bảo hành', 1000002, 0),
-(10, 2, 'fee', 'Lắp đặt', 1000000, 0),
-(11, 2, 'discount', 'Giảm giá', -1000, 0),
-(13, 4, 'fee', 'Lắp đặt', 590000, 0),
-(14, 4, 'fee', 'phí khác', 100000, 0),
-(19, 8, 'fee', 'phí khác', 40000, 0),
-(20, 9, 'fee', 'Công lắp', 400000, 0),
-(24, 10, 'discount', 'Giảm giá', -10000, 0),
-(25, 10, 'fee', 'Công lắp', 200000, 0),
-(26, 10, 'discount', 'Vận chuyển', -20, 0),
-(34, 15, 'fee', 'Công lắp', 200002, 0),
-(35, 15, 'shipping', 'Vận chuyển', 2000, 0),
-(38, 14, 'fee', 'Công lắp', 100000, 0),
-(39, 14, 'fee', 'tièn khác', 10000, 0),
-(40, 14, 'discount', 'tiền khác nữa', -50000, 0),
-(41, 16, 'fee', 'Công lắp', 20000, 0),
-(46, 6, 'fee', 'Lắp đặt', 10000, 0),
-(47, 6, 'fee', 'Công lắp', 50000, 0),
-(48, 6, 'shipping', 'Vận chuyển', 70000, 0),
-(49, 6, 'fee', 'khác', 7657000, 0),
-(50, 18, 'fee', 'phí', 1231000, 0),
-(51, 18, 'fee', 'Công lắp', 20000, 1),
-(52, 18, 'fee', 'Công lắp', 20000, 1),
-(53, 18, 'fee', 'Công lắp', 20000, 1),
-(54, 18, 'fee', 'Công lắp', 20000, 0),
-(55, 17, 'fee', 'Công lắp', 20000, 0);
+INSERT INTO `order_charges` (`id`, `order_id`, `line_id`, `kind`, `label`, `amount`, `is_deleted`) VALUES
+(85, 32, 1, 'fee', 'phí 1', 20000, 0),
+(86, 32, 2, 'fee', 'phí 2', 20000, 0),
+(87, 32, NULL, 'shipping', 'phí khác', 20000, 0),
+(88, 32, NULL, 'fee', 'Công lắp', 200000, 0),
+(89, 33, 3, 'fee', 'phí 1', 123000, 0),
+(90, 33, 4, 'fee', 'phí 2', 200000, 0),
+(91, 33, NULL, 'shipping', 'phí ship 11', 10000, 0),
+(92, 33, NULL, 'fee', 'Công lắp', 200000, 0),
+(93, 34, 6, 'fee', 'phsi 1', 20000, 0),
+(94, 34, NULL, 'fee', 'Công lắp', 20000, 0),
+(95, 35, 7, 'fee', 'edvhet', 333333, 0),
+(96, 35, 8, 'fee', '21edưca', 2311000, 0),
+(97, 35, NULL, 'fee', 'Công lắp', 20000, 0);
 
 -- --------------------------------------------------------
 
@@ -674,7 +760,60 @@ INSERT INTO `order_checklist` (`id`, `order_id`, `step`, `is_done`, `done_at`, `
 (75, 19, 'Lap dat thiet bi len xe', 0, NULL, 2),
 (76, 19, 'Test tin hieu GPS truc tiep', 0, NULL, 3),
 (77, 19, 'Huong dan khach su dung app', 0, NULL, 4),
-(78, 19, 'Chup anh thiet bi sau khi lap', 0, NULL, 5);
+(78, 19, 'Chup anh thiet bi sau khi lap', 0, NULL, 5),
+(79, 23, 'Kiem tra thiet bi truoc khi lap', 0, NULL, 0),
+(80, 23, 'Cap tai khoan / username cho khach', 0, NULL, 1),
+(81, 23, 'Lap dat thiet bi len xe', 0, NULL, 2),
+(82, 23, 'Test tin hieu GPS truc tiep', 0, NULL, 3),
+(83, 23, 'Huong dan khach su dung app', 0, NULL, 4),
+(84, 23, 'Chup anh thiet bi sau khi lap', 0, NULL, 5),
+(85, 24, 'Kiem tra thiet bi truoc khi lap', 0, NULL, 0),
+(86, 24, 'Cap tai khoan / username cho khach', 0, NULL, 1),
+(87, 24, 'Lap dat thiet bi len xe', 0, NULL, 2),
+(88, 24, 'Test tin hieu GPS truc tiep', 0, NULL, 3),
+(89, 24, 'Huong dan khach su dung app', 0, NULL, 4),
+(90, 24, 'Chup anh thiet bi sau khi lap', 0, NULL, 5),
+(91, 25, 'Kiem tra trang thai thiet bi', 0, NULL, 0),
+(92, 25, 'Khac phuc loi neu co', 0, NULL, 1),
+(93, 25, 'Bao cao tinh trang', 0, NULL, 2),
+(94, 29, 'Kiem tra thiet bi truoc khi lap', 0, NULL, 0),
+(95, 29, 'Cap tai khoan / username cho khach', 0, NULL, 1),
+(96, 29, 'Lap dat thiet bi len xe', 0, NULL, 2),
+(97, 29, 'Test tin hieu GPS truc tiep', 0, NULL, 3),
+(98, 29, 'Huong dan khach su dung app', 0, NULL, 4),
+(99, 29, 'Chup anh thiet bi sau khi lap', 0, NULL, 5);
+
+-- --------------------------------------------------------
+
+--
+-- Cấu trúc bảng cho bảng `order_field_values`
+--
+
+CREATE TABLE `order_field_values` (
+  `id` int(11) NOT NULL,
+  `order_id` int(11) NOT NULL,
+  `line_id` int(11) NOT NULL,
+  `template_field_id` int(11) DEFAULT NULL,
+  `label` varchar(150) NOT NULL,
+  `value` text DEFAULT NULL,
+  `seq` int(11) NOT NULL DEFAULT 0,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Đang đổ dữ liệu cho bảng `order_field_values`
+--
+
+INSERT INTO `order_field_values` (`id`, `order_id`, `line_id`, `template_field_id`, `label`, `value`, `seq`, `is_deleted`) VALUES
+(3, 33, 3, 21, 'Bien so xe', '1234567890-=', 1, 0),
+(4, 33, 3, 22, 'IMEI', '23452345', 2, 0),
+(5, 33, 3, 23, 'Dia chi lap', '34566575876', 3, 0),
+(6, 35, 7, 21, 'Biển số xe', '1234567890-=', 1, 0),
+(7, 35, 7, 22, 'IMEI', '23452345', 2, 0),
+(8, 35, 7, 23, 'Địa chỉ lắp', 'ethgjb', 3, 0),
+(9, 35, 8, 27, 'Biển số xe', '2345', 1, 0),
+(10, 35, 8, 28, 'IMEI', '23435467', 2, 0),
+(11, 35, 8, 29, 'Số SIM mới', '24354365789', 3, 0);
 
 -- --------------------------------------------------------
 
@@ -685,9 +824,11 @@ INSERT INTO `order_checklist` (`id`, `order_id`, `step`, `is_done`, `done_at`, `
 CREATE TABLE `order_items` (
   `id` int(11) NOT NULL,
   `order_id` int(11) NOT NULL,
+  `line_id` int(11) NOT NULL,
   `product_id` int(11) NOT NULL,
   `qty` int(11) NOT NULL DEFAULT 1,
   `unit_price` bigint(20) NOT NULL DEFAULT 0,
+  `vat_percent` decimal(5,2) NOT NULL DEFAULT 0.00,
   `vehicle_plate` varchar(200) DEFAULT NULL,
   `imei` varchar(100) DEFAULT NULL,
   `subscription_account` varchar(64) DEFAULT NULL,
@@ -699,38 +840,49 @@ CREATE TABLE `order_items` (
 -- Đang đổ dữ liệu cho bảng `order_items`
 --
 
-INSERT INTO `order_items` (`id`, `order_id`, `product_id`, `qty`, `unit_price`, `vehicle_plate`, `imei`, `subscription_account`, `years`, `phone`) VALUES
-(1, 1, 5, 1, 4500000, NULL, NULL, NULL, NULL, NULL),
-(2, 1, 3, 1, 2500000, NULL, NULL, NULL, NULL, NULL),
-(5, 3, 5, 3, 4500000, NULL, NULL, NULL, NULL, NULL),
-(6, 3, 3, 1, 2500000, NULL, NULL, NULL, NULL, NULL),
-(21, 2, 2, 2, 123132000, NULL, NULL, NULL, NULL, NULL),
-(22, 2, 4, 1, 100000, NULL, NULL, NULL, NULL, NULL),
-(23, 2, 8, 1, 15000, NULL, NULL, NULL, NULL, NULL),
-(26, 4, 5, 1, 4500000, NULL, NULL, NULL, NULL, NULL),
-(27, 4, 3, 1, 2500000, NULL, NULL, NULL, NULL, NULL),
-(28, 4, 4, 1, 100000, NULL, NULL, NULL, NULL, NULL),
-(29, 5, 3, 1, 2500000, NULL, NULL, NULL, NULL, NULL),
-(30, 6, 8, 1, 15000, NULL, NULL, NULL, NULL, NULL),
-(31, 6, 2, 1, 123132000, NULL, NULL, NULL, NULL, NULL),
-(32, 7, 5, 1, 4500000, NULL, NULL, NULL, NULL, NULL),
-(33, 7, 7, 1, 10000, NULL, NULL, NULL, NULL, NULL),
-(34, 8, 5, 1, 4500000, NULL, NULL, NULL, NULL, NULL),
-(35, 8, 3, 1, 2500000, NULL, NULL, NULL, NULL, NULL),
-(36, 9, 8, 1, 15000, NULL, NULL, NULL, NULL, NULL),
-(37, 9, 4, 1, 100000, NULL, NULL, NULL, NULL, NULL),
-(38, 10, 6, 1, 200000, NULL, NULL, NULL, NULL, NULL),
-(40, 11, 4, 1, 90000, NULL, NULL, NULL, 1, NULL),
-(42, 12, 4, 1, 90000, '22213', '123123123', '213123', 1, NULL),
-(43, 12, 6, 1, 123000, '123123', '123123', '123123', 1, NULL),
-(45, 15, 4, 2, 90000, NULL, NULL, NULL, NULL, NULL),
-(46, 15, 5, 1, 4500000, NULL, NULL, NULL, NULL, NULL),
-(47, 15, 6, 1, 200000, NULL, NULL, NULL, NULL, NULL),
-(50, 14, 6, 1, 200000, NULL, NULL, NULL, NULL, NULL),
-(51, 16, 4, 1, 90000, NULL, NULL, NULL, NULL, NULL),
-(53, 18, 4, 1, 100000, NULL, NULL, NULL, NULL, NULL),
-(56, 17, 4, 1, 100000, NULL, NULL, NULL, NULL, NULL),
-(57, 19, 4, 1, 100000, NULL, NULL, NULL, NULL, NULL);
+INSERT INTO `order_items` (`id`, `order_id`, `line_id`, `product_id`, `qty`, `unit_price`, `vat_percent`, `vehicle_plate`, `imei`, `subscription_account`, `years`, `phone`) VALUES
+(72, 32, 1, 5, 1, 2500000, 0.00, NULL, NULL, NULL, NULL, NULL),
+(73, 32, 2, 6, 1, 80000, 0.00, NULL, NULL, NULL, NULL, NULL),
+(74, 33, 3, 5, 1, 4500000, 0.00, NULL, NULL, NULL, NULL, NULL),
+(75, 33, 4, 7, 1, 10000, 0.00, NULL, NULL, NULL, NULL, NULL),
+(76, 34, 5, 4, 1, 100000, 0.00, NULL, NULL, NULL, NULL, NULL),
+(77, 34, 5, 3, 1, 2500000, 0.00, NULL, NULL, NULL, NULL, NULL),
+(78, 34, 6, 3, 1, 2500000, 0.00, NULL, NULL, NULL, NULL, NULL),
+(79, 35, 7, 7, 1, 10000, 0.00, NULL, NULL, NULL, NULL, NULL),
+(80, 35, 7, 8, 1, 15000, 0.00, NULL, NULL, NULL, NULL, NULL),
+(81, 35, 7, 8, 1, 15000, 0.00, NULL, NULL, NULL, NULL, NULL),
+(82, 35, 8, 5, 1, 4500000, 0.00, NULL, NULL, NULL, NULL, NULL);
+
+-- --------------------------------------------------------
+
+--
+-- Cấu trúc bảng cho bảng `order_lines`
+--
+
+CREATE TABLE `order_lines` (
+  `id` int(11) NOT NULL,
+  `order_id` int(11) NOT NULL,
+  `template_id` int(11) DEFAULT NULL,
+  `custom_name` varchar(120) DEFAULT NULL,
+  `seq` int(11) NOT NULL DEFAULT 0,
+  `subtotal` bigint(20) NOT NULL DEFAULT 0,
+  `note` varchar(500) DEFAULT NULL,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Đang đổ dữ liệu cho bảng `order_lines`
+--
+
+INSERT INTO `order_lines` (`id`, `order_id`, `template_id`, `custom_name`, `seq`, `subtotal`, `note`, `is_deleted`) VALUES
+(1, 32, 4, NULL, 1, 2520000, NULL, 0),
+(2, 32, 1, NULL, 2, 100000, NULL, 0),
+(3, 33, 1, NULL, 1, 4623000, NULL, 0),
+(4, 33, 3, NULL, 2, 210000, NULL, 0),
+(5, 34, 4, NULL, 1, 2600000, NULL, 0),
+(6, 34, 4, NULL, 2, 2520000, NULL, 0),
+(7, 35, 1, NULL, 1, 373333, NULL, 0),
+(8, 35, 3, NULL, 2, 6811000, NULL, 0);
 
 -- --------------------------------------------------------
 
@@ -750,22 +902,134 @@ CREATE TABLE `order_payments` (
   `staff_id` int(11) DEFAULT NULL,
   `paid_at` datetime NOT NULL DEFAULT current_timestamp(),
   `note` text DEFAULT NULL,
+  `proof_urls` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`proof_urls`)),
   `is_deleted` tinyint(4) NOT NULL DEFAULT 0
-) ;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Đang đổ dữ liệu cho bảng `order_payments`
 --
 
-INSERT INTO `order_payments` (`id`, `order_id`, `amount`, `source`, `confirmed`, `confirmed_at`, `confirmed_by`, `collection_id`, `staff_id`, `paid_at`, `note`, `is_deleted`) VALUES
-(1, 5, 2500000, 'staff_collection', 1, NULL, NULL, 1, 3, '2026-04-28 01:54:33', NULL, 0),
-(2, 6, 123157000, 'staff_collection', 1, NULL, NULL, 2, 3, '2026-04-28 02:50:02', NULL, 0),
-(3, 8, 7040000, 'staff_collection', 1, NULL, NULL, 3, 3, '2026-04-28 13:54:37', NULL, 0),
-(4, 9, 515000, 'admin_pending', 0, NULL, NULL, NULL, 3, '2026-04-28 14:27:20', 'KTV bao khach da tra admin truc tiep — doi admin xac nhan', 0),
-(5, 11, 90000, 'admin_mark_paid', 1, '2026-04-28 19:50:48', 1, NULL, 1, '2026-04-28 19:50:48', 'Hoan tat gia han', 0),
-(6, 14, 260000, 'staff_collection', 1, NULL, NULL, 4, 3, '2026-04-28 20:52:58', NULL, 0),
-(7, 6, 7777000, 'staff_collection', 1, NULL, NULL, 5, 3, '2026-04-29 10:52:51', NULL, 0),
-(8, 15, 5082002, 'staff_collection', 1, NULL, NULL, 6, 3, '2026-04-29 11:47:25', NULL, 0);
+INSERT INTO `order_payments` (`id`, `order_id`, `amount`, `source`, `confirmed`, `confirmed_at`, `confirmed_by`, `collection_id`, `staff_id`, `paid_at`, `note`, `proof_urls`, `is_deleted`) VALUES
+(9, 35, 5000000, 'admin_pending', 0, NULL, NULL, NULL, 3, '2026-05-10 15:20:38', 'KTV bao khach da tra admin truc tiep — doi admin xac nhan', NULL, 0);
+
+-- --------------------------------------------------------
+
+--
+-- Cấu trúc bảng cho bảng `order_step_photos`
+--
+
+CREATE TABLE `order_step_photos` (
+  `id` int(11) NOT NULL,
+  `order_id` int(11) NOT NULL,
+  `step_code` varchar(50) NOT NULL,
+  `url` varchar(500) NOT NULL,
+  `caption` varchar(255) DEFAULT NULL,
+  `uploaded_by` int(11) DEFAULT NULL,
+  `uploaded_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Đang đổ dữ liệu cho bảng `order_step_photos`
+--
+
+INSERT INTO `order_step_photos` (`id`, `order_id`, `step_code`, `url`, `caption`, `uploaded_by`, `uploaded_at`, `is_deleted`) VALUES
+(1, 35, '', 'https://i.ibb.co/VWbXG661/order-35-1778397227551.png', NULL, 1, '2026-05-10 07:13:53', 0),
+(2, 35, '', 'https://i.ibb.co/PsJJ2rz3/order-35-1778397579681.jpg', NULL, 1, '2026-05-10 07:19:42', 0),
+(3, 35, '', 'https://i.ibb.co/WvbtYt2L/70a561a5147f.png', 'mô tả', 3, '2026-05-10 07:24:38', 0);
+
+-- --------------------------------------------------------
+
+--
+-- Cấu trúc bảng cho bảng `order_templates`
+--
+
+CREATE TABLE `order_templates` (
+  `id` int(11) NOT NULL,
+  `name` varchar(150) NOT NULL,
+  `description` text DEFAULT NULL,
+  `is_public` tinyint(1) NOT NULL DEFAULT 1,
+  `sort_order` int(11) NOT NULL DEFAULT 0,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Đang đổ dữ liệu cho bảng `order_templates`
+--
+
+INSERT INTO `order_templates` (`id`, `name`, `description`, `is_public`, `sort_order`, `is_deleted`) VALUES
+(1, 'Lắp mới', 'Lắp đặt thiết bị GPS mới', 1, 1, 0),
+(2, 'Gia hạn', 'Gia hạn gói cước dịch vụ', 1, 2, 0),
+(3, 'Thay SIM', 'Thay SIM cho thiết bị', 1, 3, 0),
+(4, 'Thay camera', 'Thay camera giám sát', 1, 4, 0),
+(5, 'Phù hiệu', 'Làm phù hiệu xe', 1, 5, 0);
+
+-- --------------------------------------------------------
+
+--
+-- Cấu trúc bảng cho bảng `order_template_fields`
+--
+
+CREATE TABLE `order_template_fields` (
+  `id` int(11) NOT NULL,
+  `template_id` int(11) NOT NULL,
+  `seq` int(11) NOT NULL DEFAULT 0,
+  `label` varchar(150) NOT NULL,
+  `field_type` enum('text','number','date','textarea') NOT NULL DEFAULT 'text',
+  `is_required` tinyint(1) NOT NULL DEFAULT 0,
+  `placeholder` varchar(255) DEFAULT NULL,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Đang đổ dữ liệu cho bảng `order_template_fields`
+--
+
+INSERT INTO `order_template_fields` (`id`, `template_id`, `seq`, `label`, `field_type`, `is_required`, `placeholder`, `is_deleted`) VALUES
+(21, 1, 1, 'Biển số xe', 'text', 1, 'VD: 29A-12345', 0),
+(22, 1, 2, 'IMEI', 'text', 0, NULL, 0),
+(23, 1, 3, 'Địa chỉ lắp', 'textarea', 0, 'Địa chỉ lắp đặt thực tế', 0),
+(24, 2, 1, 'Biển số xe', 'text', 1, NULL, 0),
+(25, 2, 2, 'IMEI', 'text', 1, NULL, 0),
+(26, 2, 3, 'Số năm', 'number', 1, 'VD: 1, 2, 3', 0),
+(27, 3, 1, 'Biển số xe', 'text', 1, NULL, 0),
+(28, 3, 2, 'IMEI', 'text', 1, NULL, 0),
+(29, 3, 3, 'Số SIM mới', 'text', 1, NULL, 0),
+(30, 4, 1, 'Biển số xe', 'text', 1, NULL, 0),
+(31, 4, 2, 'IMEI', 'text', 1, NULL, 0),
+(32, 5, 1, 'Biển số xe', 'text', 1, NULL, 0),
+(33, 5, 2, 'Loại phù hiệu', 'text', 0, 'VD: kinh doanh vận tải...', 0);
+
+-- --------------------------------------------------------
+
+--
+-- Cấu trúc bảng cho bảng `order_workflow_steps`
+--
+
+CREATE TABLE `order_workflow_steps` (
+  `id` int(11) NOT NULL,
+  `seq` int(11) NOT NULL DEFAULT 0,
+  `code` varchar(50) NOT NULL,
+  `label` varchar(150) NOT NULL,
+  `requires_photo` tinyint(1) NOT NULL DEFAULT 0,
+  `photo_min_count` int(11) NOT NULL DEFAULT 0,
+  `update_roles` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`update_roles`)),
+  `is_terminal` tinyint(1) NOT NULL DEFAULT 0,
+  `is_system` tinyint(1) NOT NULL DEFAULT 0,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Đang đổ dữ liệu cho bảng `order_workflow_steps`
+--
+
+INSERT INTO `order_workflow_steps` (`id`, `seq`, `code`, `label`, `requires_photo`, `photo_min_count`, `update_roles`, `is_terminal`, `is_system`, `is_deleted`) VALUES
+(9, 0, 'pending', 'Cho duyet', 0, 0, '[\"admin\", \"customer\"]', 0, 1, 0),
+(10, 10, 'confirmed', 'Len don', 0, 0, '[\"admin\"]', 0, 0, 0),
+(11, 20, 'in_progress', 'Dang xu ly', 0, 0, '[\"admin\", \"ktv\"]', 0, 0, 0),
+(12, 30, 'done', 'Da xong', 0, 0, '[\"admin\", \"ktv\"]', 1, 0, 0),
+(13, 99, 'cancelled', 'Da huy', 0, 0, '[\"admin\"]', 1, 1, 0);
 
 -- --------------------------------------------------------
 
@@ -933,21 +1197,21 @@ INSERT INTO `product_prices` (`id`, `product_id`, `tier_id`, `price`, `sort_orde
 CREATE TABLE `product_stock` (
   `product_id` int(11) NOT NULL,
   `quantity` int(11) NOT NULL DEFAULT 0
-) ;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Đang đổ dữ liệu cho bảng `product_stock`
 --
 
 INSERT INTO `product_stock` (`product_id`, `quantity`) VALUES
-(1, 6),
-(2, 19),
+(1, 16),
+(2, 17),
 (3, 4),
-(4, 17),
-(5, 99),
-(6, 11),
-(7, 13),
-(8, 9);
+(4, 15),
+(5, 94),
+(6, 10),
+(7, 93),
+(8, 11);
 
 -- --------------------------------------------------------
 
@@ -963,7 +1227,7 @@ CREATE TABLE `release_pool` (
   `qty` int(11) NOT NULL,
   `receipt_id` int(11) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
-) ;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -975,6 +1239,8 @@ CREATE TABLE `remittances` (
   `id` int(11) NOT NULL,
   `staff_id` int(11) NOT NULL,
   `amount` bigint(20) NOT NULL,
+  `total_holding` bigint(20) NOT NULL DEFAULT 0,
+  `remaining` bigint(20) NOT NULL DEFAULT 0,
   `method` enum('cash','transfer') NOT NULL,
   `receipt_url` varchar(500) DEFAULT NULL,
   `note` text DEFAULT NULL,
@@ -990,82 +1256,15 @@ CREATE TABLE `remittances` (
 -- Đang đổ dữ liệu cho bảng `remittances`
 --
 
-INSERT INTO `remittances` (`id`, `staff_id`, `amount`, `method`, `receipt_url`, `note`, `remitted_at`, `approved_by`, `approved_at`, `reject_reason`, `status`, `is_deleted`) VALUES
-(1, 3, 2500000, 'transfer', NULL, NULL, '2026-04-28 02:04:29', 1, '2026-04-28 02:56:32', NULL, 'approved', 0),
-(2, 3, 123157000, 'cash', NULL, NULL, '2026-04-28 02:55:49', 1, '2026-04-28 02:56:25', NULL, 'approved', 0),
-(3, 3, 7040000, 'cash', NULL, 'Admin xac nhan truc tiep tu don #8', '2026-04-28 14:30:23', 1, '2026-04-28 14:30:23', NULL, 'approved', 0),
-(4, 3, 260000, 'transfer', NULL, 'Admin xac nhan truc tiep tu don #14', '2026-04-28 20:53:46', 1, '2026-04-28 20:53:46', NULL, 'approved', 0);
-
--- --------------------------------------------------------
-
---
--- Cấu trúc bảng cho bảng `repair_charges`
---
-
-CREATE TABLE `repair_charges` (
-  `id` int(11) NOT NULL,
-  `repair_order_id` int(11) NOT NULL,
-  `kind` enum('service','fee','discount') NOT NULL DEFAULT 'service',
-  `label` varchar(150) NOT NULL,
-  `amount` bigint(20) NOT NULL DEFAULT 0,
-  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- --------------------------------------------------------
-
---
--- Cấu trúc bảng cho bảng `repair_items`
---
-
-CREATE TABLE `repair_items` (
-  `id` int(11) NOT NULL,
-  `repair_order_id` int(11) NOT NULL,
-  `product_id` int(11) NOT NULL,
-  `qty` int(11) NOT NULL DEFAULT 1,
-  `unit_price` bigint(20) NOT NULL DEFAULT 0,
-  `imei` varchar(50) DEFAULT NULL,
-  `note` varchar(255) DEFAULT NULL,
-  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- --------------------------------------------------------
-
---
--- Cấu trúc bảng cho bảng `repair_orders`
---
-
-CREATE TABLE `repair_orders` (
-  `id` int(11) NOT NULL,
-  `code` varchar(30) NOT NULL,
-  `customer_id` int(11) NOT NULL,
-  `license_plate` varchar(30) DEFAULT NULL,
-  `device_name` varchar(100) DEFAULT NULL,
-  `imei_search` varchar(100) DEFAULT NULL,
-  `reason_text` text NOT NULL,
-  `note_text` text DEFAULT NULL,
-  `address` varchar(500) DEFAULT NULL,
-  `assigned_staff_id` int(11) DEFAULT NULL,
-  `recovered_image_url` varchar(500) DEFAULT NULL,
-  `delivered_image_url` varchar(500) DEFAULT NULL,
-  `diagnose_text` text DEFAULT NULL,
-  `service_fee` bigint(20) NOT NULL DEFAULT 0,
-  `parts_total` bigint(20) NOT NULL DEFAULT 0,
-  `total_amount` bigint(20) NOT NULL DEFAULT 0,
-  `paid_amount` bigint(20) NOT NULL DEFAULT 0,
-  `quoted_at` datetime DEFAULT NULL,
-  `customer_sent_at` datetime DEFAULT NULL,
-  `customer_decided_at` datetime DEFAULT NULL,
-  `repairing_at` datetime DEFAULT NULL,
-  `done_at` datetime DEFAULT NULL,
-  `delivered_at` datetime DEFAULT NULL,
-  `debt_carried_at` datetime DEFAULT NULL,
-  `debt_settlement_id` int(11) DEFAULT NULL,
-  `status` enum('pending','assigned','diagnosing','quoted','awaiting_customer','approved','rejected','repairing','done','delivering','completed','cancelled') NOT NULL DEFAULT 'pending',
-  `request_date` date NOT NULL,
-  `creator_type` enum('customer','dealer','admin','staff') NOT NULL DEFAULT 'admin',
-  `creator_id` int(11) DEFAULT NULL,
-  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+INSERT INTO `remittances` (`id`, `staff_id`, `amount`, `total_holding`, `remaining`, `method`, `receipt_url`, `note`, `remitted_at`, `approved_by`, `approved_at`, `reject_reason`, `status`, `is_deleted`) VALUES
+(1, 3, 2500000, 0, 0, 'transfer', NULL, NULL, '2026-04-28 02:04:29', 1, '2026-04-28 02:56:32', NULL, 'approved', 0),
+(2, 3, 123157000, 0, 0, 'cash', NULL, NULL, '2026-04-28 02:55:49', 1, '2026-04-28 02:56:25', NULL, 'approved', 0),
+(3, 3, 7040000, 0, 0, 'cash', NULL, 'Admin xac nhan truc tiep tu don #8', '2026-04-28 14:30:23', 1, '2026-04-28 14:30:23', NULL, 'approved', 0),
+(4, 3, 260000, 0, 0, 'transfer', NULL, 'Admin xac nhan truc tiep tu don #14', '2026-04-28 20:53:46', 1, '2026-04-28 20:53:46', NULL, 'approved', 0),
+(5, 3, 1000000, 12859002, 11859002, 'cash', NULL, NULL, '2026-05-05 23:15:21', 1, '2026-05-05 23:15:21', NULL, 'approved', 0),
+(6, 3, 1000000, 11859002, 10859002, 'cash', NULL, '1000000', '2026-05-05 23:48:23', 1, '2026-05-05 23:48:23', NULL, 'approved', 0),
+(7, 3, 1000000, 10859002, 9859002, 'cash', NULL, NULL, '2026-05-05 23:48:35', 1, '2026-05-05 23:48:35', NULL, 'approved', 0),
+(8, 3, 9000000, 9859002, 859002, 'cash', NULL, NULL, '2026-05-05 23:48:44', 1, '2026-05-05 23:48:44', NULL, 'approved', 0);
 
 -- --------------------------------------------------------
 
@@ -1088,18 +1287,19 @@ CREATE TABLE `staff` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `online_status` enum('online','offline') NOT NULL DEFAULT 'offline',
-  `rating` decimal(3,2) NOT NULL DEFAULT 0.00
+  `rating` decimal(3,2) NOT NULL DEFAULT 0.00,
+  `opening_balance` bigint(20) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Đang đổ dữ liệu cho bảng `staff`
 --
 
-INSERT INTO `staff` (`id`, `username`, `password_hash`, `full_name`, `role`, `area`, `phone`, `cccd`, `email`, `avatar_url`, `is_deleted`, `created_at`, `updated_at`, `online_status`, `rating`) VALUES
-(1, 'admin', '$2a$10$Mk1UHzWUfeTrGGykMmpckOZdKukgHcSqtRQvXAZpqyudD/HYkXrOq', 'Quan tri vien', 'admin', NULL, NULL, NULL, NULL, NULL, 0, '2026-04-25 10:36:15', '2026-04-25 10:36:15', 'offline', 0.00),
-(2, 'ktv01', '$2a$10$HRV2uqp5KUUOGmsnb1Z4nOk4dcDPf9uxDrPSibpA1/Nac5rXpmkKu', 'Trần Minh', 'kithuat', 'Quận 1, TP.HCM', '0911000001', NULL, 'ktv01@gpsviet.vn', NULL, 0, '2026-04-25 16:30:31', '2026-04-25 16:30:31', 'online', 4.50),
-(3, 'ktv02', '$2a$10$L4aIOLbgLmJAWHHrjqatQOPiQBtn3bmFhnhn2YmAe.8PnNS1itDjy', 'Lê Văn Hùng', 'kithuat', 'Quận 7, TP.HCM', '0911000002', NULL, 'ktv02@gpsviet.vn', '/uploads/avatars/1777307658207-576f07723087.jpg', 0, '2026-04-25 16:30:31', '2026-04-27 18:09:40', 'offline', 4.20),
-(4, 'ktv03', '$2a$10$HRV2uqp5KUUOGmsnb1Z4nOk4dcDPf9uxDrPSibpA1/Nac5rXpmkKu', 'Nguyễn Đức Thành', 'kithuat', 'Bình Dương', '0911000003', NULL, 'ktv03@gpsviet.vn', NULL, 0, '2026-04-25 16:30:31', '2026-04-25 16:30:31', 'online', 4.80);
+INSERT INTO `staff` (`id`, `username`, `password_hash`, `full_name`, `role`, `area`, `phone`, `cccd`, `email`, `avatar_url`, `is_deleted`, `created_at`, `updated_at`, `online_status`, `rating`, `opening_balance`) VALUES
+(1, 'admin', '$2a$10$Mk1UHzWUfeTrGGykMmpckOZdKukgHcSqtRQvXAZpqyudD/HYkXrOq', 'Quan tri vien', 'admin', NULL, NULL, NULL, NULL, NULL, 0, '2026-04-25 10:36:15', '2026-04-25 10:36:15', 'offline', 0.00, 0),
+(2, 'ktv01', '$2a$10$HRV2uqp5KUUOGmsnb1Z4nOk4dcDPf9uxDrPSibpA1/Nac5rXpmkKu', 'Trần Minh', 'kithuat', 'Quận 1, TP.HCM', '0911000001', NULL, 'ktv01@gpsviet.vn', NULL, 0, '2026-04-25 16:30:31', '2026-04-25 16:30:31', 'online', 4.50, 0),
+(3, 'ktv02', '$2a$10$L4aIOLbgLmJAWHHrjqatQOPiQBtn3bmFhnhn2YmAe.8PnNS1itDjy', 'Lê Văn Hùng', 'kithuat', 'Quận 7, TP.HCM', '0911000002', NULL, 'ktv02@gpsviet.vn', '/uploads/avatars/1777307658207-576f07723087.jpg', 0, '2026-04-25 16:30:31', '2026-05-10 08:05:38', 'offline', 4.20, 859002),
+(4, 'ktv03', '$2a$10$HRV2uqp5KUUOGmsnb1Z4nOk4dcDPf9uxDrPSibpA1/Nac5rXpmkKu', 'Nguyễn Đức Thành', 'kithuat', 'Bình Dương', '0911000003', NULL, 'ktv03@gpsviet.vn', NULL, 0, '2026-04-25 16:30:31', '2026-04-25 16:30:31', 'online', 4.80, 0);
 
 -- --------------------------------------------------------
 
@@ -1113,18 +1313,42 @@ CREATE TABLE `staff_holdings` (
   `product_id` int(11) NOT NULL,
   `qty` int(11) NOT NULL,
   `first_held_at` datetime NOT NULL DEFAULT current_timestamp()
-) ;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Đang đổ dữ liệu cho bảng `staff_holdings`
 --
 
 INSERT INTO `staff_holdings` (`id`, `staff_id`, `product_id`, `qty`, `first_held_at`) VALUES
-(8, 3, 4, 3, '2026-04-28 21:58:51'),
-(9, 3, 2, 1, '2026-04-29 10:46:35'),
-(10, 3, 8, 1, '2026-04-29 10:46:35'),
-(12, 3, 5, 1, '2026-04-29 11:11:23'),
-(14, 4, 4, 2, '2026-04-29 11:29:08');
+(21, 3, 1, 10, '2026-05-10 15:03:18'),
+(22, 3, 5, 4, '2026-05-10 15:03:18'),
+(23, 3, 8, 8, '2026-05-10 15:03:18'),
+(24, 3, 7, 9, '2026-05-10 15:20:27');
+
+-- --------------------------------------------------------
+
+--
+-- Cấu trúc bảng cho bảng `staff_payroll_periods`
+--
+
+CREATE TABLE `staff_payroll_periods` (
+  `id` int(11) NOT NULL,
+  `staff_id` int(11) NOT NULL,
+  `period` char(7) NOT NULL,
+  `base_salary` bigint(20) NOT NULL DEFAULT 0,
+  `insurance_amount` bigint(20) NOT NULL DEFAULT 0,
+  `advance_amount` bigint(20) NOT NULL DEFAULT 0,
+  `extras_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`extras_json`)),
+  `rows_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`rows_json`)),
+  `total_revenue` bigint(20) NOT NULL DEFAULT 0,
+  `total_wage` bigint(20) NOT NULL DEFAULT 0,
+  `total_extras` bigint(20) NOT NULL DEFAULT 0,
+  `final_amount` bigint(20) NOT NULL DEFAULT 0,
+  `note` varchar(500) DEFAULT NULL,
+  `finalized_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `finalized_by` int(11) DEFAULT NULL,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -1140,6 +1364,78 @@ CREATE TABLE `staff_reviews` (
   `comment` text DEFAULT NULL,
   `reviewed_at` datetime NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Cấu trúc bảng cho bảng `staff_stock_consumptions`
+--
+
+CREATE TABLE `staff_stock_consumptions` (
+  `id` int(11) NOT NULL,
+  `staff_id` int(11) NOT NULL,
+  `product_id` int(11) NOT NULL,
+  `qty` int(11) NOT NULL,
+  `ref_kind` enum('order','warranty_order','repair_order') NOT NULL,
+  `ref_id` int(11) NOT NULL,
+  `imei` varchar(120) DEFAULT NULL,
+  `consumed_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ;
+
+-- --------------------------------------------------------
+
+--
+-- Cấu trúc bảng cho bảng `staff_stock_issues`
+--
+
+CREATE TABLE `staff_stock_issues` (
+  `id` int(11) NOT NULL,
+  `code` varchar(20) NOT NULL,
+  `staff_id` int(11) NOT NULL,
+  `status` enum('draft','approved','received','rejected','cancelled') NOT NULL DEFAULT 'draft',
+  `note` varchar(500) DEFAULT NULL,
+  `created_by_staff_id` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `approved_by_staff_id` int(11) DEFAULT NULL,
+  `approved_at` datetime DEFAULT NULL,
+  `received_at` datetime DEFAULT NULL,
+  `received_photo_url` varchar(500) DEFAULT NULL,
+  `rejected_reason` varchar(500) DEFAULT NULL,
+  `ref_receipt_id` int(11) DEFAULT NULL,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Đang đổ dữ liệu cho bảng `staff_stock_issues`
+--
+
+INSERT INTO `staff_stock_issues` (`id`, `code`, `staff_id`, `status`, `note`, `created_by_staff_id`, `created_at`, `approved_by_staff_id`, `approved_at`, `received_at`, `received_photo_url`, `rejected_reason`, `ref_receipt_id`, `is_deleted`) VALUES
+(1, 'CAP-0605-001', 3, 'approved', NULL, 1, '2026-05-06 09:01:49', 1, '2026-05-06 16:01:54', NULL, NULL, NULL, 30, 0),
+(2, 'CAP-0605-002', 3, 'received', NULL, 1, '2026-05-06 09:03:07', 1, '2026-05-06 16:03:09', '2026-05-08 22:35:23', 'https://i.ibb.co/DgpstHT4/issue-CAP-0605-002.png', NULL, 31, 0);
+
+-- --------------------------------------------------------
+
+--
+-- Cấu trúc bảng cho bảng `staff_stock_issue_items`
+--
+
+CREATE TABLE `staff_stock_issue_items` (
+  `id` int(11) NOT NULL,
+  `issue_id` int(11) NOT NULL,
+  `product_id` int(11) NOT NULL,
+  `qty_requested` int(11) NOT NULL,
+  `qty_approved` int(11) DEFAULT NULL,
+  `imei_list` text DEFAULT NULL,
+  `note` varchar(500) DEFAULT NULL
+) ;
+
+--
+-- Đang đổ dữ liệu cho bảng `staff_stock_issue_items`
+--
+
+INSERT INTO `staff_stock_issue_items` (`id`, `issue_id`, `product_id`, `qty_requested`, `qty_approved`, `imei_list`, `note`) VALUES
+(1, 1, 2, 1, 1, '1234', NULL),
+(2, 2, 7, 10, 10, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -1194,8 +1490,6 @@ CREATE TABLE `stock_receipts` (
   `reason_text` varchar(500) DEFAULT NULL,
   `ref_order_id` int(11) DEFAULT NULL,
   `ref_staff_id` int(11) DEFAULT NULL,
-  `ref_warranty_order_id` int(11) DEFAULT NULL,
-  `ref_repair_order_id` int(11) DEFAULT NULL,
   `ref_stock_take_id` int(11) DEFAULT NULL,
   `supplier_id` int(11) DEFAULT NULL,
   `created_by_staff_id` int(11) DEFAULT NULL,
@@ -1210,35 +1504,25 @@ CREATE TABLE `stock_receipts` (
 -- Đang đổ dữ liệu cho bảng `stock_receipts`
 --
 
-INSERT INTO `stock_receipts` (`id`, `code`, `kind`, `reason_code`, `reason_text`, `ref_order_id`, `ref_staff_id`, `ref_warranty_order_id`, `ref_repair_order_id`, `ref_stock_take_id`, `supplier_id`, `created_by_staff_id`, `created_at`, `is_voided`, `voided_at`, `voided_reason`, `voided_by_receipt_id`) VALUES
-(1, 'PX-260428-001', 'out', 'order_release', NULL, 5, 3, NULL, NULL, NULL, NULL, 1, '2026-04-27 18:53:23', 0, NULL, NULL, NULL),
-(2, 'PX-260428-002', 'out', 'technician_take', NULL, 5, 3, NULL, NULL, NULL, NULL, 3, '2026-04-28 05:10:40', 0, NULL, NULL, NULL),
-(3, 'PN-260428-001', 'in', 'import_supplier', 'nhập kho', NULL, NULL, NULL, NULL, NULL, 3, 1, '2026-04-28 05:52:01', 0, NULL, NULL, NULL),
-(4, 'PN-260428-002', 'in', 'import_supplier', 'MDVR-04', NULL, NULL, NULL, NULL, NULL, 2, 1, '2026-04-28 05:52:50', 0, NULL, NULL, NULL),
-(5, 'PX-260428-003', 'out', 'order_release', NULL, 7, 3, NULL, NULL, NULL, NULL, 1, '2026-04-28 05:53:15', 0, NULL, NULL, NULL),
-(7, 'PN-260428-003', 'in', 'order_cancel_return', 'sad [good]', 7, NULL, NULL, NULL, NULL, NULL, 1, '2026-04-28 06:10:05', 0, NULL, NULL, NULL),
-(8, 'PX-260428-004', 'out', 'order_release', NULL, 8, 3, NULL, NULL, NULL, NULL, 1, '2026-04-28 06:21:21', 0, NULL, NULL, NULL),
-(9, 'PN-260428-004', 'in', 'adjust_plus', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, '2026-04-28 06:51:17', 0, NULL, NULL, NULL),
-(10, 'PX-260428-005', 'out', 'order_release', NULL, 9, 3, NULL, NULL, NULL, NULL, 1, '2026-04-28 06:53:29', 0, NULL, NULL, NULL),
-(11, 'PX-260428-006', 'out', 'technician_take', NULL, 8, 3, NULL, NULL, NULL, NULL, 3, '2026-04-28 06:57:26', 0, NULL, NULL, NULL),
-(12, 'PX-260428-007', 'out', 'technician_take', NULL, 8, 3, NULL, NULL, NULL, NULL, 3, '2026-04-28 06:57:28', 0, NULL, NULL, NULL),
-(13, 'PX-260428-008', 'out', 'technician_take', NULL, 9, 3, NULL, NULL, NULL, NULL, 3, '2026-04-28 06:57:30', 0, NULL, NULL, NULL),
-(14, 'PX-260428-009', 'out', 'technician_take', NULL, 9, 3, NULL, NULL, NULL, NULL, 3, '2026-04-28 06:57:31', 0, NULL, NULL, NULL),
-(15, 'PN-260428-005', 'in', 'technician_return', NULL, NULL, 3, NULL, NULL, NULL, NULL, 3, '2026-04-28 07:03:12', 0, NULL, NULL, NULL),
-(16, 'PN-260428-006', 'in', 'technician_return', NULL, NULL, 3, NULL, NULL, NULL, NULL, 3, '2026-04-28 07:03:31', 0, NULL, NULL, NULL),
-(17, 'PN-260428-007', 'in', 'technician_return', NULL, NULL, 3, NULL, NULL, NULL, NULL, 3, '2026-04-28 07:03:33', 0, NULL, NULL, NULL),
-(18, 'PN-260428-008', 'in', 'technician_return', NULL, NULL, 3, NULL, NULL, NULL, NULL, 3, '2026-04-28 07:03:34', 0, NULL, NULL, NULL),
-(19, 'PX-260428-010', 'out', 'order_release', NULL, 10, 3, NULL, NULL, NULL, NULL, 1, '2026-04-28 08:00:32', 0, NULL, NULL, NULL),
-(20, 'PN-260428-009', 'in', 'adjust_plus', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, '2026-04-28 13:31:02', 0, NULL, NULL, NULL),
-(21, 'PX-260428-011', 'out', 'order_release', NULL, 14, 3, NULL, NULL, NULL, NULL, 1, '2026-04-28 13:31:22', 0, NULL, NULL, NULL),
-(22, 'PX-260428-012', 'out', 'order_release', NULL, 16, 3, NULL, NULL, NULL, NULL, 1, '2026-04-28 14:58:51', 0, NULL, NULL, NULL),
-(23, 'PN-260429-001', 'in', 'import_supplier', NULL, NULL, NULL, NULL, NULL, NULL, 4, 1, '2026-04-29 03:45:37', 0, NULL, NULL, NULL),
-(24, 'PX-260429-001', 'out', 'order_release', NULL, 6, 3, NULL, NULL, NULL, NULL, 1, '2026-04-29 03:46:35', 0, NULL, NULL, NULL),
-(25, 'PN-260429-002', 'in', 'adjust_plus', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, '2026-04-29 04:11:16', 0, NULL, NULL, NULL),
-(26, 'PX-260429-002', 'out', 'order_release', NULL, 15, 3, NULL, NULL, NULL, NULL, 1, '2026-04-29 04:11:23', 0, NULL, NULL, NULL),
-(27, 'PX-260429-003', 'out', 'order_release', NULL, 18, 4, NULL, NULL, NULL, NULL, 1, '2026-04-29 04:29:08', 0, NULL, NULL, NULL),
-(28, 'PX-260429-004', 'out', 'order_release', NULL, 17, 4, NULL, NULL, NULL, NULL, 1, '2026-04-29 05:30:35', 0, NULL, NULL, NULL),
-(29, 'PN-260429-003', 'in', 'technician_return', NULL, 17, 3, NULL, NULL, NULL, NULL, 3, '2026-04-29 05:31:33', 0, NULL, NULL, NULL);
+INSERT INTO `stock_receipts` (`id`, `code`, `kind`, `reason_code`, `reason_text`, `ref_order_id`, `ref_staff_id`, `ref_stock_take_id`, `supplier_id`, `created_by_staff_id`, `created_at`, `is_voided`, `voided_at`, `voided_reason`, `voided_by_receipt_id`) VALUES
+(3, 'PN-260428-001', 'in', 'import_supplier', 'nhập kho', NULL, NULL, NULL, 3, 1, '2026-04-28 05:52:01', 0, NULL, NULL, NULL),
+(4, 'PN-260428-002', 'in', 'import_supplier', 'MDVR-04', NULL, NULL, NULL, 2, 1, '2026-04-28 05:52:50', 0, NULL, NULL, NULL),
+(9, 'PN-260428-004', 'in', 'adjust_plus', NULL, NULL, NULL, NULL, NULL, 1, '2026-04-28 06:51:17', 0, NULL, NULL, NULL),
+(15, 'PN-260428-005', 'in', 'technician_return', NULL, NULL, 3, NULL, NULL, 3, '2026-04-28 07:03:12', 0, NULL, NULL, NULL),
+(16, 'PN-260428-006', 'in', 'technician_return', NULL, NULL, 3, NULL, NULL, 3, '2026-04-28 07:03:31', 0, NULL, NULL, NULL),
+(17, 'PN-260428-007', 'in', 'technician_return', NULL, NULL, 3, NULL, NULL, 3, '2026-04-28 07:03:33', 0, NULL, NULL, NULL),
+(18, 'PN-260428-008', 'in', 'technician_return', NULL, NULL, 3, NULL, NULL, 3, '2026-04-28 07:03:34', 0, NULL, NULL, NULL),
+(20, 'PN-260428-009', 'in', 'adjust_plus', NULL, NULL, NULL, NULL, NULL, 1, '2026-04-28 13:31:02', 0, NULL, NULL, NULL),
+(23, 'PN-260429-001', 'in', 'import_supplier', NULL, NULL, NULL, NULL, 4, 1, '2026-04-29 03:45:37', 0, NULL, NULL, NULL),
+(25, 'PN-260429-002', 'in', 'adjust_plus', NULL, NULL, NULL, NULL, NULL, 1, '2026-04-29 04:11:16', 0, NULL, NULL, NULL),
+(30, 'PX-260506-001', 'out', 'staff_issue', 'Cap SP cho KTV qua phieu CAP-0605-001', NULL, 3, NULL, NULL, 1, '2026-05-06 09:01:54', 0, NULL, NULL, NULL),
+(31, 'PX-260506-002', 'out', 'staff_issue', 'Cap SP cho KTV qua phieu CAP-0605-002', NULL, 3, NULL, NULL, 1, '2026-05-06 09:03:09', 0, NULL, NULL, NULL),
+(34, 'PN-260508-001', 'in', 'adjust_plus', 'thấy 12 cáu', NULL, NULL, NULL, NULL, 1, '2026-05-08 16:21:17', 0, NULL, NULL, NULL),
+(37, 'PN-260510-001', 'in', 'adjust_plus', NULL, NULL, NULL, NULL, NULL, 1, '2026-05-10 08:02:33', 0, NULL, NULL, NULL),
+(38, 'PX-260510-001', 'out', 'staff_grant', NULL, NULL, 3, NULL, NULL, 1, '2026-05-10 08:03:18', 0, NULL, NULL, NULL),
+(40, 'PN-260510-002', 'in', 'import_supplier', NULL, NULL, NULL, NULL, 3, 1, '2026-05-10 08:20:11', 0, NULL, NULL, NULL),
+(41, 'PX-260510-002', 'out', 'staff_grant', NULL, NULL, 3, NULL, NULL, 1, '2026-05-10 08:20:27', 0, NULL, NULL, NULL),
+(42, 'PX-260510-003', 'out', 'order_consume', NULL, 35, 3, NULL, NULL, 3, '2026-05-10 08:20:38', 0, NULL, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -1254,7 +1538,7 @@ CREATE TABLE `stock_receipt_items` (
   `unit_price` bigint(20) DEFAULT NULL,
   `imei_list` text DEFAULT NULL,
   `note` varchar(500) DEFAULT NULL
-) ;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Đang đổ dữ liệu cho bảng `stock_receipt_items`
@@ -1295,7 +1579,23 @@ INSERT INTO `stock_receipt_items` (`id`, `receipt_id`, `product_id`, `qty`, `uni
 (33, 26, 6, 1, NULL, NULL, NULL),
 (34, 27, 4, 1, NULL, NULL, NULL),
 (35, 28, 4, 1, NULL, NULL, NULL),
-(36, 29, 6, 3, NULL, NULL, NULL);
+(36, 29, 6, 3, NULL, NULL, NULL),
+(37, 30, 2, 1, NULL, '1234', NULL),
+(38, 31, 7, 10, NULL, NULL, NULL),
+(39, 32, 2, 1, NULL, NULL, NULL),
+(40, 32, 4, 1, NULL, NULL, NULL),
+(41, 33, 4, 1, NULL, NULL, NULL),
+(42, 33, 6, 1, NULL, NULL, NULL),
+(43, 34, 8, 12, NULL, NULL, NULL),
+(44, 37, 1, 20, NULL, NULL, NULL),
+(45, 38, 1, 10, NULL, NULL, NULL),
+(46, 38, 5, 5, NULL, NULL, NULL),
+(47, 38, 8, 10, NULL, NULL, NULL),
+(49, 40, 7, 100, NULL, NULL, NULL),
+(50, 41, 7, 10, NULL, NULL, NULL),
+(51, 42, 5, 1, NULL, NULL, NULL),
+(52, 42, 7, 1, NULL, NULL, NULL),
+(53, 42, 8, 2, NULL, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -1322,7 +1622,8 @@ CREATE TABLE `stock_takes` (
 --
 
 INSERT INTO `stock_takes` (`id`, `code`, `status`, `started_at`, `finished_at`, `by_staff_id`, `finished_by_staff_id`, `note`, `total_lines`, `total_variance_abs`, `is_deleted`) VALUES
-(1, 'KK-260428-001', 'draft', '2026-04-28 03:09:54', NULL, 1, NULL, NULL, 0, 0, 0);
+(1, 'KK-260428-001', 'draft', '2026-04-28 03:09:54', NULL, 1, NULL, NULL, 0, 0, 0),
+(2, 'KK-260508-001', 'draft', '2026-05-08 23:09:31', NULL, 1, NULL, NULL, 0, 0, 0);
 
 -- --------------------------------------------------------
 
@@ -1338,7 +1639,7 @@ CREATE TABLE `stock_take_lines` (
   `counted_qty` int(11) NOT NULL,
   `receipt_id` int(11) DEFAULT NULL,
   `note` varchar(500) DEFAULT NULL
-) ;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -1394,42 +1695,21 @@ INSERT INTO `warehouse_logs` (`id`, `stock_item_id`, `kind`, `reason`, `order_id
 (6, 11, 'in', 'Seed test data', NULL, NULL, '2026-04-25 16:30:31'),
 (7, 12, 'in', 'Seed test data', NULL, NULL, '2026-04-25 16:30:31');
 
--- --------------------------------------------------------
-
---
--- Cấu trúc bảng cho bảng `warranty_orders`
---
-
-CREATE TABLE `warranty_orders` (
-  `id` int(11) NOT NULL,
-  `code` varchar(30) NOT NULL,
-  `customer_id` int(11) NOT NULL,
-  `license_plate` varchar(30) DEFAULT NULL,
-  `device_name` varchar(100) DEFAULT NULL,
-  `imei_search` varchar(100) DEFAULT NULL,
-  `reason_text` text NOT NULL,
-  `note_text` text DEFAULT NULL,
-  `address` varchar(500) DEFAULT NULL,
-  `assigned_staff_id` int(11) DEFAULT NULL,
-  `recovered_image_url` varchar(500) DEFAULT NULL,
-  `delivered_image_url` varchar(500) DEFAULT NULL,
-  `warranty_partner` varchar(200) DEFAULT NULL,
-  `sent_at` date DEFAULT NULL,
-  `returned_at` date DEFAULT NULL,
-  `cost_amount` bigint(20) NOT NULL DEFAULT 0,
-  `paid_amount` bigint(20) NOT NULL DEFAULT 0,
-  `debt_carried_at` datetime DEFAULT NULL,
-  `debt_settlement_id` int(11) DEFAULT NULL,
-  `status` enum('pending','received','recovered','awaiting_warranty','warranty_done','delivering','completed','cancelled') NOT NULL DEFAULT 'pending',
-  `request_date` date NOT NULL,
-  `creator_type` enum('customer','dealer','admin','staff') NOT NULL DEFAULT 'admin',
-  `creator_id` int(11) DEFAULT NULL,
-  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 --
 -- Chỉ mục cho các bảng đã đổ
 --
+
+--
+-- Chỉ mục cho bảng `agency_collections`
+--
+ALTER TABLE `agency_collections`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `code` (`code`),
+  ADD KEY `fk_agcol_retail` (`retail_customer_id`),
+  ADD KEY `fk_agcol_settle` (`debt_settlement_id`),
+  ADD KEY `idx_agcol_dealer` (`dealer_id`,`debt_settlement_id`,`is_deleted`),
+  ADD KEY `idx_agcol_staff` (`staff_id`,`handed_over`,`is_deleted`),
+  ADD KEY `idx_agcol_collected_at` (`collected_at`);
 
 --
 -- Chỉ mục cho bảng `app_settings`
@@ -1438,24 +1718,19 @@ ALTER TABLE `app_settings`
   ADD PRIMARY KEY (`key`);
 
 --
--- Chỉ mục cho bảng `badges`
+-- Chỉ mục cho bảng `badge_order_attachments`
 --
-ALTER TABLE `badges`
+ALTER TABLE `badge_order_attachments`
   ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `code` (`code`),
-  ADD KEY `idx_badge_status` (`status`),
-  ADD KEY `idx_badge_customer` (`customer_id`),
-  ADD KEY `idx_badge_dealer` (`dealer_id`),
-  ADD KEY `idx_badge_plate` (`vehicle_plate`),
-  ADD KEY `idx_badge_deleted` (`is_deleted`),
-  ADD KEY `idx_badge_order` (`order_id`);
+  ADD KEY `idx_battach_border` (`badge_order_id`,`is_deleted`),
+  ADD KEY `idx_battach_kind` (`kind`);
 
 --
--- Chỉ mục cho bảng `badge_attachments`
+-- Chỉ mục cho bảng `badge_order_charges`
 --
-ALTER TABLE `badge_attachments`
+ALTER TABLE `badge_order_charges`
   ADD PRIMARY KEY (`id`),
-  ADD KEY `idx_battach_badge` (`badge_id`);
+  ADD KEY `idx_bcharge_order` (`badge_order_id`,`is_deleted`);
 
 --
 -- Chỉ mục cho bảng `categories`
@@ -1506,12 +1781,43 @@ ALTER TABLE `customers`
   ADD KEY `fk_cust_tier` (`default_tier_id`);
 
 --
+-- Chỉ mục cho bảng `customer_accounts`
+--
+ALTER TABLE `customer_accounts`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_ca_customer` (`customer_id`,`is_deleted`);
+
+--
 -- Chỉ mục cho bảng `customer_product_prices`
 --
 ALTER TABLE `customer_product_prices`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `uniq_cust_prod` (`customer_id`,`product_id`),
   ADD KEY `fk_cpp_product` (`product_id`);
+
+--
+-- Chỉ mục cho bảng `customer_sims`
+--
+ALTER TABLE `customer_sims`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_cs_customer` (`customer_id`,`is_deleted`);
+
+--
+-- Chỉ mục cho bảng `customer_update_requests`
+--
+ALTER TABLE `customer_update_requests`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `fk_cur_order` (`ref_order_id`),
+  ADD KEY `idx_cur_customer` (`customer_id`),
+  ADD KEY `idx_cur_status` (`status`,`is_deleted`),
+  ADD KEY `idx_cur_kind` (`asset_kind`,`status`);
+
+--
+-- Chỉ mục cho bảng `customer_vehicles`
+--
+ALTER TABLE `customer_vehicles`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_cv_customer` (`customer_id`,`is_deleted`);
 
 --
 -- Chỉ mục cho bảng `debt_settlements`
@@ -1551,8 +1857,7 @@ ALTER TABLE `inquiry_items`
 ALTER TABLE `messages`
   ADD PRIMARY KEY (`id`),
   ADD KEY `idx_msg_conv` (`conversation_id`,`sent_at`),
-  ADD KEY `idx_msg_order` (`order_id`),
-  ADD KEY `idx_msg_repair` (`repair_order_id`);
+  ADD KEY `idx_msg_order` (`order_id`);
 
 --
 -- Chỉ mục cho bảng `notifications`
@@ -1571,21 +1876,19 @@ ALTER TABLE `notifications`
 ALTER TABLE `orders`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `code` (`code`),
-  ADD UNIQUE KEY `public_token` (`public_token`),
-  ADD KEY `idx_orders_status` (`status`),
-  ADD KEY `idx_orders_area` (`area`),
   ADD KEY `idx_orders_customer` (`customer_id`),
   ADD KEY `idx_orders_dealer` (`dealer_id`),
   ADD KEY `idx_orders_deleted` (`is_deleted`),
   ADD KEY `idx_orders_creator` (`creator_type`,`creator_id`),
-  ADD KEY `idx_orders_service_kind` (`service_kind`),
   ADD KEY `idx_orders_seen` (`seen_at`),
   ADD KEY `idx_orders_has_return` (`has_return`),
   ADD KEY `idx_orders_debt_carried` (`customer_id`,`debt_carried_at`),
   ADD KEY `idx_orders_created` (`created_at`),
   ADD KEY `idx_orders_assigned_staff` (`assigned_staff_id`),
-  ADD KEY `idx_orders_kind` (`kind`),
-  ADD KEY `idx_orders_completed_at` (`completed_at`);
+  ADD KEY `idx_orders_completed_at` (`completed_at`),
+  ADD KEY `idx_orders_status` (`status`),
+  ADD KEY `idx_orders_payment_status` (`payment_status`),
+  ADD KEY `idx_orders_collected_for_dealer` (`collected_for_dealer`);
 
 --
 -- Chỉ mục cho bảng `order_attachments`
@@ -1600,7 +1903,8 @@ ALTER TABLE `order_attachments`
 --
 ALTER TABLE `order_charges`
   ADD PRIMARY KEY (`id`),
-  ADD KEY `idx_charge_order` (`order_id`,`is_deleted`);
+  ADD KEY `idx_charge_order` (`order_id`,`is_deleted`),
+  ADD KEY `idx_charge_line` (`line_id`);
 
 --
 -- Chỉ mục cho bảng `order_checklist`
@@ -1610,12 +1914,30 @@ ALTER TABLE `order_checklist`
   ADD KEY `idx_order_checklist_order` (`order_id`);
 
 --
+-- Chỉ mục cho bảng `order_field_values`
+--
+ALTER TABLE `order_field_values`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `fk_ofv_field` (`template_field_id`),
+  ADD KEY `idx_ofv_order` (`order_id`,`is_deleted`),
+  ADD KEY `idx_ofv_line` (`line_id`);
+
+--
 -- Chỉ mục cho bảng `order_items`
 --
 ALTER TABLE `order_items`
   ADD PRIMARY KEY (`id`),
   ADD KEY `idx_oi_order` (`order_id`),
-  ADD KEY `idx_oi_product` (`product_id`);
+  ADD KEY `idx_oi_product` (`product_id`),
+  ADD KEY `idx_oi_line` (`line_id`);
+
+--
+-- Chỉ mục cho bảng `order_lines`
+--
+ALTER TABLE `order_lines`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_oline_order` (`order_id`,`is_deleted`),
+  ADD KEY `idx_oline_template` (`template_id`);
 
 --
 -- Chỉ mục cho bảng `order_payments`
@@ -1628,6 +1950,36 @@ ALTER TABLE `order_payments`
   ADD KEY `idx_payment_source` (`source`),
   ADD KEY `idx_payment_active` (`is_deleted`,`paid_at`),
   ADD KEY `idx_payment_pending` (`order_id`,`source`,`confirmed`);
+
+--
+-- Chỉ mục cho bảng `order_step_photos`
+--
+ALTER TABLE `order_step_photos`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_ostepphoto_order` (`order_id`,`step_code`,`is_deleted`);
+
+--
+-- Chỉ mục cho bảng `order_templates`
+--
+ALTER TABLE `order_templates`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_template_public` (`is_public`,`is_deleted`),
+  ADD KEY `idx_template_deleted` (`is_deleted`);
+
+--
+-- Chỉ mục cho bảng `order_template_fields`
+--
+ALTER TABLE `order_template_fields`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_otfield_template` (`template_id`,`seq`);
+
+--
+-- Chỉ mục cho bảng `order_workflow_steps`
+--
+ALTER TABLE `order_workflow_steps`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `code` (`code`),
+  ADD KEY `idx_wfstep_seq` (`seq`,`is_deleted`);
 
 --
 -- Chỉ mục cho bảng `price_tiers`
@@ -1698,37 +2050,6 @@ ALTER TABLE `remittances`
   ADD KEY `idx_remit_deleted` (`is_deleted`);
 
 --
--- Chỉ mục cho bảng `repair_charges`
---
-ALTER TABLE `repair_charges`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `idx_rcharge_order` (`repair_order_id`,`is_deleted`);
-
---
--- Chỉ mục cho bảng `repair_items`
---
-ALTER TABLE `repair_items`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `fk_ritem_product` (`product_id`),
-  ADD KEY `idx_ritem_order` (`repair_order_id`,`is_deleted`);
-
---
--- Chỉ mục cho bảng `repair_orders`
---
-ALTER TABLE `repair_orders`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `code` (`code`),
-  ADD KEY `idx_ro_status` (`status`),
-  ADD KEY `idx_ro_customer` (`customer_id`),
-  ADD KEY `idx_ro_staff` (`assigned_staff_id`),
-  ADD KEY `idx_ro_request` (`request_date`),
-  ADD KEY `idx_ro_deleted` (`is_deleted`),
-  ADD KEY `idx_ro_debt_carried` (`debt_carried_at`),
-  ADD KEY `idx_ro_settlement` (`debt_settlement_id`),
-  ADD KEY `idx_ro_plate` (`license_plate`),
-  ADD KEY `idx_ro_imei` (`imei_search`);
-
---
 -- Chỉ mục cho bảng `staff`
 --
 ALTER TABLE `staff`
@@ -1747,12 +2068,53 @@ ALTER TABLE `staff_holdings`
   ADD KEY `idx_staff_holdings_product` (`product_id`);
 
 --
+-- Chỉ mục cho bảng `staff_payroll_periods`
+--
+ALTER TABLE `staff_payroll_periods`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `fk_spp_finalizer` (`finalized_by`),
+  ADD KEY `idx_spp_staff_period` (`staff_id`,`period`),
+  ADD KEY `idx_spp_period` (`period`);
+
+--
 -- Chỉ mục cho bảng `staff_reviews`
 --
 ALTER TABLE `staff_reviews`
   ADD PRIMARY KEY (`id`),
   ADD KEY `idx_review_staff` (`staff_id`),
   ADD KEY `idx_review_order` (`order_id`);
+
+--
+-- Chỉ mục cho bảng `staff_stock_consumptions`
+--
+ALTER TABLE `staff_stock_consumptions`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_ssc_staff` (`staff_id`),
+  ADD KEY `idx_ssc_product` (`product_id`),
+  ADD KEY `idx_ssc_ref` (`ref_kind`,`ref_id`),
+  ADD KEY `idx_ssc_time` (`consumed_at`);
+
+--
+-- Chỉ mục cho bảng `staff_stock_issues`
+--
+ALTER TABLE `staff_stock_issues`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `code` (`code`),
+  ADD KEY `fk_ssi_creator` (`created_by_staff_id`),
+  ADD KEY `fk_ssi_approver` (`approved_by_staff_id`),
+  ADD KEY `fk_ssi_receipt` (`ref_receipt_id`),
+  ADD KEY `idx_ssi_staff` (`staff_id`),
+  ADD KEY `idx_ssi_status` (`status`),
+  ADD KEY `idx_ssi_created` (`created_at`);
+
+--
+-- Chỉ mục cho bảng `staff_stock_issue_items`
+--
+ALTER TABLE `staff_stock_issue_items`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uk_ssi_item_issue_product` (`issue_id`,`product_id`),
+  ADD KEY `idx_ssi_item_issue` (`issue_id`),
+  ADD KEY `idx_ssi_item_product` (`product_id`);
 
 --
 -- Chỉ mục cho bảng `stock_items`
@@ -1780,9 +2142,7 @@ ALTER TABLE `stock_receipts`
   ADD KEY `idx_receipts_order` (`ref_order_id`),
   ADD KEY `idx_receipts_supplier` (`supplier_id`),
   ADD KEY `idx_receipts_voided` (`is_voided`),
-  ADD KEY `idx_receipts_stock_take` (`ref_stock_take_id`),
-  ADD KEY `idx_receipts_warranty` (`ref_warranty_order_id`),
-  ADD KEY `idx_receipts_repair` (`ref_repair_order_id`);
+  ADD KEY `idx_receipts_stock_take` (`ref_stock_take_id`);
 
 --
 -- Chỉ mục cho bảng `stock_receipt_items`
@@ -1832,35 +2192,25 @@ ALTER TABLE `warehouse_logs`
   ADD KEY `idx_log_created` (`created_at`);
 
 --
--- Chỉ mục cho bảng `warranty_orders`
---
-ALTER TABLE `warranty_orders`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `code` (`code`),
-  ADD KEY `idx_wo_status` (`status`),
-  ADD KEY `idx_wo_customer` (`customer_id`),
-  ADD KEY `idx_wo_staff` (`assigned_staff_id`),
-  ADD KEY `idx_wo_request` (`request_date`),
-  ADD KEY `idx_wo_deleted` (`is_deleted`),
-  ADD KEY `idx_wo_debt_carried` (`debt_carried_at`),
-  ADD KEY `idx_wo_settlement` (`debt_settlement_id`),
-  ADD KEY `idx_wo_plate` (`license_plate`),
-  ADD KEY `idx_wo_imei` (`imei_search`);
-
---
 -- AUTO_INCREMENT cho các bảng đã đổ
 --
 
 --
--- AUTO_INCREMENT cho bảng `badges`
+-- AUTO_INCREMENT cho bảng `agency_collections`
 --
-ALTER TABLE `badges`
+ALTER TABLE `agency_collections`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT cho bảng `badge_order_attachments`
+--
+ALTER TABLE `badge_order_attachments`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT cho bảng `badge_attachments`
+-- AUTO_INCREMENT cho bảng `badge_order_charges`
 --
-ALTER TABLE `badge_attachments`
+ALTER TABLE `badge_order_charges`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
@@ -1879,31 +2229,55 @@ ALTER TABLE `collections`
 -- AUTO_INCREMENT cho bảng `conversations`
 --
 ALTER TABLE `conversations`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT cho bảng `conversation_members`
 --
 ALTER TABLE `conversation_members`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
 
 --
 -- AUTO_INCREMENT cho bảng `customers`
 --
 ALTER TABLE `customers`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
+
+--
+-- AUTO_INCREMENT cho bảng `customer_accounts`
+--
+ALTER TABLE `customer_accounts`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT cho bảng `customer_product_prices`
 --
 ALTER TABLE `customer_product_prices`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+
+--
+-- AUTO_INCREMENT cho bảng `customer_sims`
+--
+ALTER TABLE `customer_sims`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT cho bảng `customer_update_requests`
+--
+ALTER TABLE `customer_update_requests`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT cho bảng `customer_vehicles`
+--
+ALTER TABLE `customer_vehicles`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT cho bảng `debt_settlements`
 --
 ALTER TABLE `debt_settlements`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT cho bảng `inquiries`
@@ -1921,49 +2295,85 @@ ALTER TABLE `inquiry_items`
 -- AUTO_INCREMENT cho bảng `messages`
 --
 ALTER TABLE `messages`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT cho bảng `notifications`
 --
 ALTER TABLE `notifications`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT cho bảng `orders`
 --
 ALTER TABLE `orders`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=20;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=36;
 
 --
 -- AUTO_INCREMENT cho bảng `order_attachments`
 --
 ALTER TABLE `order_attachments`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=18;
 
 --
 -- AUTO_INCREMENT cho bảng `order_charges`
 --
 ALTER TABLE `order_charges`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=56;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=98;
 
 --
 -- AUTO_INCREMENT cho bảng `order_checklist`
 --
 ALTER TABLE `order_checklist`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=79;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=100;
+
+--
+-- AUTO_INCREMENT cho bảng `order_field_values`
+--
+ALTER TABLE `order_field_values`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
 -- AUTO_INCREMENT cho bảng `order_items`
 --
 ALTER TABLE `order_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=58;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=83;
+
+--
+-- AUTO_INCREMENT cho bảng `order_lines`
+--
+ALTER TABLE `order_lines`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT cho bảng `order_payments`
 --
 ALTER TABLE `order_payments`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
+
+--
+-- AUTO_INCREMENT cho bảng `order_step_photos`
+--
+ALTER TABLE `order_step_photos`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- AUTO_INCREMENT cho bảng `order_templates`
+--
+ALTER TABLE `order_templates`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+
+--
+-- AUTO_INCREMENT cho bảng `order_template_fields`
+--
+ALTER TABLE `order_template_fields`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=34;
+
+--
+-- AUTO_INCREMENT cho bảng `order_workflow_steps`
+--
+ALTER TABLE `order_workflow_steps`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
 
 --
 -- AUTO_INCREMENT cho bảng `price_tiers`
@@ -2005,25 +2415,7 @@ ALTER TABLE `release_pool`
 -- AUTO_INCREMENT cho bảng `remittances`
 --
 ALTER TABLE `remittances`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
-
---
--- AUTO_INCREMENT cho bảng `repair_charges`
---
-ALTER TABLE `repair_charges`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT cho bảng `repair_items`
---
-ALTER TABLE `repair_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT cho bảng `repair_orders`
---
-ALTER TABLE `repair_orders`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT cho bảng `staff`
@@ -2035,12 +2427,36 @@ ALTER TABLE `staff`
 -- AUTO_INCREMENT cho bảng `staff_holdings`
 --
 ALTER TABLE `staff_holdings`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=25;
+
+--
+-- AUTO_INCREMENT cho bảng `staff_payroll_periods`
+--
+ALTER TABLE `staff_payroll_periods`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT cho bảng `staff_reviews`
 --
 ALTER TABLE `staff_reviews`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT cho bảng `staff_stock_consumptions`
+--
+ALTER TABLE `staff_stock_consumptions`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT cho bảng `staff_stock_issues`
+--
+ALTER TABLE `staff_stock_issues`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT cho bảng `staff_stock_issue_items`
+--
+ALTER TABLE `staff_stock_issue_items`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
@@ -2053,19 +2469,19 @@ ALTER TABLE `stock_items`
 -- AUTO_INCREMENT cho bảng `stock_receipts`
 --
 ALTER TABLE `stock_receipts`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=30;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=43;
 
 --
 -- AUTO_INCREMENT cho bảng `stock_receipt_items`
 --
 ALTER TABLE `stock_receipt_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=54;
 
 --
 -- AUTO_INCREMENT cho bảng `stock_takes`
 --
 ALTER TABLE `stock_takes`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT cho bảng `stock_take_lines`
@@ -2086,28 +2502,29 @@ ALTER TABLE `warehouse_logs`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
--- AUTO_INCREMENT cho bảng `warranty_orders`
---
-ALTER TABLE `warranty_orders`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
-
---
 -- Các ràng buộc cho các bảng đã đổ
 --
 
 --
--- Các ràng buộc cho bảng `badges`
+-- Các ràng buộc cho bảng `agency_collections`
 --
-ALTER TABLE `badges`
-  ADD CONSTRAINT `fk_badge_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_badge_dealer` FOREIGN KEY (`dealer_id`) REFERENCES `customers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_badge_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `agency_collections`
+  ADD CONSTRAINT `fk_agcol_dealer` FOREIGN KEY (`dealer_id`) REFERENCES `customers` (`id`),
+  ADD CONSTRAINT `fk_agcol_retail` FOREIGN KEY (`retail_customer_id`) REFERENCES `customers` (`id`),
+  ADD CONSTRAINT `fk_agcol_settle` FOREIGN KEY (`debt_settlement_id`) REFERENCES `debt_settlements` (`id`),
+  ADD CONSTRAINT `fk_agcol_staff` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`id`);
 
 --
--- Các ràng buộc cho bảng `badge_attachments`
+-- Các ràng buộc cho bảng `badge_order_attachments`
 --
-ALTER TABLE `badge_attachments`
-  ADD CONSTRAINT `fk_battach_badge` FOREIGN KEY (`badge_id`) REFERENCES `badges` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `badge_order_attachments`
+  ADD CONSTRAINT `fk_battach_border` FOREIGN KEY (`badge_order_id`) REFERENCES `badge_orders` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Các ràng buộc cho bảng `badge_order_charges`
+--
+ALTER TABLE `badge_order_charges`
+  ADD CONSTRAINT `fk_bcharge_order` FOREIGN KEY (`badge_order_id`) REFERENCES `badge_orders` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- Các ràng buộc cho bảng `collections`
@@ -2138,11 +2555,36 @@ ALTER TABLE `customers`
   ADD CONSTRAINT `fk_cust_tier` FOREIGN KEY (`default_tier_id`) REFERENCES `price_tiers` (`id`) ON DELETE SET NULL;
 
 --
+-- Các ràng buộc cho bảng `customer_accounts`
+--
+ALTER TABLE `customer_accounts`
+  ADD CONSTRAINT `fk_ca_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
 -- Các ràng buộc cho bảng `customer_product_prices`
 --
 ALTER TABLE `customer_product_prices`
   ADD CONSTRAINT `fk_cpp_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `fk_cpp_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE;
+
+--
+-- Các ràng buộc cho bảng `customer_sims`
+--
+ALTER TABLE `customer_sims`
+  ADD CONSTRAINT `fk_cs_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Các ràng buộc cho bảng `customer_update_requests`
+--
+ALTER TABLE `customer_update_requests`
+  ADD CONSTRAINT `fk_cur_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_cur_order` FOREIGN KEY (`ref_order_id`) REFERENCES `orders` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+--
+-- Các ràng buộc cho bảng `customer_vehicles`
+--
+ALTER TABLE `customer_vehicles`
+  ADD CONSTRAINT `fk_cv_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- Các ràng buộc cho bảng `debt_settlements`
@@ -2170,8 +2612,7 @@ ALTER TABLE `inquiry_items`
 --
 ALTER TABLE `messages`
   ADD CONSTRAINT `fk_msg_conv` FOREIGN KEY (`conversation_id`) REFERENCES `conversations` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_msg_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_msg_repair` FOREIGN KEY (`repair_order_id`) REFERENCES `repair_orders` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+  ADD CONSTRAINT `fk_msg_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
 -- Các ràng buộc cho bảng `notifications`
@@ -2199,6 +2640,7 @@ ALTER TABLE `order_attachments`
 -- Các ràng buộc cho bảng `order_charges`
 --
 ALTER TABLE `order_charges`
+  ADD CONSTRAINT `fk_charge_line` FOREIGN KEY (`line_id`) REFERENCES `order_lines` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_charge_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
@@ -2208,11 +2650,27 @@ ALTER TABLE `order_checklist`
   ADD CONSTRAINT `fk_order_checklist_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
+-- Các ràng buộc cho bảng `order_field_values`
+--
+ALTER TABLE `order_field_values`
+  ADD CONSTRAINT `fk_ofv_field` FOREIGN KEY (`template_field_id`) REFERENCES `order_template_fields` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_ofv_line` FOREIGN KEY (`line_id`) REFERENCES `order_lines` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_ofv_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
 -- Các ràng buộc cho bảng `order_items`
 --
 ALTER TABLE `order_items`
+  ADD CONSTRAINT `fk_oi_line` FOREIGN KEY (`line_id`) REFERENCES `order_lines` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_oi_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_oi_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON UPDATE CASCADE;
+
+--
+-- Các ràng buộc cho bảng `order_lines`
+--
+ALTER TABLE `order_lines`
+  ADD CONSTRAINT `fk_oline_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_oline_template` FOREIGN KEY (`template_id`) REFERENCES `order_templates` (`id`) ON UPDATE CASCADE;
 
 --
 -- Các ràng buộc cho bảng `order_payments`
@@ -2220,6 +2678,18 @@ ALTER TABLE `order_items`
 ALTER TABLE `order_payments`
   ADD CONSTRAINT `fk_payment_collection` FOREIGN KEY (`collection_id`) REFERENCES `collections` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_payment_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Các ràng buộc cho bảng `order_step_photos`
+--
+ALTER TABLE `order_step_photos`
+  ADD CONSTRAINT `fk_ostepphoto_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Các ràng buộc cho bảng `order_template_fields`
+--
+ALTER TABLE `order_template_fields`
+  ADD CONSTRAINT `fk_otfield_template` FOREIGN KEY (`template_id`) REFERENCES `order_templates` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- Các ràng buộc cho bảng `products`
@@ -2269,27 +2739,6 @@ ALTER TABLE `remittances`
   ADD CONSTRAINT `fk_remit_staff` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`id`) ON UPDATE CASCADE;
 
 --
--- Các ràng buộc cho bảng `repair_charges`
---
-ALTER TABLE `repair_charges`
-  ADD CONSTRAINT `fk_rcharge_order` FOREIGN KEY (`repair_order_id`) REFERENCES `repair_orders` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
-
---
--- Các ràng buộc cho bảng `repair_items`
---
-ALTER TABLE `repair_items`
-  ADD CONSTRAINT `fk_ritem_order` FOREIGN KEY (`repair_order_id`) REFERENCES `repair_orders` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_ritem_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON UPDATE CASCADE;
-
---
--- Các ràng buộc cho bảng `repair_orders`
---
-ALTER TABLE `repair_orders`
-  ADD CONSTRAINT `fk_ro_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_ro_settlement` FOREIGN KEY (`debt_settlement_id`) REFERENCES `debt_settlements` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_ro_staff` FOREIGN KEY (`assigned_staff_id`) REFERENCES `staff` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
-
---
 -- Các ràng buộc cho bảng `staff_holdings`
 --
 ALTER TABLE `staff_holdings`
@@ -2297,11 +2746,41 @@ ALTER TABLE `staff_holdings`
   ADD CONSTRAINT `fk_staff_holdings_staff` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
+-- Các ràng buộc cho bảng `staff_payroll_periods`
+--
+ALTER TABLE `staff_payroll_periods`
+  ADD CONSTRAINT `fk_spp_finalizer` FOREIGN KEY (`finalized_by`) REFERENCES `staff` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_spp_staff` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`id`) ON UPDATE CASCADE;
+
+--
 -- Các ràng buộc cho bảng `staff_reviews`
 --
 ALTER TABLE `staff_reviews`
   ADD CONSTRAINT `fk_review_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_review_staff` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Các ràng buộc cho bảng `staff_stock_consumptions`
+--
+ALTER TABLE `staff_stock_consumptions`
+  ADD CONSTRAINT `fk_ssc_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_ssc_staff` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`id`) ON UPDATE CASCADE;
+
+--
+-- Các ràng buộc cho bảng `staff_stock_issues`
+--
+ALTER TABLE `staff_stock_issues`
+  ADD CONSTRAINT `fk_ssi_approver` FOREIGN KEY (`approved_by_staff_id`) REFERENCES `staff` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_ssi_creator` FOREIGN KEY (`created_by_staff_id`) REFERENCES `staff` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_ssi_receipt` FOREIGN KEY (`ref_receipt_id`) REFERENCES `stock_receipts` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_ssi_staff` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`id`) ON UPDATE CASCADE;
+
+--
+-- Các ràng buộc cho bảng `staff_stock_issue_items`
+--
+ALTER TABLE `staff_stock_issue_items`
+  ADD CONSTRAINT `fk_ssi_item_issue` FOREIGN KEY (`issue_id`) REFERENCES `staff_stock_issues` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_ssi_item_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON UPDATE CASCADE;
 
 --
 -- Các ràng buộc cho bảng `stock_items`
@@ -2317,9 +2796,7 @@ ALTER TABLE `stock_items`
 ALTER TABLE `stock_receipts`
   ADD CONSTRAINT `fk_receipt_creator` FOREIGN KEY (`created_by_staff_id`) REFERENCES `staff` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_receipt_ref_staff` FOREIGN KEY (`ref_staff_id`) REFERENCES `staff` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_receipt_repair` FOREIGN KEY (`ref_repair_order_id`) REFERENCES `repair_orders` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_receipt_supplier` FOREIGN KEY (`supplier_id`) REFERENCES `suppliers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_receipt_warranty` FOREIGN KEY (`ref_warranty_order_id`) REFERENCES `warranty_orders` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_receipts_stock_take` FOREIGN KEY (`ref_stock_take_id`) REFERENCES `stock_takes` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
@@ -2350,14 +2827,6 @@ ALTER TABLE `stock_take_lines`
 ALTER TABLE `warehouse_logs`
   ADD CONSTRAINT `fk_log_staff` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_log_stock` FOREIGN KEY (`stock_item_id`) REFERENCES `stock_items` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
-
---
--- Các ràng buộc cho bảng `warranty_orders`
---
-ALTER TABLE `warranty_orders`
-  ADD CONSTRAINT `fk_wo_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_wo_settlement` FOREIGN KEY (`debt_settlement_id`) REFERENCES `debt_settlements` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_wo_staff` FOREIGN KEY (`assigned_staff_id`) REFERENCES `staff` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

@@ -49,11 +49,14 @@
       tb.innerHTML = `<tr><td colspan="7" class="text-center text-muted" style="padding:24px">Chưa có sản phẩm. Bấm <b>+ Thêm sản phẩm</b> để bắt đầu.</td></tr>`;
       return;
     }
-    tb.innerHTML = items.map(p => `
+    tb.innerHTML = items.map(p => {
+      const desc = (p.description || '').trim();
+      const shortDesc = desc.length > 80 ? desc.slice(0, 80) + '…' : desc;
+      return `
       <tr>
         <td>${thumbCell(p)}</td>
-        <td><b>${escape(p.code)}</b></td>
         <td>${escape(p.name)}</td>
+        <td class="text-muted" style="font-size:13px" title="${escape(desc)}">${shortDesc ? escape(shortDesc) : '—'}</td>
         <td>${p.category_name ? `<span class="pill gray">${escape(p.category_name)}</span>` : '<span class="text-muted">—</span>'}</td>
         <td>${p.warranty_months ? p.warranty_months + ' tháng' : '<span class="text-muted">—</span>'}</td>
         <td class="text-muted">${fmt.format(p.cost_price || 0)}</td>
@@ -61,8 +64,8 @@
           <a class="btn sm" href="/admin/product-edit.html?id=${p.id}" title="Mở trang sửa sản phẩm">📝 Sửa sản phẩm</a>
           <button class="btn ghost sm" data-act="del" data-id="${p.id}" style="color:#dc2626">Xoá</button>
         </td>
-      </tr>
-    `).join('');
+      </tr>`;
+    }).join('');
   }
 
   // ---- Categories ---------------------------------------------

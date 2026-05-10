@@ -274,7 +274,7 @@
         </select>
       </td>
       <td><input type="number" class="input line-qty" min="1" value="1" required></td>
-      <td class="r-price" ${kind === 'out' ? 'style="display:none"' : ''}><input type="number" class="input line-price" min="0" step="1000" placeholder="0"></td>
+      <td class="r-price" ${kind === 'out' ? 'style="display:none"' : ''}><input type="text" inputmode="numeric" class="input line-price money-input" placeholder="0"></td>
       <td class="r-imei imei-cell" ${kind === 'in' ? 'style="display:none"' : ''}><textarea class="line-imei" placeholder="868001\n868002"></textarea></td>
       <td><input type="text" class="input line-note" placeholder="—"></td>
       <td><button type="button" class="btn-remove-line" title="Xoá dòng">✕</button></td>
@@ -300,7 +300,7 @@
       lines.push({
         product_id: productId,
         qty,
-        unit_price: priceEl && priceEl.value ? Number(priceEl.value) : null,
+        unit_price: priceEl && priceEl.value ? Money.get(priceEl) : null,
         imei_list: imeiEl && imeiEl.value ? imeiEl.value.trim() : null,
         note,
       });

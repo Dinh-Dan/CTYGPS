@@ -12,11 +12,12 @@
 
 const express = require('express');
 const db = require('../../db');
-const { FINAL_STATUSES } = require('../../utils/orderState');
 
 const router = express.Router();
 
-const FINAL_PLACEHOLDERS = FINAL_STATUSES.map(() => '?').join(','); // '?,?,?,?'
+// Sau mig 045/046: workflow status do template quy dinh, "da xong KTV" = completed_at IS NOT NULL.
+// "Co the no" = status NOT IN ('pending','cancelled') AND payment_status != 'paid'.
+const COMPLETED_COND = 'o.completed_at IS NOT NULL';
 
 // ---- GET /api/admin/reports/customer-debts --------------------
 // Tinh dong: customers.opening_balance + SUM don chua ket (debt_carried_at IS NULL)
@@ -32,9 +33,10 @@ router.get('/customer-debts', async (req, res, next) => {
     const where = [
       'o.is_deleted = 0',
       'o.debt_carried_at IS NULL',
-      `o.status IN (${FINAL_PLACEHOLDERS})`,
+      `o.status NOT IN ('pending','cancelled')`,
+      `o.payment_status != 'paid'`,
     ];
-    const args = [...FINAL_STATUSES];
+    const args = [];
     if (from) { where.push('DATE(o.confirmed_at) >= ?'); args.push(from); }
     if (to)   { where.push('DATE(o.confirmed_at) <= ?'); args.push(to); }
 
@@ -210,11 +212,9 @@ router.get('/top-products', async (req, res, next) => {
     const to   = req.query.to   || null;
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 10));
 
-    const validStatuses = ['warehouse_released', 'in_progress', 'assigned', ...FINAL_STATUSES];
-    const ph = validStatuses.map(() => '?').join(',');
-
-    const where = ['o.is_deleted = 0', `o.status IN (${ph})`];
-    const args = [...validStatuses];
+    // Tinh tren cac don da duoc duyet (khong pending/cancelled)
+    const where = ['o.is_deleted = 0', `o.status NOT IN ('pending','cancelled')`];
+    const args = [];
     if (from) { where.push('DATE(o.confirmed_at) >= ?'); args.push(from); }
     if (to)   { where.push('DATE(o.confirmed_at) <= ?'); args.push(to); }
 
@@ -258,22 +258,27 @@ router.get('/orders-by-status', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ---- GET /api/admin/reports/orders-by-service-kind ------------
-// Phan bo theo loai dich vu (lap moi/bao tri/bao hanh/gia han)
-router.get('/orders-by-service-kind', async (req, res, next) => {
+// ---- GET /api/admin/reports/orders-by-template ----------------
+// Phan bo theo loai don (template)
+router.get('/orders-by-template', async (req, res, next) => {
   try {
     const from = req.query.from || null;
     const to   = req.query.to   || null;
-    const where = ['is_deleted = 0'];
+    const where = ['o.is_deleted = 0'];
     const args = [];
-    if (from) { where.push('DATE(confirmed_at) >= ?'); args.push(from); }
-    if (to)   { where.push('DATE(confirmed_at) <= ?'); args.push(to); }
+    if (from) { where.push('DATE(o.confirmed_at) >= ?'); args.push(from); }
+    if (to)   { where.push('DATE(o.confirmed_at) <= ?'); args.push(to); }
 
+    // Group theo template tu order_lines (1 don co the co nhieu line — 1 don tinh moi line 1 lan).
     const [rows] = await db.query(
-      `SELECT service_kind, COUNT(*) AS count, SUM(total_amount) AS total
-         FROM orders
+      `SELECT ol.template_id, t.name AS template_name,
+              COUNT(DISTINCT o.id) AS count,
+              SUM(ol.subtotal) AS total
+         FROM orders o
+         JOIN order_lines ol ON ol.order_id = o.id AND ol.is_deleted = 0
+         LEFT JOIN order_templates t ON t.id = ol.template_id
         WHERE ${where.join(' AND ')}
-        GROUP BY service_kind`,
+        GROUP BY ol.template_id, t.name`,
       args
     );
     res.json({ items: rows, from, to });

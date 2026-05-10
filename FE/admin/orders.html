@@ -3,141 +3,336 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Đơn hàng – Admin GPS Việt</title>
+<title>Đơn hàng – Admin VinaGPS</title>
 <link rel="stylesheet" href="/shared/css/style.css" />
 <style>
-  .item-row{display:grid;grid-template-columns:1fr 80px 140px 80px 36px;gap:8px;align-items:end;margin-bottom:8px}
-  .item-row select,.item-row input{padding:6px 8px}
-  .item-row .btn{padding:6px 10px}
-  /* Charges UI moi: list (read-only) + add form (1 row) */
-  .charges-list{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
-  .charge-list-row{display:flex;align-items:center;gap:10px;padding:6px 10px;background:#f8fafc;border-radius:6px;font-size:13.5px}
-  .cg-sign-tag{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-weight:700;font-size:14px;flex-shrink:0}
-  .cg-sign-tag.plus{background:#fee2e2;color:#dc2626}
-  .cg-sign-tag.minus{background:#dcfce7;color:#16a34a}
-  .cg-label-show{flex:1;font-weight:500}
-  .cg-amount-show{font-weight:600;white-space:nowrap}
-  .cg-amount-show.green{color:#16a34a}
-  .cg-amount-show.red{color:#dc2626}
-  .charge-add-form{display:flex;gap:6px;align-items:center;padding:8px;background:#eff6ff;border:1px dashed #bfdbfe;border-radius:8px;flex-wrap:wrap}
-  .charge-add-form select,.charge-add-form input{padding:7px 10px}
-  .cg-sign-btn{width:36px;font-size:18px;font-weight:700;flex:0 0 36px;background:#fff;border:1px solid #cbd5e1;color:#dc2626}
-  .cg-sign-btn.minus{background:#dcfce7;color:#16a34a;border-color:#86efac}
-  .order-detail-section{margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)}
-  .order-detail-section h4{margin-bottom:8px;font-size:14px;color:#475569}
-  .task-row{padding:10px;background:#f8fafc;border-radius:8px;margin-bottom:8px;border-left:3px solid var(--primary)}
-  .pill.purple{background:#ede9fe;color:#6d28d9}
-  .pill.cyan{background:#cffafe;color:#155e75}
-  .att-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:6px}
-  .att-grid img{width:100%;height:120px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid var(--border)}
-  .att-grid .att-label{font-size:11px;color:#64748b;text-align:center;margin-top:2px}
-  .stk-row{display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid var(--border)}
-  .stk-row:hover{background:#f8fafc}
-  .action-bar{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
-  .action-bar .btn.primary{background:var(--primary);color:#fff;font-weight:600}
-  /* Bill block */
-  .bill{background:#f8fafc;border-radius:10px;padding:14px;margin-top:14px;border-top:none}
-  .bill .bill-row{display:flex;justify-content:space-between;font-size:14px;padding:4px 0}
-  .bill .bill-row.total{font-size:17px;font-weight:700;color:var(--primary);padding-top:8px;border-top:1px dashed #cbd5e1;margin-top:6px}
-  .bill .bill-row.remaining{color:#dc2626;font-weight:600}
-  /* Inline assign section */
-  .assign-inline{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;border-top:none}
-  /* Item delete button */
-  .item-del{padding:2px 8px !important;color:#dc2626}
-  .item-del:hover{background:#fee2e2}
-  /* Product picker rows */
-  .pp-row{display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid var(--border)}
-  .pp-row:last-child{border-bottom:none}
-  .pp-row:hover{background:#f8fafc}
-  .pp-row img{width:42px;height:42px;border-radius:6px;object-fit:cover;flex-shrink:0}
-  .pp-row .pp-noimg{width:42px;height:42px;display:grid;place-items:center;background:#f1f5f9;border-radius:6px;font-size:18px;flex-shrink:0}
-  .quick-tabs{display:flex;gap:6px;margin-bottom:8px}
-  .quick-tabs button{padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:#fff;cursor:pointer;font-size:13px}
-  .quick-tabs button.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .pill { display:inline-flex; align-items: center; justify-content: center; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1; border: 1px solid transparent; }
+  .pill.gray   { background:#f1f5f9; color:#475569; border-color: #e2e8f0; }
+  .pill.blue   { background:#eff6ff; color:#1d4ed8; border-color: #bfdbfe; }
+  .pill.amber  { background:#fffbeb; color:#b45309; border-color: #fde68a; }
+  .pill.green  { background:#f0fdf4; color:#15803d; border-color: #bbf7d0; }
+  .pill.red    { background:#fef2f2; color:#b91c1c; border-color: #fecaca; }
+  .pill.purple { background:#faf5ff; color:#7e22ce; border-color: #e9d5ff; }
+  .quick-tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; background: #fff; padding: 10px 14px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid var(--border); }
+  .quick-tabs button {
+    padding:8px 18px; border-radius:8px; border:none;
+    background:transparent; cursor:pointer; font-size:14px; font-weight: 500; color: #64748b; transition: all 0.2s ease;
+  }
+  .quick-tabs button:hover { background: #f1f5f9; color: #0f172a; }
+  .quick-tabs button.on { background: var(--primary-soft); color: var(--primary); font-weight: 600; box-shadow: inset 0 0 0 1px var(--primary); }
+
+  .toolbar {
+    background: #fff; padding: 14px 16px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid var(--border); margin-bottom: 16px;
+  }
+  .toolbar .btn { box-shadow: 0 2px 6px rgba(31, 111, 235, 0.25); transition: transform 0.1s, box-shadow 0.1s; }
+  .toolbar .btn:active { transform: translateY(1px); box-shadow: none; }
+  
+  .table-wrap { box-shadow: 0 8px 24px rgba(15,23,42,0.06); border: 1px solid #f1f5f9; border-radius: 14px; overflow: hidden; background: #fff; margin-bottom: 0; }
+  table.data { width: 100%; border-collapse: separate; border-spacing: 0; }
+  table.data thead th { background: #f8fafc; color: #475569; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; font-size: 11.5px; border-bottom: 1px solid #e2e8f0; padding: 10px 12px; }
+  table.data tbody td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; font-size: 13.5px; vertical-align: middle; }
+  table.data tbody tr:last-child td { border-bottom: none; }
+  table.data tbody tr { transition: background-color 0.2s ease; }
+  table.data tbody tr:hover { background-color: #f8fafc; }
+  table.data thead tr.filter-row th { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 6px 12px; }
+  table.data thead tr.filter-row input, table.data thead tr.filter-row select { background: #f1f5f9; border: 1px solid transparent; transition: all 0.2s ease; border-radius: 6px; padding: 5px 8px; font-size: 12.5px; width: 100%; box-sizing: border-box; color: #0f172a; outline: none; height: 32px; }
+  table.data thead tr.filter-row input:focus, table.data thead tr.filter-row select:focus { background: #fff; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+  
+  .pager { background: #fff; padding: 12px 16px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid var(--border); margin-top: 20px; }
+  .pager button { padding: 8px 16px; font-weight: 600; border-radius: 8px; transition: all 0.2s; border: 1px solid var(--border); background: #fff; cursor: pointer; color: #475569; }
+  .pager button:hover:not(:disabled) { background: #f8fafc; color: var(--primary); border-color: var(--primary); }
+  .pager #pageInfo { font-weight: 600; color: #0f172a; margin: 0 16px; display: inline-block; min-width: 80px; text-align: center; }
+
+  .od-detail { padding:14px; }
+  .od-section { margin-bottom:18px; padding-bottom:14px; border-bottom:1px dashed var(--border); }
+  .od-section:last-child { border-bottom:none; }
+  .od-section h4 {
+    margin: 0 0 8px; font-size:13px; text-transform:uppercase;
+    color:#64748b; letter-spacing:.4px; display:flex; justify-content:space-between; align-items:center;
+  }
+
+  .stepper {
+    display:flex; align-items:flex-start; gap:0;
+    padding:14px 6px 6px; overflow-x:auto;
+  }
+  .stepper-step {
+    flex:1 1 0; min-width:90px; position:relative;
+    display:flex; flex-direction:column; align-items:center; text-align:center;
+  }
+  .stepper-step + .stepper-step::before {
+    content:''; position:absolute; top:16px; left:-50%; right:50%;
+    height:3px; background:#e2e8f0; z-index:0;
+  }
+  .stepper-step.done + .stepper-step::before,
+  .stepper-step.current::before { background:#16a34a; }
+  .stepper-dot {
+    position:relative; z-index:1;
+    width:34px; height:34px; border-radius:50%;
+    background:#e2e8f0; color:#64748b;
+    display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-size:14px;
+    border:3px solid #fff; box-shadow:0 0 0 1px #e2e8f0;
+    transition:all .2s ease;
+  }
+  .stepper-step.done .stepper-dot {
+    background:#16a34a; color:#fff; box-shadow:0 0 0 1px #16a34a;
+  }
+  .stepper-step.current .stepper-dot {
+    background:#1e40af; color:#fff; box-shadow:0 0 0 1px #1e40af, 0 0 0 5px #dbeafe;
+    transform:scale(1.15);
+  }
+  .stepper-label {
+    margin-top:6px; font-size:12px; color:#64748b; line-height:1.25;
+    max-width:110px; word-break:break-word;
+  }
+  .stepper-step.current .stepper-label { color:#1e40af; font-weight:600; }
+  .stepper-step.done    .stepper-label { color:#16a34a; }
+  .stepper-icons { font-size:11px; margin-top:2px; }
+  .stepper-photos-badge {
+    margin-top:4px; font-size:11px; color:#1e40af; font-weight:600;
+    background:#dbeafe; padding:1px 6px; border-radius:999px;
+    cursor:pointer; user-select:none;
+  }
+  .stepper-step.done .stepper-photos-badge { background:#dcfce7; color:#166534; }
+  .stepper-pop {
+    display:none; position:absolute; bottom:100%; left:50%; transform:translateX(-50%);
+    margin-bottom:8px; background:#0f172a; color:#fff;
+    padding:8px; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.25);
+    z-index:20; min-width:180px; max-width:280px;
+  }
+  .stepper-pop::after {
+    content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%);
+    border:6px solid transparent; border-top-color:#0f172a;
+  }
+  .stepper-pop .pop-grid {
+    display:grid; grid-template-columns:repeat(3, 1fr); gap:4px;
+  }
+  .stepper-pop .pop-grid img {
+    width:100%; height:60px; object-fit:cover; border-radius:4px;
+    cursor:pointer; background:#334155;
+  }
+  .stepper-pop .pop-title {
+    font-size:11px; color:#cbd5e1; margin-bottom:4px; text-align:center;
+  }
+  .stepper-step:hover .stepper-pop,
+  .stepper-step.pop-open .stepper-pop { display:block; }
+
+  .stepper-action {
+    margin-top:10px; display:flex; justify-content:flex-end; gap:8px;
+    padding-top:10px; border-top:1px dashed var(--border);
+  }
+  .stepper-action .next-label {
+    flex:1; font-size:13px; color:#64748b; align-self:center;
+  }
+  .stepper-action .next-label b { color:#0f172a; }
+
+  .photo-list { display:flex; flex-direction:column; gap:14px; }
+  .photo-group { background:#f8fafc; border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
+  .photo-group-head {
+    font-size:12px; font-weight:600; color:#1e40af;
+    text-transform:uppercase; letter-spacing:.3px; margin-bottom:8px;
+  }
+  .photo-group-head small { color:#64748b; font-weight:500; text-transform:none; letter-spacing:0; }
+  .photo-group-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(110px,1fr)); gap:8px; }
+
+  .item-list, .charge-list, .field-list, .photo-list { font-size:13.5px; }
+  .item-list .row, .charge-list .row, .field-list .row {
+    display:flex; gap:8px; padding:6px 8px; align-items:center; border-bottom:1px solid #f1f5f9;
+  }
+  .item-list .row { transition:background .15s; }
+  .item-list .row:hover { background:#f8fafc; }
+  .item-list .row .name { flex:2; }
+  .item-list .row .qty  { width:50px; text-align:right; }
+  .item-list .row .price{ width:110px; text-align:right; }
+  .item-list .row .vat  { width:60px;  text-align:right; color:#64748b; }
+  .item-list .row .sub  { width:130px; text-align:right; font-weight:600; }
+
+  /* ======== Hoa don bao gia ======== */
+  .invoice {
+    background:#fff; padding:28px 32px; max-width:780px; margin:0 auto;
+    font-family:'Segoe UI', Tahoma, sans-serif; color:#0f172a;
+    box-shadow:0 4px 24px rgba(0,0,0,.06); border-radius:6px;
+  }
+  .invoice .inv-head {
+    display:flex; justify-content:space-between; align-items:flex-start;
+    border-bottom:3px solid #1e40af; padding-bottom:14px; margin-bottom:18px;
+  }
+  .invoice .inv-head .co h2 { margin:0 0 4px; color:#1e40af; font-size:22px; }
+  .invoice .inv-head .co .meta { font-size:12px; color:#475569; line-height:1.55; }
+  .invoice .inv-head .stamp { text-align:right; }
+  .invoice .inv-head .stamp .ttl { font-size:22px; font-weight:700; color:#1e40af; letter-spacing:1px; }
+  .invoice .inv-head .stamp .code { font-size:13px; color:#475569; margin-top:4px; }
+
+  .invoice .inv-info { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px; font-size:13px; }
+  .invoice .inv-info .col { flex:1; min-width:240px; line-height:1.7; }
+  .invoice .inv-info .lbl { color:#64748b; display:inline-block; width:90px; }
+
+  .invoice table.inv-tbl {
+    width:100%; border-collapse:collapse; font-size:13px; margin-bottom:14px;
+  }
+  .invoice table.inv-tbl th, .invoice table.inv-tbl td {
+    border:1px solid #cbd5e1; padding:7px 9px; text-align:left;
+  }
+  .invoice table.inv-tbl thead th {
+    background:#1e40af; color:#fff; font-weight:600; font-size:12px;
+    text-transform:uppercase; letter-spacing:.3px;
+  }
+  .invoice table.inv-tbl td.r { text-align:right; }
+  .invoice table.inv-tbl td.c { text-align:center; }
+  .invoice table.inv-tbl tbody tr:nth-child(even) { background:#f8fafc; }
+  .invoice table.inv-tbl tfoot td {
+    background:#eff6ff; font-weight:600;
+  }
+  .invoice table.inv-tbl tfoot tr.grand td { background:#1e40af; color:#fff; font-size:15px; }
+
+  .invoice .inv-foot { display:flex; gap:14px; flex-wrap:wrap; margin-top:14px; font-size:13px; }
+  .invoice .inv-foot .col { flex:1; min-width:240px; }
+  .invoice .inv-foot .col h5 { margin:0 0 6px; color:#1e40af; font-size:13px; text-transform:uppercase; letter-spacing:.4px; }
+  .invoice .inv-foot .pay { padding:10px 12px; background:#f8fafc; border-left:3px solid #1e40af; border-radius:4px; }
+  .invoice .signs {
+    display:flex; justify-content:space-between; margin-top:30px;
+    text-align:center; font-size:13px;
+  }
+  .invoice .signs > div { flex:1; }
+  .invoice .signs .role { font-weight:600; }
+  .invoice .signs .hint { color:#94a3b8; font-size:11px; margin:2px 0 50px; }
+  .invoice .signs .name { border-top:1px dashed #cbd5e1; padding-top:6px; min-height:20px; }
+
+  .inv-toolbar {
+    display:flex; gap:8px; padding:10px 14px; background:#f1f5f9;
+    border-bottom:1px solid #e2e8f0; position:sticky; top:0; z-index:5;
+  }
+
+  @media print {
+    body * { visibility:hidden; }
+    #invoiceModal, #invoiceModal * { visibility:visible; }
+    #invoiceModal { position:absolute; left:0; top:0; width:100%; }
+    .inv-toolbar, .modal-close { display:none !important; }
+    .invoice { box-shadow:none; max-width:100%; padding:0; }
+  }
+
+  .photo-list .ph {
+    border:1px solid var(--border); border-radius:8px; overflow:hidden; background:#fff;
+  }
+  .photo-list .ph img { width:100%; height:100px; object-fit:cover; cursor:pointer; }
+  .photo-list .ph .meta { font-size:11px; padding:4px 6px; color:#64748b; }
+
+  .bill { background:#f8fafc; border-radius:10px; padding:12px 14px; }
+  .bill .row { display:flex; justify-content:space-between; padding:3px 0; font-size:14px; }
+  .bill .total { font-size:16px; font-weight:700; color:var(--primary); border-top:1px dashed #cbd5e1; padding-top:8px; margin-top:6px; }
+  .bill .remain { color:#dc2626; font-weight:600; }
+
+  .od-actions { flex-wrap:wrap; justify-content:flex-start; }
+  .od-actions .btn { flex:0 1 auto; min-width:0; white-space:nowrap; }
+
+  /* Date range button + popover */
+  .date-range-btn {
+    display:flex; align-items:center; width:100%; height:32px; padding:5px 10px;
+    background:#f1f5f9; border:1px solid transparent; border-radius:6px;
+    font-size:12.5px; color:#0f172a; cursor:pointer; text-align:left;
+    transition: all .2s ease; box-sizing:border-box;
+  }
+  .date-range-btn:hover { background:#e2e8f0; }
+  .date-range-btn.active { background:#fff; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft); color:var(--primary); font-weight:600; }
+  .date-range-pop {
+    position:absolute; top:calc(100% + 4px); left:0; z-index:30;
+    background:#fff; border:1px solid var(--border); border-radius:10px;
+    box-shadow:0 12px 32px rgba(15,23,42,.15); padding:12px; min-width:240px;
+  }
+
+  /* Bill column colors */
+  .amt-total  { color:#0f172a; font-weight:600; }
+  .amt-paid   { color:#16a34a; font-weight:500; }
+  .amt-paid-zero { color:#94a3b8; }
+  .amt-remain { color:#dc2626; font-weight:600; }
 </style>
 </head>
 <body>
 <div class="shell">
   <aside class="sidebar" id="sidebar"></aside>
   <main class="main">
-    <div class="topnav">
-      <h2 class="topnav-title">Đơn hàng</h2>
-      <div id="topnav-user" class="row" style="gap:10px"></div>
-    </div>
+    <div class="topnav"><h2 class="topnav-title">Đơn hàng</h2></div>
     <div class="content flex-page">
       <div class="toolbar">
-        <button class="btn sm" id="btnAdd">+ Tạo đơn</button>
-        <button class="btn sm ghost" id="btnAddBadge">+ Tạo phù hiệu</button>
+        <a href="/admin/new-order.html" class="btn sm">+ Tạo đơn</a>
+        <select data-filter="collected_for_dealer" class="select" style="margin-left:auto;max-width:200px">
+          <option value="">Tất cả đơn</option>
+          <option value="1">Chỉ đơn thu hộ đại lí</option>
+          <option value="0">Bỏ đơn thu hộ đại lí</option>
+        </select>
       </div>
       <div class="quick-tabs" id="quickTabs">
-        <button data-filter="all" class="on">Tất cả</button>
-        <button data-filter="pending_review">Yêu cầu</button>
-        <button data-filter="new">Đã chốt</button>
-        <button data-filter="assigned">Đã giao KTV</button>
-        <button data-filter="warehouse_released">Đã xuất kho</button>
-        <button data-filter="in_progress">Đang làm</button>
-        <button data-filter="done">Hoàn thành</button>
-        <button data-filter="cancelled">Huỷ</button>
-        <button data-filter="has_return">↩ Có hàng trả</button>
-        <button data-filter="badge">🪪 Phù hiệu xe</button>
-        <button data-filter="renewal">🔄 Gia hạn</button>
+        <button data-bucket="all"      class="on">Tất cả</button>
+        <button data-bucket="pending">Chờ duyệt</button>
+        <button data-bucket="active">Đang xử lý</button>
+        <button data-bucket="done">Đã xong</button>
+        <button data-bucket="cancelled">Đã huỷ</button>
       </div>
+
       <div class="table-wrap">
         <table class="data" id="tbl">
           <thead>
             <tr>
               <th style="width:140px">Mã đơn</th>
-              <th style="width:130px">Ngày tạo</th>
-              <th>Tài khoản</th>
-              <th style="width:130px">Loại DV</th>
+              <th style="width:280px">Ngày tạo</th>
+              <th>Khách</th>
+              <th style="width:140px">Loại đơn</th>
               <th style="width:160px">Tổng tiền</th>
-              <th style="width:140px">Trạng thái</th>
-              <th style="width:120px">Hành động</th>
+              <th style="width:130px">Trạng thái</th>
+              <th style="width:140px">Thanh toán</th>
+              <th style="width:80px"></th>
             </tr>
             <tr class="filter-row">
-              <th><input data-filter="q" placeholder="Lọc mã/biển số"></th>
+              <th><input data-filter="q" placeholder="Mã đơn"></th>
               <th>
-                <div style="display:flex;flex-direction:column;gap:3px">
-                  <input type="date" data-filter="date_from" title="Từ ngày">
-                  <input type="date" data-filter="date_to" title="Đến ngày">
+                <div class="date-picker-wrap" style="position:relative">
+                  <button type="button" id="dateRangeBtn" class="date-range-btn">
+                    <span id="dateRangeLabel">Chọn khoảng ngày</span>
+                    <span style="margin-left:auto;color:#94a3b8">▾</span>
+                  </button>
+                  <div id="dateRangePop" class="date-range-pop" style="display:none">
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <label style="font-size:12px;color:#475569">Từ ngày
+                        <input type="date" data-filter="date_from" style="width:100%;margin-top:2px">
+                      </label>
+                      <label style="font-size:12px;color:#475569">Đến ngày
+                        <input type="date" data-filter="date_to" style="width:100%;margin-top:2px">
+                      </label>
+                      <div style="display:flex;gap:6px;justify-content:flex-end">
+                        <button type="button" class="btn ghost sm" id="dateRangeClear">Xoá</button>
+                        <button type="button" class="btn sm" id="dateRangeClose">Xong</button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </th>
+              <th><input data-filter="customer_q" placeholder="Tên / SĐT khách"></th>
+              <th><select data-filter="template_id"><option value="">Tất cả</option></select></th>
               <th></th>
-              <th>
-                <select data-filter="service_kind">
-                  <option value="">Tất cả</option>
-                  <option value="install">Lắp đặt</option>
-                  <option value="renewal">Gia hạn</option>
-                  <option value="maintenance">Bảo trì</option>
-                  <option value="warranty">Bảo hành</option>
-                  <option value="badge">Phù hiệu xe</option>
-                </select>
-              </th>
-              <th></th>
-              <th>
-                <select data-filter="status">
-                  <option value="">Tất cả</option>
-                  <option value="pending_review">Yêu cầu</option>
-                  <option value="new">Đã chốt</option>
-                  <option value="assigned">Đã giao KTV</option>
-                  <option value="warehouse_released">Đã xuất kho</option>
-                  <option value="in_progress">Đang làm</option>
-                  <option value="customer_owes">Khách nợ</option>
-                  <option value="pending_admin_confirm">Chờ admin xác nhận</option>
-                  <option value="staff_owes">KTV đang giữ tiền</option>
-                  <option value="quoted">Đã báo giá</option>
-                  <option value="awaiting_payment">Chờ thanh toán</option>
-                  <option value="payment_reported">Khách báo CK</option>
-                  <option value="done">Hoàn thành</option>
-                  <option value="cancelled">Huỷ</option>
-                </select>
-              </th>
+              <th><select data-filter="status">
+                <option value="">Tất cả</option>
+                <option value="pending">Đang chờ</option>
+                <option value="confirmed">Lên đơn</option>
+                <option value="in_progress">Đang xử lý</option>
+                <option value="done">Đã xong</option>
+                <option value="cancelled">Đã huỷ</option>
+              </select></th>
+              <th><select data-filter="payment_status">
+                <option value="">Tất cả</option>
+                <option value="unpaid">Chưa trả</option>
+                <option value="partial">Một phần</option>
+                <option value="paid">Đã trả</option>
+                <option value="customer_owes">KH nợ</option>
+                <option value="staff_owes">KTV giữ</option>
+                <option value="pending_admin_confirm">Chờ admin xác nhận</option>
+              </select></th>
               <th></th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
         </table>
       </div>
+
       <div class="pager">
         <button id="prevPage">« Trước</button>
         <span id="pageInfo">Trang 1</span>
@@ -147,300 +342,17 @@
   </main>
 </div>
 
-<!-- Modal tao/sua don -->
+<!-- Modal chi tiet don -->
 <div id="modal" class="modal-bg">
-  <div class="modal" style="max-width:780px">
+  <div class="modal" style="max-width:1012px">
     <div class="modal-head">
-      <h3 id="modalTitle">Tạo đơn hàng</h3>
+      <h3 id="modalTitle">Chi tiết đơn</h3>
       <button type="button" class="modal-close" id="modalClose" aria-label="Đóng">×</button>
     </div>
-    <form id="frm" style="display:contents">
-      <div class="modal-body">
-        <input type="hidden" id="f_id">
-        <div class="grid cols-2">
-          <div class="field">
-            <label>Khách hàng *</label>
-            <select id="f_customer" class="select" required></select>
-            <p class="help">Khách phải tồn tại — tạo trước ở trang Khách hàng nếu chưa có.</p>
-          </div>
-          <div class="field">
-            <label>Đại lý (nếu là đơn qua dealer)</label>
-            <select id="f_dealer" class="select">
-              <option value="">— Không —</option>
-            </select>
-          </div>
-        </div>
-        <div class="grid cols-2">
-          <div class="field">
-            <label>Khu vực</label>
-            <input type="text" id="f_area" class="input" placeholder="VD: Quận 1">
-          </div>
-          <div class="field">
-            <label>Biển số xe</label>
-            <input type="text" id="f_plate" class="input" placeholder="VD: 51A-12345">
-          </div>
-        </div>
-        <div class="field"><label>Địa chỉ lắp đặt</label><input type="text" id="f_address" class="input"></div>
-        <div class="grid cols-2">
-          <div class="field">
-            <label>Hình thức thanh toán</label>
-            <select id="f_payment" class="select">
-              <option value="cash">Tiền mặt</option>
-              <option value="transfer">Chuyển khoản</option>
-              <option value="debt">Công nợ</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Đã thanh toán (VND)</label>
-            <input type="number" id="f_paid" class="input" min="0" step="1000" value="0">
-          </div>
-        </div>
-        <div class="field">
-          <label>Sản phẩm trong đơn</label>
-          <div id="itemsList"></div>
-          <button type="button" class="btn ghost sm" id="btnAddItem">+ Thêm sản phẩm</button>
-        </div>
-        <div class="text-right" style="font-size:15px"><b>Tạm tính: <span id="totalSum">0</span>đ</b></div>
-        <div class="field"><label>Ghi chú</label><textarea id="f_note" class="textarea"></textarea></div>
-        <div class="field">
-          <label class="row" style="gap:6px;align-items:center;cursor:pointer">
-            <input type="checkbox" id="f_draft"> Lưu nháp (chờ duyệt)
-          </label>
-          <p class="help">Tích nếu chỉ ghi nhận yêu cầu của khách, chưa chốt giá. Admin sẽ chỉnh giá rồi duyệt sau.</p>
-        </div>
-      </div>
-      <div class="modal-foot">
-        <button type="button" class="btn ghost" id="btnCancel">Hủy</button>
-        <button type="submit" class="btn" id="btnSave">Lưu đơn</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- Modal chi tiet don -->
-<div id="detailModal" class="modal-bg">
-  <div class="modal" style="max-width:880px">
-    <div class="modal-head">
-      <h3 id="detailTitle" style="display:flex;align-items:center;gap:8px;margin:0">
-        <span id="detailTitleText">Chi tiết đơn</span>
-        <button type="button" id="btnOrderGuide" class="guide-btn" title="Hướng dẫn xử lý đơn" aria-label="Hướng dẫn">?</button>
-      </h3>
-      <button type="button" class="modal-close" id="detailClose" aria-label="Đóng">×</button>
+    <div class="modal-body od-detail" id="odBody">
+      <p style="text-align:center;color:#94a3b8">Đang tải…</p>
     </div>
-    <div class="modal-body" id="detailBody"></div>
-    <div class="modal-foot" id="detailFoot" style="justify-content:space-between;flex-wrap:wrap">
-      <button type="button" class="btn ghost" id="detailCloseBtn">Đóng</button>
-      <span id="detailFootActions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end"></span>
-    </div>
-  </div>
-</div>
-
-<!-- Modal huong dan xu ly don -->
-<div id="orderGuideModal" class="modal-bg">
-  <div class="modal" style="max-width:680px">
-    <div class="modal-head">
-      <h3 style="margin:0">📖 Hướng dẫn xử lý đơn</h3>
-      <button type="button" class="modal-close" id="orderGuideClose" aria-label="Đóng">×</button>
-    </div>
-    <div class="modal-body" id="orderGuideBody"></div>
-    <div class="modal-foot">
-      <button type="button" class="btn" id="orderGuideOk">Đã hiểu</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal them san pham vao don -->
-<div id="productPickerModal" class="modal-bg">
-  <div class="modal" style="max-width:720px">
-    <div class="modal-head">
-      <h3>+ Thêm sản phẩm vào đơn</h3>
-      <button type="button" class="modal-close" id="ppClose" aria-label="Đóng">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="grid cols-2" style="margin-bottom:10px">
-        <div class="field" style="margin:0">
-          <label>Tìm theo tên / mã</label>
-          <input type="text" id="pp_search" class="input" placeholder="VD: VT-02, MDVR..." autocomplete="off">
-        </div>
-        <div class="field" style="margin:0">
-          <label>Loại sản phẩm</label>
-          <select id="pp_category" class="select"><option value="">Tất cả</option></select>
-        </div>
-      </div>
-      <div id="pp_results" style="max-height:380px;overflow:auto;border:1px solid var(--border);border-radius:8px"></div>
-    </div>
-    <div class="modal-foot">
-      <button type="button" class="btn ghost" id="ppCancel">Đóng</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal xuat kho -->
-<div id="releaseModal" class="modal-bg">
-  <div class="modal" style="max-width:680px">
-    <div class="modal-head">
-      <h3>Xuất kho cho KTV</h3>
-      <button type="button" class="modal-close" id="releaseClose" aria-label="Đóng">×</button>
-    </div>
-    <form id="releaseFrm" style="display:contents">
-      <div class="modal-body">
-        <input type="hidden" id="r_order_id">
-        <p class="help" id="r_help">Xuất kho theo số lượng. IMEI là ghi chú tùy chọn (mỗi dòng 1 mã).</p>
-        <div style="background:#ecfdf5;border:1px solid #6ee7b7;color:#065f46;padding:8px 12px;border-radius:6px;margin-bottom:10px;font-size:13px;line-height:1.5">
-          ✓ Sau khi bấm xác nhận, thiết bị tự đẩy về kho cá nhân của KTV và KTV có thể đi giao ngay — không cần KTV bấm "Nhận thiết bị" nữa.
-        </div>
-        <div id="releaseProductList"></div>
-      </div>
-      <div class="modal-foot">
-        <button type="button" class="btn ghost" id="releaseCancel">Hủy</button>
-        <button type="submit" class="btn" id="btnSaveRelease">Xuất kho</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- Modal tao phu hieu -->
-<div id="badgeModal" class="modal-bg">
-  <div class="modal" style="max-width:680px">
-    <div class="modal-head">
-      <h3>Tạo phù hiệu xe</h3>
-      <button type="button" class="modal-close" id="badgeClose" aria-label="Đóng">×</button>
-    </div>
-    <form id="badgeFrm" style="display:contents">
-      <div class="modal-body">
-        <div class="grid cols-2">
-          <div class="field">
-            <label>Khách hàng *</label>
-            <select id="bf_customer" class="select" required></select>
-          </div>
-          <div class="field">
-            <label>Đại lý (nếu qua dealer)</label>
-            <select id="bf_dealer" class="select"><option value="">— Không —</option></select>
-          </div>
-        </div>
-        <div class="grid cols-2">
-          <div class="field">
-            <label>Biển số xe *</label>
-            <input type="text" id="bf_plate" class="input" required placeholder="51A-12345">
-          </div>
-          <div class="field">
-            <label>Loại xe</label>
-            <select id="bf_vtype" class="select">
-              <option value="truck_under_3.5t">Tải dưới 3.5T</option>
-              <option value="truck_over_3.5t">Tải trên 3.5T</option>
-              <option value="passenger">Xe khách</option>
-              <option value="contract">Xe hợp đồng</option>
-              <option value="taxi">Taxi</option>
-              <option value="other">Khác</option>
-            </select>
-          </div>
-        </div>
-        <div class="grid cols-2">
-          <div class="field">
-            <label>Phí (VND)</label>
-            <input type="number" id="bf_fee" class="input" min="0" step="1000" value="0">
-          </div>
-          <div class="field">
-            <label>Trạng thái</label>
-            <select id="bf_status" class="select">
-              <option value="pending_review">Chờ duyệt nội bộ</option>
-              <option value="submitted">Đã nộp Sở GTVT</option>
-            </select>
-          </div>
-        </div>
-        <div class="field">
-          <label>Ghi chú</label>
-          <textarea id="bf_note" class="textarea"></textarea>
-        </div>
-      </div>
-      <div class="modal-foot">
-        <button type="button" class="btn ghost" id="badgeCancel">Hủy</button>
-        <button type="submit" class="btn">Lưu</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- Modal phieu tra hang / huy don -->
-<div id="returnReceiptModal" class="modal-bg">
-  <div class="modal" style="max-width:820px">
-    <div class="modal-head">
-      <h3 id="rrTitle">Phiếu trả hàng</h3>
-      <button type="button" class="modal-close" id="rrClose" aria-label="Đóng">×</button>
-    </div>
-    <div class="modal-body">
-      <p class="help" id="rrHelp">Chọn sản phẩm và số lượng cần hoàn về kho. Phần hàng hỏng vẫn nhập kho nhưng tách phiếu riêng để truy vết.</p>
-      <div class="table-wrap" style="max-height:340px;overflow:auto;margin-bottom:12px">
-        <table class="data" id="rrLines">
-          <thead>
-            <tr>
-              <th>Sản phẩm</th>
-              <th style="width:80px">Đã xuất</th>
-              <th style="width:80px">Đã trả</th>
-              <th style="width:120px">Trả lần này</th>
-              <th style="width:130px">Tình trạng</th>
-              <th>Ghi chú dòng</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div class="field">
-        <label>Lý do (bắt buộc) *</label>
-        <textarea id="rrReason" class="textarea" rows="2" placeholder="VD: Khách đổi ý / sai mẫu / KTV làm rơi vỡ..."></textarea>
-      </div>
-      <div id="rrWarnings" style="display:none;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px;color:#92400e;font-size:13px;white-space:pre-line"></div>
-    </div>
-    <div class="modal-foot">
-      <button type="button" class="btn ghost" id="rrCancel">Hủy</button>
-      <button type="button" class="btn" id="rrSubmit">Tạo phiếu nhập</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal nhap khoan hoan tien -->
-<div id="refundModal" class="modal-bg">
-  <div class="modal" style="max-width:520px">
-    <div class="modal-head">
-      <h3 id="rfTitle">Hoàn tiền cho khách</h3>
-      <button type="button" class="modal-close" id="rfClose" aria-label="Đóng">×</button>
-    </div>
-    <div class="modal-body">
-      <p class="help" id="rfHelp">Ghi nhận khoản đã hoàn cho khách. Số tiền sẽ trừ vào doanh thu trên báo cáo, không sửa tổng đơn.</p>
-      <div class="field">
-        <label>Số tiền hoàn (đ) *</label>
-        <input type="number" id="rfAmount" class="input" min="0" step="1000" placeholder="0">
-        <small class="help" id="rfRemain"></small>
-      </div>
-      <div class="field">
-        <label>Phương thức</label>
-        <select id="rfMethod" class="select">
-          <option value="cash">Tiền mặt</option>
-          <option value="transfer">Chuyển khoản</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Ghi chú</label>
-        <input type="text" id="rfNote" class="input" placeholder="VD: Hoàn do hàng lỗi / khách đổi ý...">
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button type="button" class="btn ghost" id="rfCancel">Hủy</button>
-      <button type="button" class="btn primary" id="rfSubmit">Ghi nhận hoàn</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal xem anh -->
-<div id="imgModal" class="modal-bg" style="z-index:9999">
-  <div class="modal" style="max-width:90vw;max-height:90vh">
-    <div class="modal-head">
-      <h3 id="imgTitle">Ảnh</h3>
-      <button type="button" class="modal-close" id="imgClose">×</button>
-    </div>
-    <div class="modal-body" style="text-align:center">
-      <img id="imgEl" style="max-width:100%;max-height:75vh;border-radius:6px">
-    </div>
+    <div class="modal-foot od-actions" id="odActions"></div>
   </div>
 </div>
 
@@ -448,6 +360,7 @@
 <script src="/shared/js/api.js"></script>
 <script src="/shared/js/auth.js"></script>
 <script src="/shared/js/admin-shell.js"></script>
+<script src="/shared/js/imgbb.js"></script>
 <script src="/admin/orders.js"></script>
 </body>
 </html>

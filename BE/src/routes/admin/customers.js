@@ -22,7 +22,9 @@ function pickPayload(body, { isUpdate = false } = {}) {
     }
     out.type = body.type;
   }
-  if (body.code !== undefined)           set('code', String(body.code).trim());
+  if (body.code !== undefined && String(body.code).trim() !== '') {
+    set('code', String(body.code).trim());
+  }
   if (body.full_name !== undefined)      set('full_name', String(body.full_name).trim());
   if (body.phone !== undefined)          set('phone', body.phone || null);
   if (body.email !== undefined)          set('email', body.email || null);
@@ -43,7 +45,6 @@ function pickPayload(body, { isUpdate = false } = {}) {
   }
 
   if (!isUpdate) {
-    if (!out.code)      throw httpErr(400, 'Thieu code');
     if (!out.full_name) throw httpErr(400, 'Thieu full_name');
     if (!out.type)      out.type = 'retail';
   }
@@ -150,10 +151,27 @@ router.get('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Sinh ma KH/DL ngau nhien khong trung
+async function generateCustomerCode(type) {
+  const prefix = type === 'dealer' ? 'DL' : 'KH';
+  for (let i = 0; i < 20; i++) {
+    const code = prefix + String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+    const [rows] = await db.query(
+      `SELECT id FROM customers WHERE code = ? LIMIT 1`, [code]
+    );
+    if (!rows.length) return code;
+  }
+  throw httpErr(500, 'Khong sinh duoc ma khach hang');
+}
+
 // ---- POST /api/admin/customers --------------------------------
 router.post('/', async (req, res, next) => {
   try {
     const data = pickPayload(req.body, { isUpdate: false });
+
+    if (!data.code) {
+      data.code = await generateCustomerCode(data.type);
+    }
 
     const [dup] = await db.query(
       `SELECT id FROM customers WHERE code = ? AND is_deleted = 0 LIMIT 1`,

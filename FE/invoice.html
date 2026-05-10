@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Hoá đơn báo giá</title>
+<style>
+  * { box-sizing:border-box; }
+  body {
+    margin:0; padding:24px 12px; background:#e2e8f0;
+    font-family:'Segoe UI', Tahoma, sans-serif; color:#0f172a;
+  }
+  .toolbar {
+    max-width:820px; margin:0 auto 14px; display:flex; gap:8px; flex-wrap:wrap;
+    background:#fff; padding:10px 14px; border-radius:8px;
+    box-shadow:0 2px 6px rgba(0,0,0,.05);
+  }
+  .toolbar button, .toolbar a.btn {
+    padding:7px 14px; border-radius:6px; border:1px solid #cbd5e1;
+    background:#fff; cursor:pointer; font-size:13px; font-weight:500;
+    color:#0f172a; text-decoration:none;
+  }
+  .toolbar button.primary { background:#1e40af; color:#fff; border-color:#1e40af; }
+  .toolbar button:hover { background:#f1f5f9; }
+  .toolbar button.primary:hover { background:#1e3a8a; }
+  .toolbar .spacer { flex:1; }
+  .toolbar .link {
+    flex:1; min-width:200px; padding:6px 10px;
+    background:#f1f5f9; border:1px dashed #cbd5e1; border-radius:6px;
+    font-size:12px; color:#475569; word-break:break-all;
+  }
+
+  .invoice {
+    background:#fff; padding:32px 36px; max-width:820px; margin:0 auto;
+    box-shadow:0 4px 24px rgba(0,0,0,.08); border-radius:6px;
+  }
+  .inv-head {
+    display:flex; justify-content:space-between; align-items:flex-start;
+    border-bottom:3px solid #1e40af; padding-bottom:16px; margin-bottom:20px;
+    flex-wrap:wrap; gap:14px;
+  }
+  .inv-head .co h2 { margin:0 0 4px; color:#1e40af; font-size:22px; }
+  .inv-head .co .meta { font-size:12.5px; color:#475569; line-height:1.6; }
+  .inv-head .stamp { text-align:right; }
+  .inv-head .stamp .ttl { font-size:24px; font-weight:700; color:#1e40af; letter-spacing:1px; }
+  .inv-head .stamp .code { font-size:13px; color:#475569; margin-top:4px; }
+
+  .inv-info { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:16px; font-size:13px; }
+  .inv-info .col { flex:1; min-width:240px; line-height:1.75; }
+  .inv-info .lbl { color:#64748b; display:inline-block; min-width:90px; }
+
+  table.inv-tbl { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:14px; }
+  table.inv-tbl th, table.inv-tbl td {
+    border:1px solid #cbd5e1; padding:8px 9px; text-align:left; vertical-align:top;
+  }
+  table.inv-tbl thead th {
+    background:#1e40af; color:#fff; font-weight:600; font-size:12px;
+    text-transform:uppercase; letter-spacing:.3px;
+  }
+  table.inv-tbl td.r, table.inv-tbl th.r { text-align:right; }
+  table.inv-tbl td.c, table.inv-tbl th.c { text-align:center; }
+  table.inv-tbl tbody tr:nth-child(even) { background:#f8fafc; }
+  table.inv-tbl tbody tr.clickable { cursor:pointer; }
+  table.inv-tbl tbody tr.clickable:hover { background:#eff6ff; }
+  table.inv-tbl tfoot td { background:#eff6ff; font-weight:600; }
+  table.inv-tbl tfoot tr.grand td { background:#1e40af; color:#fff; font-size:15px; }
+
+  .ln-block { margin-bottom:18px; border:1px solid #e2e8f0; border-radius:6px; overflow:hidden; }
+  .ln-block .ln-head {
+    display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;
+    background:#f1f5f9; padding:8px 12px; border-bottom:1px solid #e2e8f0;
+  }
+  .ln-block .ln-ttl { font-weight:700; color:#1e40af; font-size:14px; }
+  .ln-block .ln-sub { font-size:13px; color:#475569; }
+  .ln-block .ln-fields {
+    padding:8px 12px; background:#fafbfc; font-size:12.5px;
+    display:flex; gap:14px; flex-wrap:wrap; border-bottom:1px dashed #e2e8f0;
+  }
+  .ln-block .ln-fields .lbl { color:#64748b; }
+  .ln-block .ln-note {
+    padding:6px 12px; background:#fffbeb; font-size:12.5px; color:#78350f;
+    border-bottom:1px dashed #fde68a;
+  }
+  .ln-block table.inv-tbl { margin-bottom:0; border:none; }
+  .ln-block table.inv-tbl th, .ln-block table.inv-tbl td { border-left:none; border-right:none; }
+  .ln-block table.inv-tbl tr:last-child td { border-bottom:none; }
+
+  table.totals-tbl { margin-top:6px; }
+  table.totals-tbl tfoot td { background:#eff6ff; }
+  table.totals-tbl tfoot tr.grand td { background:#1e40af; color:#fff; font-size:15px; }
+
+  .inv-foot { display:flex; gap:14px; flex-wrap:wrap; margin-top:14px; font-size:13px; }
+  .inv-foot .col { flex:1; min-width:240px; }
+  .inv-foot .col h5 { margin:0 0 6px; color:#1e40af; font-size:13px; text-transform:uppercase; letter-spacing:.4px; }
+  .inv-foot .pay { padding:10px 12px; background:#f8fafc; border-left:3px solid #1e40af; border-radius:4px; }
+
+  .signs { display:flex; justify-content:space-between; margin-top:36px; text-align:center; font-size:13px; gap:14px; flex-wrap:wrap; }
+  .signs > div { flex:1; min-width:160px; }
+  .signs .role { font-weight:600; }
+  .signs .hint { color:#94a3b8; font-size:11px; margin:2px 0 50px; }
+  .signs .name { border-top:1px dashed #cbd5e1; padding-top:6px; min-height:20px; }
+
+  /* Dialog chi tiet san pham */
+  .pd-bg {
+    position:fixed; inset:0; background:rgba(15,23,42,.5);
+    display:none; align-items:center; justify-content:center; z-index:100;
+    padding:20px;
+  }
+  .pd-bg.open { display:flex; }
+  .pd {
+    background:#fff; border-radius:10px; max-width:520px; width:100%;
+    overflow:hidden; box-shadow:0 12px 40px rgba(0,0,0,.25);
+  }
+  .pd-head { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid #e2e8f0; }
+  .pd-head h3 { margin:0; font-size:16px; }
+  .pd-head .x { background:none; border:none; font-size:22px; cursor:pointer; color:#64748b; }
+  .pd-body { padding:16px; display:flex; gap:14px; flex-wrap:wrap; font-size:13.5px; }
+  .pd-body img { width:160px; height:160px; object-fit:cover; border-radius:8px; border:1px solid #e2e8f0; }
+  .pd-body .info { flex:1; min-width:200px; line-height:1.7; }
+  .pd-body .info .row { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px dashed #f1f5f9; }
+  .pd-body .info .row.total { font-weight:700; color:#1e40af; font-size:15px; border:none; padding-top:8px; }
+  .pd-body .desc { width:100%; color:#334155; white-space:pre-wrap; padding-top:8px; border-top:1px dashed #e2e8f0; }
+
+  .loading, .error { text-align:center; padding:40px; font-size:14px; }
+  .loading { color:#94a3b8; }
+  .error   { color:#dc2626; }
+
+  .copied {
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    background:#16a34a; color:#fff; padding:10px 18px; border-radius:6px;
+    font-size:13px; box-shadow:0 4px 12px rgba(0,0,0,.2);
+    opacity:0; transition:opacity .2s; pointer-events:none; z-index:200;
+  }
+  .copied.show { opacity:1; }
+
+  @media print {
+    body { background:#fff; padding:0; }
+    .toolbar, .pd-bg, .copied { display:none !important; }
+    .invoice { box-shadow:none; max-width:100%; padding:0; }
+  }
+
+  @media (max-width:560px) {
+    body { padding:10px 6px; }
+    .invoice { padding:18px 14px; }
+    .inv-head .stamp { text-align:left; }
+    table.inv-tbl { font-size:12px; }
+    table.inv-tbl th, table.inv-tbl td { padding:5px 6px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <button class="primary" id="btnPdf">⤓ Tải PDF</button>
+  <button id="btnPrint">🖨 In</button>
+  <button id="btnCopy">📋 Copy link</button>
+  <span class="spacer"></span>
+  <span class="link" id="linkBox"></span>
+</div>
+
+<div id="root">
+  <div class="loading">Đang tải hoá đơn…</div>
+</div>
+
+<!-- Dialog chi tiet san pham -->
+<div class="pd-bg" id="pdBg">
+  <div class="pd">
+    <div class="pd-head">
+      <h3>Chi tiết sản phẩm</h3>
+      <button class="x" id="pdClose">×</button>
+    </div>
+    <div class="pd-body" id="pdBody"></div>
+  </div>
+</div>
+
+<div class="copied" id="copied">Đã copy link!</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script>
+(function () {
+  const fmtN = new Intl.NumberFormat('vi-VN');
+  const fmt = (n) => fmtN.format(Number(n) || 0);
+  const fmtDate = (d) => d ? new Date(d).toLocaleString('vi-VN') : '—';
+  const esc = (s) => String(s == null ? '' : s)
+    .replaceAll('&', '&amp;').replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+
+  const params = new URLSearchParams(location.search);
+  const code = params.get('code') || '';
+  document.getElementById('linkBox').textContent = location.href;
+
+  let currentItems = [];
+
+  async function load() {
+    const root = document.getElementById('root');
+    if (!code) {
+      root.innerHTML = '<div class="error">Thiếu mã đơn (?code=XXX)</div>';
+      return;
+    }
+    try {
+      const r = await fetch('/api/public/invoice/' + encodeURIComponent(code));
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        root.innerHTML = `<div class="error">${esc(e.error || 'Không tìm thấy đơn')}</div>`;
+        return;
+      }
+      const data = await r.json();
+      render(data);
+    } catch (err) {
+      root.innerHTML = '<div class="error">Lỗi tải dữ liệu</div>';
+    }
+  }
+
+  function render(o) {
+    const s = o.settings || {};
+    const co = {
+      name:    s['company.name']    || 'CÔNG TY TNHH VIỄN THÔNG VINAGPS',
+      address: s['company.address'] || '',
+      phone:   s['company.phone']   || '',
+      tax:     s['company.tax_code']|| '',
+      bank:    s['bank.bank_name']  || '',
+      acctNo:  s['bank.account_no'] || '',
+      acctName:s['bank.account_name']|| '',
+    };
+    document.title = `Hoá đơn ${o.code} — ${co.name}`;
+
+    const lines = o.lines || [];
+    const orderCharges = (o.order_charges || []).filter(c => Number(c.amount) !== 0);
+
+    // Flat index cho dialog chi tiet san pham
+    const flatItems = [];
+    for (const ln of lines) for (const it of (ln.items || [])) flatItems.push(it);
+    currentItems = flatItems;
+
+    let flatIdx = 0;
+
+    const lineBlocks = lines.map((ln, lnIdx) => {
+      const fvs = (ln.field_values || []).filter(f => f.value);
+      const fvHtml = fvs.length
+        ? `<div class="ln-fields">${fvs.map(f =>
+            `<span><span class="lbl">${esc(f.label)}:</span> <b>${esc(f.value)}</b></span>`
+          ).join('')}</div>`
+        : '';
+
+      const lnItems = ln.items || [];
+      const lnCharges = (ln.charges || []).filter(c => Number(c.amount) !== 0);
+
+      const itemRows = lnItems.map((it) => {
+        const idx = flatIdx++;
+        const sub = Number(it.qty) * Number(it.unit_price);
+        const desc = (it.product_description || '').trim().replace(/\s+/g, ' ');
+        const shortDesc = desc.length > 90 ? desc.slice(0, 90) + '…' : desc;
+        return `
+          <tr class="clickable" data-idx="${idx}">
+            <td class="c">${idx + 1}</td>
+            <td>
+              <b>${esc(it.product_name || ('SP #' + it.product_id))}</b>
+              ${shortDesc ? `<br><small style="color:#64748b">${esc(shortDesc)}</small>` : ''}
+            </td>
+            <td class="c">${it.qty}</td>
+            <td class="r">${fmt(it.unit_price)}đ</td>
+            <td class="r">${fmt(sub)}đ</td>
+          </tr>
+        `;
+      }).join('');
+
+      const chargeRows = lnCharges.map(c => {
+        const neg = Number(c.amount) < 0;
+        return `
+          <tr>
+            <td class="c">—</td>
+            <td colspan="3">${esc(c.label)} <small style="color:#94a3b8">(${esc(c.kind)})</small></td>
+            <td class="r" style="color:${neg ? '#16a34a' : '#0f172a'}">${fmt(c.amount)}đ</td>
+          </tr>
+        `;
+      }).join('');
+
+      const bodyRows = (itemRows + chargeRows) ||
+        `<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:14px">Chưa có sản phẩm/phụ phí</td></tr>`;
+
+      return `
+        <div class="ln-block">
+          <div class="ln-head">
+            <div class="ln-ttl">${lnIdx + 1}. ${esc(ln.template_name || 'Công việc')}</div>
+          </div>
+          ${fvHtml}
+          ${ln.note ? `<div class="ln-note">📝 ${esc(ln.note)}</div>` : ''}
+          <table class="inv-tbl">
+            <thead>
+              <tr>
+                <th class="c" style="width:30px">#</th>
+                <th>Sản phẩm / Phụ phí</th>
+                <th class="c" style="width:60px">SL</th>
+                <th class="r" style="width:130px">Đơn giá</th>
+                <th class="r" style="width:140px">Thành tiền</th>
+              </tr>
+            </thead>
+            <tbody class="lineBody">${bodyRows}</tbody>
+          </table>
+        </div>
+      `;
+    }).join('');
+
+    const orderChargeRows = orderCharges.map(c => {
+      const neg = Number(c.amount) < 0;
+      return `
+        <tr>
+          <td>${esc(c.label)} <small style="color:#94a3b8">(${esc(c.kind)})</small></td>
+          <td class="r" style="color:${neg ? '#16a34a' : '#0f172a'}">${fmt(c.amount)}đ</td>
+        </tr>
+      `;
+    }).join('');
+
+    const grand = Number(o.total_amount) || 0;
+    const remain = Math.max(0, grand - Number(o.paid_amount));
+
+    const statusLabelMap = {
+      pending: 'Chờ duyệt',
+      confirmed: 'Đã chốt đơn',
+      in_progress: 'Đang xử lý',
+      done: 'Hoàn thành',
+      cancelled: 'Đã huỷ',
+    };
+
+    document.getElementById('root').innerHTML = `
+      <div class="invoice" id="invoice">
+        <div class="inv-head">
+          <div class="co">
+            <h2>${esc(co.name)}</h2>
+            <div class="meta">
+              ${co.address ? `<div>📍 ${esc(co.address)}</div>` : ''}
+              ${co.phone   ? `<div>📞 ${esc(co.phone)}</div>` : ''}
+              ${co.tax     ? `<div>MST: ${esc(co.tax)}</div>` : ''}
+            </div>
+          </div>
+          <div class="stamp">
+            <div class="ttl">HOÁ ĐƠN BÁO GIÁ</div>
+            <div class="code">Số: <b>${esc(o.code)}</b></div>
+            <div class="code">Ngày: <b>${fmtDate(o.created_at)}</b></div>
+            ${o.completed_at ? `<div class="code">Hoàn thành: <b>${fmtDate(o.completed_at)}</b></div>` : ''}
+          </div>
+        </div>
+
+        <div class="inv-info">
+          <div class="col">
+            <div><span class="lbl">Khách hàng:</span> <b>${esc(o.customer_name || '')}</b></div>
+            <div><span class="lbl">SĐT:</span> ${esc(o.customer_phone || '—')}</div>
+            <div><span class="lbl">Địa chỉ:</span> ${esc(o.address || '—')}</div>
+          </div>
+          <div class="col">
+            <div><span class="lbl">Trạng thái:</span> <b>${esc(statusLabelMap[o.status] || o.status)}</b></div>
+            <div><span class="lbl">KTV:</span> ${esc(o.staff_name || '—')}</div>
+            ${o.progress_note ? `<div><span class="lbl">Tiến độ:</span> ${esc(o.progress_note)}</div>` : ''}
+          </div>
+        </div>
+
+        ${lineBlocks || '<div style="padding:20px;text-align:center;color:#94a3b8">Đơn chưa có dòng công việc nào.</div>'}
+
+        ${orderChargeRows ? `
+          <div class="ln-block">
+            <div class="ln-head"><div class="ln-ttl">Phụ phí áp dụng cho cả đơn</div></div>
+            <table class="inv-tbl">
+              <tbody>${orderChargeRows}</tbody>
+            </table>
+          </div>` : ''}
+
+        <table class="inv-tbl totals-tbl">
+          <tfoot>
+            <tr class="grand"><td class="r">TỔNG CỘNG:</td><td class="r" style="width:160px">${fmt(grand)}đ</td></tr>
+            ${Number(o.paid_amount) > 0 ? `<tr><td class="r">Đã thu:</td><td class="r">${fmt(o.paid_amount)}đ</td></tr>` : ''}
+            ${remain > 0 ? `<tr><td class="r" style="color:#dc2626">Còn lại:</td><td class="r" style="color:#dc2626">${fmt(remain)}đ</td></tr>` : ''}
+          </tfoot>
+        </table>
+
+        <div class="inv-foot">
+          <div class="col">
+            <h5>Khách chưa trả tiền</h5>
+            <div class="pay" style="${remain > 0 ? 'border-left-color:#dc2626' : 'border-left-color:#16a34a'}">
+              <div style="font-size:18px;font-weight:700;color:${remain > 0 ? '#dc2626' : '#16a34a'}">
+                ${fmt(remain)}đ
+              </div>
+              ${remain > 0 && co.bank ? `
+                <div style="margin-top:8px;font-size:12px;color:#475569">
+                  <div>NH: <b>${esc(co.bank)}</b></div>
+                  <div>STK: <b>${esc(co.acctNo)}</b></div>
+                  <div>Chủ TK: <b>${esc(co.acctName)}</b></div>
+                </div>` : ''}
+              ${remain === 0 ? '<div style="margin-top:4px;font-size:12px;color:#16a34a">Đã thanh toán đủ</div>' : ''}
+            </div>
+          </div>
+          <div class="col">
+            <h5>Ghi chú</h5>
+            <div style="padding:10px 12px;background:#f8fafc;border-radius:4px;min-height:60px;white-space:pre-wrap">${esc(o.note || '—')}</div>
+          </div>
+        </div>
+
+        <div class="signs">
+          <div>
+            <div class="role">Khách hàng</div>
+            <div class="hint">(Ký, ghi rõ họ tên)</div>
+            <div class="name">${esc(o.customer_name || '')}</div>
+          </div>
+          <div>
+            <div class="role">Kỹ thuật viên</div>
+            <div class="hint">(Ký, ghi rõ họ tên)</div>
+            <div class="name">${esc(o.staff_name || '')}</div>
+          </div>
+          <div>
+            <div class="role">Đại diện công ty</div>
+            <div class="hint">(Ký, đóng dấu)</div>
+            <div class="name"></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.querySelectorAll('tbody.lineBody tr.clickable').forEach(tr => {
+      tr.addEventListener('click', () => {
+        const it = currentItems[Number(tr.dataset.idx)];
+        if (it) openProductDialog(it);
+      });
+    });
+  }
+
+  function openProductDialog(item) {
+    const img = item.product_image || item.product_thumb || '';
+    document.getElementById('pdBody').innerHTML = `
+      ${img
+        ? `<img src="${esc(img)}" alt="">`
+        : `<div style="width:160px;height:160px;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#94a3b8">Không có ảnh</div>`}
+      <div class="info">
+        <div style="font-size:16px;font-weight:700;margin-bottom:4px">${esc(item.product_name || '')}</div>
+        <div style="color:#64748b;margin-bottom:8px">Mã sản phẩm: <b>${esc(item.product_code || '—')}</b></div>
+        ${item.product_warranty_months ? `<div class="row"><span>Bảo hành</span><span><b>${item.product_warranty_months} tháng</b></span></div>` : ''}
+      </div>
+      ${item.product_description ? `<div class="desc">${esc(item.product_description)}</div>` : '<div class="desc" style="color:#94a3b8">Sản phẩm chưa có mô tả chi tiết.</div>'}
+    `;
+    document.getElementById('pdBg').classList.add('open');
+  }
+
+  document.getElementById('pdClose').addEventListener('click', () => {
+    document.getElementById('pdBg').classList.remove('open');
+  });
+  document.getElementById('pdBg').addEventListener('click', (e) => {
+    if (e.target.id === 'pdBg') document.getElementById('pdBg').classList.remove('open');
+  });
+
+  document.getElementById('btnPrint').addEventListener('click', () => window.print());
+
+  document.getElementById('btnPdf').addEventListener('click', () => {
+    const el = document.getElementById('invoice');
+    if (!el || typeof html2pdf === 'undefined') return;
+    html2pdf().set({
+      margin: [10, 10, 10, 10],
+      filename: `${code || 'hoa-don'}.pdf`,
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#fff' },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    }).from(el).save();
+  });
+
+  document.getElementById('btnCopy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(location.href);
+      const c = document.getElementById('copied');
+      c.classList.add('show');
+      setTimeout(() => c.classList.remove('show'), 1500);
+    } catch (e) {
+      prompt('Copy link:', location.href);
+    }
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Thiết bị – Kỹ thuật GPS Việt</title>
+<title>Thiết bị – Kỹ thuật VinaGPS</title>
 <link rel="stylesheet" href="/shared/css/style.css" />
 <style>
   .stale{background:#fef3c7 !important}
@@ -42,6 +42,12 @@
 
       <div class="toolbar">
         <button class="btn ghost" id="btnTakeDirect">+ Nhận trực tiếp từ kho</button>
+      </div>
+
+      <!-- Phieu cap admin tao, KTV xac nhan da nhan -->
+      <div id="issuesBlock" style="display:none">
+        <h3 class="section-title">Phiếu cấp đang chờ nhận</h3>
+        <div id="issuesList"></div>
       </div>
 
       <!-- Block "Chờ nhận từ kho" giữ ẩn cho data legacy (release_pool còn dư
@@ -203,6 +209,7 @@
 <script src="/shared/js/ui.js"></script>
 <script src="/shared/js/api.js"></script>
 <script src="/shared/js/auth.js"></script>
+<script src="/shared/js/imgbb.js"></script>
 <script src="/shared/js/tech-shell.js"></script>
 <script src="/kithuat/inventory.js"></script>
 </body>

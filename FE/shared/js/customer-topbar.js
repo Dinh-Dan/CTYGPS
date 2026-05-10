@@ -118,12 +118,6 @@
           <a href="/customer/orders.html" role="menuitem">
             <span class="icon">📦</span><span>Đơn của tôi</span>
           </a>
-          <a href="/customer/warranty.html" role="menuitem">
-            <span class="icon">🛡</span><span>Tra cứu bảo hành</span>
-          </a>
-          <a href="/customer/repair.html" role="menuitem">
-            <span class="icon">🔧</span><span>Yêu cầu sửa chữa</span>
-          </a>
           <div class="divider"></div>
           <button type="button" data-ct-logout role="menuitem" class="danger">
             <span class="icon">🚪</span><span>Đăng xuất</span>

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Phát hàng KTV – Admin VinaGPS</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .ss-tabs { display:flex; gap:4px; border-bottom:1px solid #e2e8f0; margin-bottom:14px; flex-shrink:0; }
+  .ss-tab { padding:10px 16px; background:transparent; border:none; cursor:pointer; font-size:14px; color:#475569; font-weight:500; border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .ss-tab.active { color:#1e40af; border-bottom-color:#1e40af; font-weight:600; }
+  .ss-pane { display:none; flex:1; min-height:0; flex-direction:column; }
+  .ss-pane.active { display:flex; }
+
+  .holding-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; margin-bottom:10px; }
+  .holding-card .head { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .holding-card .head .name { font-weight:600; font-size:15px; }
+  .holding-card .head .phone { color:#64748b; font-size:12px; }
+  .holding-card .items { display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:6px; }
+  .holding-card .item { background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:6px 10px; font-size:13px; }
+  .holding-card .item .qty { float:right; font-weight:600; color:#1e40af; }
+  .holding-card .empty { color:#94a3b8; font-size:13px; }
+
+  .grant-form { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px; max-width:780px; }
+  .grant-form .row { display:flex; gap:10px; align-items:flex-end; margin-bottom:10px; }
+  .grant-items { width:100%; border-collapse:collapse; font-size:13px; }
+  .grant-items th { background:#f8fafc; padding:6px 8px; text-align:left; border-bottom:1px solid #e2e8f0; font-size:12px; }
+  .grant-items td { padding:6px 8px; border-bottom:1px solid #f1f5f9; }
+  .grant-items input, .grant-items select { padding:5px 8px; font-size:12.5px; width:100%; }
+  .btn-x { background:#fee2e2; color:#991b1b; border:none; border-radius:4px; width:24px; height:24px; cursor:pointer; }
+
+  .history-row { background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; margin-bottom:6px; font-size:13px; }
+  .history-row .meta { color:#64748b; font-size:11.5px; }
+  .history-row .badge-in { background:#dcfce7; color:#15803d; padding:1px 8px; border-radius:8px; font-size:11px; font-weight:600; }
+  .history-row .badge-out { background:#fee2e2; color:#991b1b; padding:1px 8px; border-radius:8px; font-size:11px; font-weight:600; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topnav">
+      <div class="search"></div>
+      <div class="row" id="topnav-user"></div>
+    </div>
+    <div class="content flex-page">
+      <div class="page-head">
+        <div>
+          <h1>Kho cá nhân KTV</h1>
+          <p class="text-muted mb-0">KTV ôm sẵn 1 lượng hàng để đi lắp nhiều đơn. Phát hàng từ kho công ty cho KTV ở đây.</p>
+        </div>
+      </div>
+
+      <div class="ss-tabs">
+        <button class="ss-tab active" data-tab="holdings">Tồn kho KTV</button>
+        <button class="ss-tab" data-tab="grant">+ Phát hàng</button>
+        <button class="ss-tab" data-tab="history">Lịch sử</button>
+      </div>
+
+      <!-- TAB: Holdings -->
+      <div class="ss-pane active" data-pane="holdings" style="overflow:auto">
+        <div id="holdingsList"></div>
+      </div>
+
+      <!-- TAB: Grant -->
+      <div class="ss-pane" data-pane="grant" style="overflow:auto">
+        <div class="grant-form">
+          <div class="row">
+            <div class="field" style="flex:1">
+              <label>Chọn KTV</label>
+              <select id="grantStaff" class="select"></select>
+            </div>
+          </div>
+          <div style="margin-bottom:6px;font-weight:600;font-size:13px">Sản phẩm phát</div>
+          <table class="grant-items">
+            <thead>
+              <tr><th>Sản phẩm</th><th style="width:90px">SL</th><th style="width:240px">IMEI (tuỳ chọn)</th><th style="width:36px"></th></tr>
+            </thead>
+            <tbody id="grantItems"></tbody>
+          </table>
+          <div style="margin-top:8px"><button class="btn ghost sm" id="btnAddGrantRow">+ Dòng</button></div>
+          <div class="field" style="margin-top:10px">
+            <label>Ghi chú</label>
+            <input id="grantNote" type="text" class="input" placeholder="Tuỳ chọn">
+          </div>
+          <div style="text-align:right;margin-top:12px">
+            <button class="btn" id="btnGrantSubmit">Phát hàng</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: History -->
+      <div class="ss-pane" data-pane="history" style="overflow:auto">
+        <div class="filters-bar" style="background:#fff;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:12px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+          <div class="field" style="margin:0;min-width:160px">
+            <label style="font-size:11.5px;color:#64748b">KTV</label>
+            <select id="histStaff" class="select" style="padding:7px 10px;font-size:13px;width:100%"></select>
+          </div>
+          <div class="field" style="margin:0;min-width:130px">
+            <label style="font-size:11.5px;color:#64748b">Loại</label>
+            <select id="histReason" class="select" style="padding:7px 10px;font-size:13px;width:100%">
+              <option value="">Tất cả</option>
+              <option value="staff_grant">Phát hàng</option>
+              <option value="staff_revoke">Thu hồi</option>
+            </select>
+          </div>
+          <div class="field" style="margin:0">
+            <label style="font-size:11.5px;color:#64748b">Từ ngày</label>
+            <input id="histFrom" type="date" class="input" style="padding:7px 10px;font-size:13px">
+          </div>
+          <div class="field" style="margin:0">
+            <label style="font-size:11.5px;color:#64748b">Đến ngày</label>
+            <input id="histTo" type="date" class="input" style="padding:7px 10px;font-size:13px">
+          </div>
+          <div class="field" style="margin:0;flex:1;min-width:160px">
+            <label style="font-size:11.5px;color:#64748b">Mã phiếu</label>
+            <input id="histQ" type="text" class="input" placeholder="VD: PX-260510-..." style="padding:7px 10px;font-size:13px;width:100%">
+          </div>
+          <button class="btn sm" id="btnHistReload">Lọc</button>
+          <button class="btn ghost sm" id="btnHistClear">Xoá lọc</button>
+        </div>
+        <div id="historyList"></div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/admin-shell.js"></script>
+<script src="/admin/staff-stock.js"></script>
+</body>
+</html>

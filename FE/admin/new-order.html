@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Tạo đơn mới – Admin VinaGPS</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  /* ===== Layout ===== */
+  .no-wrap { padding:20px; max-width:1280px; margin:0 auto; }
+  .no-grid {
+    display:grid; grid-template-columns: minmax(0,1fr) 380px; gap:20px;
+    align-items:start;
+  }
+  @media (max-width: 1100px) { .no-grid { grid-template-columns:1fr; } }
+
+  .no-card {
+    background:#fff; border:1px solid var(--border); border-radius:12px;
+    padding:16px; margin-bottom:14px; box-shadow:var(--shadow);
+  }
+  .no-card .row-act {
+    display:flex; align-items:center; gap:8px; margin-bottom:10px;
+  }
+  .no-card .row-act .lbl { font-size:12.5px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.4px; }
+  .no-card .row-act .spacer { flex:1; }
+
+  /* ===== Customer picker (compact) ===== */
+  .cust-empty { display:flex; align-items:center; gap:8px; padding:8px 12px;
+    border:1px dashed var(--border); border-radius:8px; background:#fafbfd;
+    cursor:pointer; transition:.15s; }
+  .cust-empty:hover { border-color: var(--primary); background:#f4f8ff; }
+  .cust-empty .ic { width:28px; height:28px; border-radius:50%;
+    background:var(--primary-soft); color:var(--primary);
+    display:grid; place-items:center; font-size:14px; flex:none; }
+  .cust-empty .tx b { display:inline; color:var(--text); font-size:13px; }
+  .cust-empty .tx span { font-size:11.5px; color:var(--muted); margin-left:6px; }
+  .cust-card { display:flex; align-items:center; gap:8px; padding:6px 10px;
+    border:1px solid var(--primary); border-radius:8px; background:#f4f8ff; }
+  .cust-card .av { width:28px; height:28px; border-radius:50%;
+    background:var(--primary); color:#fff;
+    display:grid; place-items:center; font-weight:700; font-size:12px; flex:none; }
+  .cust-card .nm { flex:1; min-width:0; line-height:1.3; }
+  .cust-card .nm b { font-size:13px; color:var(--text); }
+  .cust-card .nm span { font-size:11.5px; color:var(--muted); }
+  .cust-card .badge { font-size:10px; padding:1px 6px; border-radius:999px;
+    background:#fff; border:1px solid var(--border); color:var(--muted); margin-left:4px; }
+  .cust-card .badge.dealer { background:#fff7ed; color:var(--accent); border-color:#fed7aa; }
+  .cust-card .x-btn { background:transparent; border:1px solid var(--border); border-radius:6px;
+    padding:3px 8px; font-size:11.5px; color:var(--muted); cursor:pointer; }
+  .cust-card .x-btn:hover { border-color:var(--primary); color:var(--primary); }
+  .cust-panel { margin-top:10px; border:1px solid var(--border); border-radius:10px;
+    background:#fff; box-shadow:var(--shadow); overflow:hidden; }
+  .cust-panel-head { display:grid; grid-template-columns: 1fr 1fr 1fr auto auto; gap:8px;
+    padding:10px; border-bottom:1px solid var(--border); background:#fafbfd; }
+  .cust-panel-head .input, .cust-panel-head .select { font-size:13px; padding:6px 8px; }
+  @media (max-width: 700px) { .cust-panel-head { grid-template-columns: 1fr 1fr; } }
+  .cust-list { max-height:320px; overflow:auto; }
+  .cust-item { display:grid; grid-template-columns: 38px 1fr auto; align-items:center; gap:10px;
+    padding:10px 14px; cursor:pointer; border-bottom:1px solid #f1f5f9; }
+  .cust-item:last-child { border-bottom:0; }
+  .cust-item:hover { background:#f4f8ff; }
+  .cust-item .av { width:38px; height:38px; border-radius:50%;
+    background:#e2e8f0; color:#475569; display:grid; place-items:center; font-weight:700; font-size:14px; }
+  .cust-item .nm { min-width:0; }
+  .cust-item .nm .l1 { display:flex; gap:8px; align-items:center; font-size:13.5px;
+    color:var(--text); font-weight:600; }
+  .cust-item .nm .l1 .code { font-size:11px; color:var(--muted); font-weight:500;
+    background:#f1f5f9; padding:1px 6px; border-radius:4px; }
+  .cust-item .nm .l2 { font-size:12px; color:var(--muted); margin-top:2px;
+    display:flex; gap:10px; flex-wrap:wrap; }
+  .cust-item .nm .l2 .ph { color:var(--text); font-weight:500; }
+  .cust-item .tag { font-size:11px; padding:3px 8px; border-radius:999px;
+    background:#f1f5f9; color:var(--muted); white-space:nowrap; }
+  .cust-item .tag.dealer { background:#fff7ed; color:var(--accent); }
+  .cust-empty-list { padding:18px; text-align:center; color:var(--muted); font-size:13px; }
+  .quick-create { padding:12px 14px; background:#fffbeb; border-top:1px solid var(--border); }
+  .quick-create .qc-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .quick-create label { font-size:12px; color:var(--muted); display:block; margin-bottom:3px; }
+  .quick-create .row-btn { display:flex; gap:8px; margin-top:8px; justify-content:flex-end; }
+
+  /* ===== No-spinner cho moi number input ===== */
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+
+  .no-card { padding:12px; margin-bottom:10px; }
+  .no-card .row-act { margin-bottom:6px; }
+
+  /* ===== Lines (compact) ===== */
+  .line-card {
+    background:#fff; border:1px solid var(--border); border-radius:10px;
+    margin-bottom:10px; box-shadow:var(--shadow); overflow:hidden;
+  }
+  .line-head {
+    display:flex; align-items:center; gap:8px; padding:8px 12px;
+    background:linear-gradient(135deg, #f1f5ff, #fafbfd);
+    border-bottom:1px solid var(--border);
+  }
+  .line-head .seq {
+    width:24px; height:24px; border-radius:50%;
+    background:var(--primary); color:#fff; font-weight:700;
+    display:grid; place-items:center; font-size:12px;
+  }
+  .line-head .tpl-combo { flex:1; position:relative; }
+  .line-head .tpl-combo .tpl-input {
+    width:100%; font-size:13px; padding:6px 28px 6px 10px; font-weight:600;
+    border:1px solid var(--border); border-radius:6px; background:#fff;
+  }
+  .line-head .tpl-combo .tpl-caret {
+    position:absolute; right:6px; top:50%; transform:translateY(-50%);
+    width:22px; height:22px; border:none; background:transparent;
+    color:#64748b; cursor:pointer; font-size:11px;
+    display:grid; place-items:center; padding:0;
+  }
+  .line-head .tpl-combo .tpl-pop {
+    position:absolute; left:0; right:0; top:calc(100% + 4px);
+    background:#fff; border:1px solid var(--border); border-radius:8px;
+    box-shadow:0 8px 24px rgba(15,23,42,.12);
+    max-height:220px; overflow-y:auto; z-index:50;
+  }
+  .line-head .tpl-combo .tpl-pop[hidden] { display:none; }
+  .line-head .tpl-combo .tpl-item {
+    padding:7px 12px; font-size:13px; cursor:pointer; color:#0f172a;
+  }
+  .line-head .tpl-combo .tpl-item:hover,
+  .line-head .tpl-combo .tpl-item.active { background:#eef2ff; color:#1e3a8a; }
+  .line-head .tpl-combo .tpl-empty {
+    padding:8px 12px; font-size:12px; color:#94a3b8; font-style:italic;
+  }
+  .line-head .sub-show { font-size:12px; color:var(--muted); font-variant-numeric: tabular-nums; }
+  .line-head .x-btn {
+    background:transparent; border:1px solid var(--border); border-radius:6px;
+    padding:4px 10px; font-size:12px; color:var(--danger); cursor:pointer;
+  }
+  .line-head .x-btn:hover { background:#fee2e2; border-color:#fecaca; }
+
+  .line-body { padding:10px 12px; }
+  .line-section { margin-bottom:8px; }
+  .line-section .sh {
+    font-size:11px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.3px; font-weight:700; margin-bottom:4px;
+    display:flex; align-items:center; gap:6px;
+  }
+  .line-section .sh .add {
+    margin-left:auto; font-size:11.5px; padding:2px 8px;
+    border:1px solid var(--border); border-radius:5px; background:#fff;
+    color:var(--primary); cursor:pointer;
+  }
+  .line-section .sh .add:hover { background:var(--primary-soft); }
+
+  /* Collapsible "Thong tin" */
+  .fields-toggle {
+    display:flex; align-items:center; gap:6px; cursor:pointer;
+    padding:6px 8px; background:#f8fafc; border:1px dashed var(--border);
+    border-radius:6px; font-size:12px; color:var(--muted); font-weight:600;
+    user-select:none; transition:.15s;
+  }
+  .fields-toggle:hover { background:#eef2f7; border-color:var(--primary); color:var(--primary); }
+  .fields-toggle .chev { display:inline-block; transition:transform .15s; font-size:10px; }
+  .fields-toggle.on .chev { transform:rotate(90deg); }
+  .fields-toggle .summary { color:var(--text); font-weight:500; margin-left:auto; font-style:italic; font-size:11.5px; }
+  .fields-body { padding:8px 0 4px; display:none; }
+  .fields-body.on { display:block; }
+  .fields-body .field { margin-bottom:6px; }
+  .fields-body .field label { font-size:11.5px; }
+  .fields-body .field .input,
+  .fields-body .field .textarea { padding:5px 7px; font-size:13px; }
+
+  .ic-table { border:1px solid var(--border); border-radius:6px; overflow:hidden; background:#fff; }
+  .ic-thead, .ic-row { display:grid; gap:0; align-items:center; }
+  .ic-thead { background:#f8fafc; font-size:10.5px; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.3px; font-weight:600;
+    padding:4px 0; border-bottom:1px solid var(--border); }
+  .ic-row { border-bottom:1px solid #f1f5f9; }
+  .ic-row:last-child { border-bottom:0; }
+  .ic-row .cell, .ic-thead .cell { padding:4px 6px; min-width:0; }
+
+  .items-grid    { grid-template-columns: 2fr 60px 110px 110px 32px; }
+  .items-grid .cell.right { text-align:right; }
+  .charges-grid  { grid-template-columns: 90px 2fr 110px 32px; }
+
+  /* Product combobox (input + dropdown) */
+  .prod-combo { position:relative; }
+  .prod-combo .ic-input { padding-right:18px; }
+  .prod-combo .clear {
+    position:absolute; right:4px; top:50%; transform:translateY(-50%);
+    background:transparent; border:0; color:#94a3b8; cursor:pointer;
+    font-size:13px; line-height:1; padding:2px 4px; border-radius:3px;
+    display:none;
+  }
+  .prod-combo.has-val .clear { display:block; }
+  .prod-combo .clear:hover { background:#fee2e2; color:#991b1b; }
+  .prod-dd {
+    position:fixed; z-index:9999;
+    background:#fff; border:1px solid var(--border); border-radius:6px;
+    box-shadow:0 6px 20px rgba(0,0,0,.12); max-height:260px; overflow:auto;
+    display:none;
+  }
+  .prod-dd.on { display:block; }
+  .prod-dd .opt {
+    padding:6px 10px; font-size:12.5px; cursor:pointer;
+    border-bottom:1px solid #f1f5f9; line-height:1.3;
+  }
+  .prod-dd .opt:last-child { border-bottom:0; }
+  .prod-dd .opt:hover, .prod-dd .opt.active { background:#f4f8ff; }
+  .prod-dd .opt .nm { color:var(--text); font-weight:500; }
+  .prod-dd .opt .px { font-size:11px; color:var(--muted); margin-top:1px;
+    font-variant-numeric:tabular-nums; }
+  .prod-dd .empty { padding:10px; text-align:center; color:var(--muted);
+    font-size:12px; font-style:italic; }
+
+  .ic-input, .ic-select {
+    width:100%; border:1px solid transparent; background:transparent;
+    padding:4px 6px; font-size:12.5px; border-radius:4px;
+  }
+  .ic-input:focus, .ic-select:focus { outline:none; border-color:var(--primary); background:#fff; }
+  .ic-input.num { text-align:right; font-variant-numeric: tabular-nums; }
+  .line-total { font-weight:600; color:var(--text); text-align:right; padding-right:6px; font-variant-numeric: tabular-nums; font-size:12.5px; }
+
+  .btn-x { background:transparent; color:#94a3b8; border:0; cursor:pointer;
+    font-size:14px; line-height:1; padding:3px 5px; border-radius:4px; }
+  .btn-x:hover { background:#fee2e2; color:#991b1b; }
+
+  .ic-empty { padding:8px; text-align:center; color:var(--muted); font-size:12px; font-style:italic; }
+
+  .add-line-btn {
+    display:block; width:100%; padding:10px;
+    background:#fff; border:2px dashed var(--border); border-radius:10px;
+    color:var(--primary); font-weight:600; font-size:13px;
+    cursor:pointer; transition:.15s;
+  }
+  .add-line-btn:hover { border-color:var(--primary); background:var(--primary-soft); }
+
+  /* ===== BILL (cột phải) ===== */
+  .bill-col { position:sticky; top:20px; align-self: start; }
+  .bill { display:flex; flex-direction:column;
+    background:#fff; border:1px solid var(--border); border-radius:12px;
+    box-shadow:var(--shadow); overflow:hidden; }
+  .bill-head { padding:14px 18px; background:linear-gradient(135deg,#0b1a33,#173466); color:#fff; text-align:center; }
+  .bill-head .biz { font-size:16px; font-weight:800; letter-spacing:.5px; }
+  .bill-head .sub { font-size:11.5px; opacity:.75; margin-top:2px; }
+  .bill-meta { padding:10px 18px; border-bottom:1px dashed var(--border);
+    font-size:12.5px; color:var(--muted); display:flex; justify-content:space-between; gap:8px; }
+  .bill-meta b { color:var(--text); font-weight:600; }
+  .bill-body { flex:1; padding:14px 18px; }
+  .bill-section { margin-bottom:14px; }
+  .bill-section .h { font-size:11px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.6px; font-weight:700; margin-bottom:6px;
+    border-bottom:1px dashed var(--border); padding-bottom:4px; }
+  .bill-cust .nm { font-size:13.5px; font-weight:600; color:var(--text); }
+  .bill-cust .ph { font-size:12.5px; color:var(--muted); }
+  .bill-line-group { margin-bottom:10px; }
+  .bill-line-group .gh {
+    font-size:12px; color:var(--primary); font-weight:700;
+    margin-bottom:4px; padding:2px 0;
+  }
+  .bill-line { display:grid; grid-template-columns: 1fr auto; gap:6px;
+    padding:5px 0; font-size:12.5px; border-bottom:1px dotted #e2e8f0; }
+  .bill-line:last-child { border-bottom:0; }
+  .bill-line .nm { color:var(--text); min-width:0; word-break:break-word; }
+  .bill-line .nm .qp { display:block; font-size:11px; color:var(--muted); margin-top:1px;
+    font-variant-numeric: tabular-nums; }
+  .bill-line .amt { font-variant-numeric: tabular-nums; font-weight:600; color:var(--text); white-space:nowrap; }
+  .bill-line .amt.neg { color:var(--danger); }
+  .bill-empty { font-size:12.5px; color:var(--muted); font-style:italic; padding:4px 0; }
+  .bill-foot { padding:14px 18px; border-top:2px dashed var(--border); background:#fafbfd; }
+  .bill-row { display:flex; justify-content:space-between; align-items:center;
+    padding:4px 0; font-size:13px; color:var(--muted); }
+  .bill-row b { color:var(--text); font-weight:600; font-variant-numeric: tabular-nums; }
+  .bill-total { margin-top:8px; padding-top:10px; border-top:2px solid var(--text);
+    display:flex; justify-content:space-between; align-items:baseline; }
+  .bill-total .lbl { font-size:13px; font-weight:700; color:var(--text); letter-spacing:.4px; }
+  .bill-total .val { font-size:24px; font-weight:800; color:var(--primary); font-variant-numeric: tabular-nums; }
+  .bill-pay { margin-top:8px; padding:6px 10px; background:#fff;
+    border:1px dashed var(--border); border-radius:6px;
+    font-size:12.5px; color:var(--muted); text-align:center; }
+  .bill-pay b { color:var(--text); }
+  .bill-actions { padding:10px 14px; border-top:1px solid var(--border); background:#fff;
+    display:flex; flex-direction:column; gap:8px; }
+
+  .field label { font-size:12.5px; color:var(--muted); display:block; margin-bottom:4px; font-weight:500; }
+  .hint { font-size:12px; color:var(--muted); margin-top:4px; }
+
+  @media (max-width: 1100px) {
+    .bill-col { position:static; height:auto; }
+    .bill { height:auto; }
+    .bill-body { max-height:none; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topnav">
+      <h2 class="topnav-title">+ Tạo đơn mới</h2>
+      <a href="/admin/orders.html" class="btn ghost sm" style="margin-left:auto">← Danh sách đơn</a>
+    </div>
+    <div class="content">
+      <div class="no-wrap">
+        <form id="frm">
+        <div class="no-grid">
+
+          <div>
+            <div class="no-card" style="padding:10px">
+              <div id="custBox"></div>
+              <input type="hidden" id="f_customer_id">
+              <div class="hdr-grid" style="display:grid;grid-template-columns:140px 1fr 1fr;gap:6px;margin-top:8px">
+                <select id="f_pay" class="select" style="padding:5px 8px;font-size:13px" title="Phương thức thanh toán">
+                  <option value="debt" selected>📒 Ghi nợ (mặc định)</option>
+                  <option value="cash">💵 Tiền mặt</option>
+                  <option value="transfer">🏦 Chuyển khoản</option>
+                </select>
+                <input type="text" id="f_address" class="input" placeholder="📍 Địa chỉ" style="padding:5px 8px;font-size:13px">
+                <input type="text" id="f_note" class="input" placeholder="📝 Ghi chú nội bộ" style="padding:5px 8px;font-size:13px">
+              </div>
+            </div>
+
+            <!-- Lines section -->
+            <div id="linesBox"></div>
+            <button type="button" class="add-line-btn" id="btnAddLine">+ Thêm dòng công việc</button>
+
+            <div class="no-card" style="margin-top:14px">
+              <div class="row-act">
+                <span class="lbl">Chi phí khác (ship / giảm chung / phụ phí)</span>
+                <div class="spacer"></div>
+                <button type="button" class="btn ghost sm" id="btnAddOrderCharge">+ Thêm phí</button>
+              </div>
+              <div class="ic-table">
+                <div class="ic-thead charges-grid">
+                  <div class="cell">Loại</div>
+                  <div class="cell">Mô tả</div>
+                  <div class="cell right">Số tiền</div>
+                  <div class="cell"></div>
+                </div>
+                <div id="orderChargesBox"></div>
+              </div>
+              <div class="hint">Chi phí khác áp cho cả đơn (vd: phí ship, giảm giá tổng, phụ phí). Có thể thêm nhiều dòng. Khác với phí trong từng dòng công việc.</div>
+            </div>
+
+            <div class="no-card" style="padding:10px">
+              <div style="display:grid;grid-template-columns:1fr 130px auto;gap:8px;align-items:center">
+                <select id="f_staff" class="select" style="padding:5px 8px;font-size:13px" title="Gán KTV">
+                  <option value="">— Chưa gán KTV —</option>
+                </select>
+                <input type="text" inputmode="numeric" id="f_wage" class="input" value="0" placeholder="Tiền công KTV" style="padding:5px 8px;font-size:13px;text-align:right" title="Tiền công KTV (không cộng vào hoá đơn)">
+                <label style="display:flex;gap:6px;align-items:center;font-size:12.5px;cursor:pointer;white-space:nowrap">
+                  <input type="checkbox" id="f_approve">
+                  <span><b>Duyệt luôn</b></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <aside class="bill-col">
+            <div class="bill">
+              <div class="bill-head">
+                <div class="biz">VINAGPS</div>
+                <div class="sub">Phiếu đơn hàng — Bản nháp</div>
+              </div>
+              <div class="bill-meta">
+                <span>Ngày <b id="billDate">—</b></span>
+                <span>Loại đơn <b id="billTpl">—</b></span>
+              </div>
+
+              <div class="bill-body">
+                <div class="bill-section bill-cust">
+                  <div class="h">Khách hàng</div>
+                  <div id="billCust"><div class="bill-empty">Chưa chọn khách</div></div>
+                </div>
+
+                <div class="bill-section">
+                  <div class="h">Dòng công việc</div>
+                  <div id="billLines"><div class="bill-empty">Chưa có dòng công việc</div></div>
+                </div>
+
+                <div class="bill-section" id="billOrderChargesWrap" style="display:none">
+                  <div class="h">Chi phí khác</div>
+                  <div id="billOrderCharges"></div>
+                </div>
+              </div>
+
+              <div class="bill-foot">
+                <div class="bill-row"><span>Tổng dòng</span><b id="billLineSum">0đ</b></div>
+                <div class="bill-row"><span>Chi phí khác</span><b id="billOrderChSum">0đ</b></div>
+                <div class="bill-total">
+                  <span class="lbl">TỔNG ĐƠN</span>
+                  <span class="val" id="billTotal">0đ</span>
+                </div>
+                <div class="bill-pay">Thanh toán: <b id="billPay">Tiền mặt</b></div>
+              </div>
+
+              <div class="bill-actions">
+                <button type="submit" class="btn block" id="btnSubmit">✅ Tạo đơn</button>
+                <a href="/admin/orders.html" class="btn ghost block" style="text-align:center">Huỷ</a>
+              </div>
+            </div>
+          </aside>
+
+        </div>
+        </form>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/admin-shell.js"></script>
+<script src="/admin/new-order.js"></script>
+</body>
+</html>

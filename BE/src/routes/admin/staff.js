@@ -30,7 +30,9 @@ function strip(row) {
 
 function pickPayload(body, { isUpdate = false } = {}) {
   const out = {};
-  if (body.username !== undefined)   out.username = String(body.username).trim();
+  if (body.username !== undefined && String(body.username).trim() !== '') {
+    out.username = String(body.username).trim();
+  }
   if (body.full_name !== undefined)  out.full_name = String(body.full_name).trim();
   if (body.role !== undefined) {
     if (!ROLES.includes(body.role)) throw httpErr(400, 'role phai la admin hoac kithuat');
@@ -43,7 +45,6 @@ function pickPayload(body, { isUpdate = false } = {}) {
   if (body.avatar_url !== undefined) out.avatar_url = body.avatar_url || null;
 
   if (!isUpdate) {
-    if (!out.username)  throw httpErr(400, 'Thieu username');
     if (!out.full_name) throw httpErr(400, 'Thieu ho ten');
     if (!out.role)      out.role = 'kithuat';
   }
@@ -92,7 +93,7 @@ router.get('/', async (req, res, next) => {
          SELECT assigned_staff_id, COUNT(*) AS active_count
            FROM orders
           WHERE assigned_staff_id IS NOT NULL
-            AND status IN ('assigned','warehouse_released','in_progress')
+            AND status IN ('confirmed','in_progress')
             AND is_deleted = 0
           GROUP BY assigned_staff_id
        ) t1 ON t1.assigned_staff_id = s.id
@@ -132,10 +133,9 @@ router.get('/:id', async (req, res, next) => {
 
     const [stats] = await db.query(
       `SELECT
-        SUM(CASE WHEN status IN ('assigned','warehouse_released','in_progress') THEN 1 ELSE 0 END) AS active_tasks,
-        SUM(CASE WHEN status IN ('done','customer_owes','staff_owes','pending_admin_confirm') THEN 1 ELSE 0 END) AS completed_tasks,
-        SUM(CASE WHEN status IN ('done','customer_owes','staff_owes','pending_admin_confirm')
-              AND DATE(completed_at)=CURDATE() THEN 1 ELSE 0 END) AS done_today
+        SUM(CASE WHEN status IN ('confirmed','in_progress') THEN 1 ELSE 0 END) AS active_tasks,
+        SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS completed_tasks,
+        SUM(CASE WHEN status = 'done' AND DATE(completed_at) = CURDATE() THEN 1 ELSE 0 END) AS done_today
        FROM orders WHERE assigned_staff_id = ? AND is_deleted = 0`,
       [req.params.id]
     );
@@ -143,6 +143,19 @@ router.get('/:id', async (req, res, next) => {
     res.json({ ...rows[0], ...stats[0] });
   } catch (err) { next(err); }
 });
+
+// Sinh username ngau nhien khong trung
+async function generateStaffUsername(role) {
+  const prefix = role === 'admin' ? 'ad' : 'ktv';
+  for (let i = 0; i < 20; i++) {
+    const u = prefix + String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+    const [rows] = await db.query(
+      `SELECT id FROM staff WHERE username = ? LIMIT 1`, [u]
+    );
+    if (!rows.length) return u;
+  }
+  throw httpErr(500, 'Khong sinh duoc username');
+}
 
 // ---- POST /api/admin/staff ------------------------------------
 // Body: { username, password, full_name, role, area, phone, cccd, email, avatar_url }
@@ -152,6 +165,10 @@ router.post('/', async (req, res, next) => {
     if (password.length < 4) throw httpErr(400, 'Mat khau toi thieu 4 ky tu');
 
     const data = pickPayload(req.body, { isUpdate: false });
+
+    if (!data.username) {
+      data.username = await generateStaffUsername(data.role);
+    }
 
     const [dup] = await db.query(
       `SELECT id FROM staff WHERE username = ? AND is_deleted = 0 LIMIT 1`,

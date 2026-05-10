@@ -243,7 +243,7 @@ function installChat(){
   box.id='chat-box'; box.className='chat-box';
   box.innerHTML = `
     <div class="chat-head">
-      <div>🟢 Hỗ trợ GPS Việt</div>
+      <div>🟢 Hỗ trợ VinaGPS</div>
       <span class="close" id="chat-close">×</span>
     </div>
     <div class="chat-msgs" id="chat-msgs">
@@ -286,7 +286,7 @@ function installChat(){
       else if(s.includes('báo giá')||s.includes('bao gia')||s.includes('lắp mới'))
         addMsg('Xem bảng giá đầy đủ tại <a href="products.html">trang sản phẩm</a>. Nhà bạn ở đâu để mình báo công lắp & cử kỹ thuật gần nhất nhé!','them');
       else if(s.includes('bảo hành')||s.includes('hư')||s.includes('mất kết nối'))
-        addMsg('Bạn vào <a href="warranty.html">Tra cứu bảo hành</a> nhập biển số hoặc mã thiết bị để kiểm tra, hoặc cho mình xin biển số xe nhé.','them');
+        addMsg('Bạn vào <a href="order.html">tạo đơn yêu cầu</a> nhập biển số hoặc mã thiết bị để kiểm tra, hoặc cho mình xin biển số xe nhé.','them');
       else
         addMsg('Mình đã ghi nhận. Nhân viên sẽ phản hồi trong ít phút. Trong lúc đợi bạn có thể xem <a href="guide.html">hướng dẫn sử dụng</a> nhé 🙂','them');
     }, 600);

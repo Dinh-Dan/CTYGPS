@@ -108,7 +108,14 @@ router.get('/stats', async (req, res, next) => {
 router.get('/products/all', async (req, res, next) => {
   try {
     const [rows] = await db.query(
-      `SELECT id, code, name FROM products WHERE is_deleted = 0 ORDER BY code`
+      `SELECT p.id, p.code, p.name,
+              (SELECT pp.price FROM product_prices pp
+                JOIN price_tiers t ON t.id = pp.tier_id
+                WHERE pp.product_id = p.id AND t.is_default = 1 AND t.is_deleted = 0
+                LIMIT 1) AS default_price
+         FROM products p
+        WHERE p.is_deleted = 0
+        ORDER BY p.code`
     );
     res.json({ items: rows });
   } catch (err) { next(err); }

@@ -39,7 +39,6 @@
     for (const o of d.carried_orders) {
       sumOrderRemaining += Math.max(0, Number(o.total_amount) - Number(o.paid_amount));
     }
-    const openingAtSettle = Math.max(0, Number(s.total_debt) - sumOrderRemaining);
 
     let ordersHtml = '';
     if (d.carried_orders.length) {
@@ -55,7 +54,7 @@
               return `<tr>
                 <td><b>${escape(o.code)}</b></td>
                 <td>${fmtDate(o.confirmed_at)}</td>
-                <td>${escape(o.service_kind || '—')}</td>
+                <td>${escape(o.template_name || '—')}</td>
                 <td class="num">${fmtVnd(o.total_amount)}</td>
                 <td class="num">${fmtVnd(o.paid_amount)}</td>
                 <td class="num"><b>${fmtVnd(remain)}</b></td>
@@ -66,6 +65,8 @@
     } else {
       ordersHtml = '<div class="empty">Phiếu này chỉ tất toán phần nợ kỳ trước (không có đơn cụ thể)</div>';
     }
+
+    const openingAtSettle = Math.max(0, Number(s.total_debt) - sumOrderRemaining);
 
     let historyHtml = '';
     if (d.history.length) {
@@ -97,10 +98,10 @@
     $('billPaper').innerHTML = `
       <div class="bill-header">
         <div class="bill-brand">
-          <div class="logo">GV</div>
+          <div class="logo">VG</div>
           <div>
-            <div class="brand-name">GPS VIỆT</div>
-            <div class="brand-sub">Thiết bị giám sát hành trình</div>
+            <div class="brand-name">CÔNG TY TNHH VIỄN THÔNG VINAGPS</div>
+            <div class="brand-sub">190 TTH 21, P. Tân Thới Hiệp, Q.12, TP.HCM<br>ĐT: (028) 6682 5658 — DĐ: 0949.155.160</div>
           </div>
         </div>
         <div class="bill-meta">
@@ -154,7 +155,7 @@
       </div>
 
       <div class="bill-footer">
-        <span>Phiếu được lập tự động bởi hệ thống GPS Việt</span>
+        <span>Phiếu được lập tự động bởi hệ thống VinaGPS</span>
         <span>${escape(s.code)}</span>
       </div>
     `;

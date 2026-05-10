@@ -108,9 +108,13 @@
       const days = it.days_holding >= 7
         ? `<span class="pill overdue">${it.days_holding} ngày</span>`
         : (it.days_holding > 0 ? `${it.days_holding} ngày` : '—');
+      const opening = Number(it.opening_balance) || 0;
+      const openingHtml = opening > 0
+        ? `<br><small class="opening-balance">Nợ kỳ trước: ${fmtVnd(opening)}</small>`
+        : (opening < 0 ? `<br><small style="color:#0a7a1f">Dư kỳ trước: ${fmtVnd(-opening)}</small>` : '');
       return `
         <tr>
-          <td><b>${escape(it.name)}</b><br><small class="text-muted">${escape(it.username)} · ${escape(it.phone || '')}</small></td>
+          <td><b>${escape(it.name)}</b><br><small class="text-muted">${escape(it.username)} · ${escape(it.phone || '')}</small>${openingHtml}</td>
           <td>${escape(it.area || '—')}</td>
           <td>${it.collection_count}</td>
           <td>${fmtDate(it.oldest_at)}</td>
@@ -118,8 +122,8 @@
           <td><b>${fmtVnd(it.total_amount)}</b></td>
           <td>
             <button class="btn ghost sm" data-act="settle-staff"
-              data-tid="${it.staff_id}" data-name="${escape(it.name)}"
-              data-amount="${it.total_amount}" data-count="${it.collection_count}">Duyệt nộp</button>
+              data-tid="${it.staff_id}" data-name="${escape(it.name)}">Duyệt nộp</button>
+            <a class="btn ghost sm" href="/admin/payroll.html?staff=${it.staff_id}" title="Xem bảng lương">💵 Lương</a>
           </td>
         </tr>`;
     }).join('');
@@ -137,23 +141,102 @@
   }
 
   // ==== HELPER: render don no (chi rows, caller tu wrap .order-list) ====
+  function daysBetween(dateStr) {
+    if (!dateStr) return 0;
+    const d = new Date(String(dateStr).replace(' ', 'T'));
+    if (isNaN(d)) return 0;
+    return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000));
+  }
+  const STATUS_LABEL = {
+    new:         { txt: 'Mới',        cls: 'st-new' },
+    pending:     { txt: 'Chờ xác nhận', cls: 'st-new' },
+    confirmed:   { txt: 'Đã xác nhận', cls: 'st-cf'  },
+    assigned:    { txt: 'Đã giao KTV', cls: 'st-cf'  },
+    in_progress: { txt: 'Đang xử lý',  cls: 'st-ip'  },
+    done:        { txt: 'Hoàn tất',    cls: 'st-dn'  },
+    cancelled:   { txt: 'Đã huỷ',      cls: 'st-cn'  },
+  };
   function renderPendingOrderRows(orders) {
     return orders.map(o => {
-      const meta = [
-        `Tổng ${fmtVnd(o.total_amount)}`,
-        `Đã trả ${fmtVnd(o.paid_amount)}`,
-        o.unremitted ? `KTV giữ ${fmtVnd(o.unremitted)}` : null,
-        o.admin_pending ? `Chờ XN ${fmtVnd(o.admin_pending)}` : null,
-      ].filter(Boolean).join(' · ');
+      const total   = Number(o.total_amount) || 0;
+      const paid    = Number(o.paid_amount) || 0;
+      const hold    = Number(o.unremitted) || 0;
+      const pend    = Number(o.admin_pending) || 0;
+      const pctPaid = total ? Math.min(100, paid / total * 100) : 0;
+      const pctHold = total ? Math.min(100 - pctPaid, hold / total * 100) : 0;
+      const pctPend = total ? Math.min(100 - pctPaid - pctHold, pend / total * 100) : 0;
+      const refDate = o.confirmed_at || o.created_at;
+      const days    = daysBetween(refDate);
+      const dateLbl = o.confirmed_at ? 'XN' : 'Tạo';
+      const dateTxt = refDate ? `${dateLbl} ${fmtDate(refDate)}` : '—';
+      const ageTxt  = days > 0 ? ` · ${days} ngày` : '';
+      const overdue = days >= 7;
+      const st      = STATUS_LABEL[o.status] || { txt: o.status || '—', cls: 'st-new' };
+      const ktv     = o.assigned_staff_names ? escape(o.assigned_staff_names) : 'Chưa gán';
+      const addr    = o.address ? escape(o.address) : '';
+      const doneTxt = o.completed_at ? fmtDate(o.completed_at) : '';
+      const tags = [
+        paid > 0 ? `<span class="o-tag paid">✓ Đã trả ${fmtVnd(paid)}</span>` : '',
+        hold > 0 ? `<span class="o-tag hold">KTV giữ ${fmtVnd(hold)}</span>` : '',
+        pend > 0 ? `<span class="o-tag pend">Chờ XN ${fmtVnd(pend)}</span>` : '',
+      ].filter(Boolean).join('');
       return `
-        <div class="order-row">
-          <div class="o-info">
-            <div><b>${escape(o.code)}</b> · <span class="text-muted">${fmtDate(o.confirmed_at)}</span></div>
-            <small class="text-muted">${meta}</small>
+        <a class="order-row" href="/admin/orders.html#order-${o.id}" target="_blank"
+           title="Mở chi tiết đơn (tab mới)">
+          <div class="o-head">
+            <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
+              <span class="o-code">${escape(o.code)} <span style="opacity:.5;font-weight:400">↗</span></span>
+              <span class="o-tag ${st.cls}">${st.txt}</span>
+            </div>
+            <div class="o-amount">${fmtVnd(o.remaining)}</div>
           </div>
-          <div class="o-amount">${fmtVnd(o.remaining)}</div>
-        </div>`;
+          <div class="o-meta-row">
+            <span class="o-meta-item" title="Ngày ${o.confirmed_at ? 'xác nhận' : 'tạo'} đơn">📅 ${dateTxt}${ageTxt}${overdue ? ' <span style="color:#dc2626;font-weight:600">⏰ quá hạn</span>' : ''}</span>
+            <span class="o-meta-item" title="KTV phụ trách">🔧 KTV: <b>${ktv}</b></span>
+            ${o.item_count ? `<span class="o-meta-item">📦 ${o.item_count} mặt hàng</span>` : ''}
+            ${doneTxt ? `<span class="o-meta-item" title="Ngày hoàn tất">✅ Xong ${doneTxt}</span>` : ''}
+          </div>
+          ${addr ? `<div class="o-meta-item" style="font-size:12.5px;color:#64748b" title="Địa chỉ lắp">📍 ${addr}</div>` : ''}
+          <div class="progress-bar" title="Đã trả ${fmtVnd(paid)} / Tổng ${fmtVnd(total)}">
+            <div class="pb-paid" style="width:${pctPaid}%"></div>
+            <div class="pb-hold" style="left:${pctPaid}%;width:${pctHold}%"></div>
+            <div class="pb-pend" style="left:${pctPaid + pctHold}%;width:${pctPend}%"></div>
+          </div>
+          <div class="o-meta">
+            <span>Tổng <b style="color:#0f172a">${fmtVnd(total)}</b></span>
+            ${tags}
+          </div>
+        </a>`;
     }).join('');
+  }
+
+  // ==== HELPER: render summary 3 the (orders/order_debt/total_debt) ====
+  function renderDebtSummary(r, opts = {}) {
+    const op = Number(r.opening_balance) || 0;
+    const total = Number(r.total_debt) || 0;
+    const totalLabel = total < 0 ? '🔻 Công ty đang nợ ngược' : '💰 Tổng nợ hiện tại';
+    const cards = [
+      `<div class="ds-card">
+        <div class="ds-label">📋 Số đơn đang nợ</div>
+        <div class="ds-value">${r.pending_orders.length}<span style="font-size:13px;color:#64748b;font-weight:500"> đơn</span></div>
+      </div>`,
+      `<div class="ds-card warn">
+        <div class="ds-label">📉 Nợ phát sinh từ đơn</div>
+        <div class="ds-value">${fmtVnd(r.order_debt)}</div>
+      </div>`,
+    ];
+    if (opts.showOpening || op !== 0) {
+      cards.push(`<div class="ds-card warn">
+        <div class="ds-label">📅 Nợ kỳ trước (gối đầu)</div>
+        <div class="ds-value">${fmtVnd(op)}</div>
+      </div>`);
+    }
+    cards.push(`<div class="ds-card main">
+      <div class="ds-label">${totalLabel}</div>
+      <div class="ds-value">${fmtVnd(Math.abs(total))}</div>
+    </div>`);
+    const cls = cards.length === 4 ? 'cols-4' : '';
+    return `<div class="debt-summary ${cls}">${cards.join('')}</div>`;
   }
 
   // ==== MODAL: chi xem danh sach don no =========================
@@ -172,19 +255,15 @@
       ? `${c.company_name} (${c.full_name})` : c.full_name;
     $('olTitle').textContent = `Đơn đang nợ: ${titleName}`;
 
-    let html = `
-      <div class="summary-box" style="margin-top:0">
-        <div class="row"><span>Số đơn đang nợ:</span><span><b>${r.pending_orders.length}</b></span></div>
-        <div class="row"><span>Nợ phát sinh từ đơn:</span><span>${fmtVnd(r.order_debt)}</span></div>
-        ${r.opening_balance > 0 ? `<div class="row"><span>Nợ kỳ trước:</span><span class="opening-balance">${fmtVnd(r.opening_balance)}</span></div>` : ''}
-        <div class="row total"><span>Tổng nợ hiện tại:</span><span>${fmtVnd(r.total_debt)}</span></div>
-      </div>`;
+    let html = renderDebtSummary(r);
 
     if (r.pending_orders.length) {
+      html += `<div class="section-title"><h4>📋 Đơn đang nợ (${r.pending_orders.length})</h4><small class="text-muted">Bấm để mở chi tiết đơn ↗</small></div>`;
       html += `<div class="order-list">${renderPendingOrderRows(r.pending_orders)}</div>`;
     } else {
       html += '<div class="text-center text-muted" style="padding:30px">Không có đơn đang nợ</div>';
     }
+
     $('olBody').innerHTML = html;
     $('olSettle').disabled = r.total_debt <= 0;
   }
@@ -213,14 +292,11 @@
         ${c.tax_code ? `<div><b>MST:</b> ${escape(c.tax_code)}</div>` : ''}
         ${c.credit_term_days ? `<div><b>Hạn thanh toán:</b> ${c.credit_term_days} ngày</div>` : ''}
       </div>
-      <div class="summary-box">
-        <div class="row"><span>Nợ kỳ trước (gối đầu):</span><span class="opening-balance">${fmtVnd(r.opening_balance)}</span></div>
-        <div class="row"><span>Nợ phát sinh từ đơn (${r.pending_orders.length} đơn):</span><span>${fmtVnd(r.order_debt)}</span></div>
-        <div class="row total"><span>Tổng nợ hiện tại:</span><span>${fmtVnd(r.total_debt)}</span></div>
-      </div>`;
+      `;
+    html += renderDebtSummary(r, { showOpening: true });
 
     if (r.pending_orders.length) {
-      html += `<h4 style="margin:14px 0 8px;font-size:14px;color:#475569">Đơn đang nợ</h4>`;
+      html += `<div class="section-title"><h4>📋 Đơn đang nợ (${r.pending_orders.length})</h4><small class="text-muted">Bấm để mở chi tiết đơn ↗</small></div>`;
       html += `<div class="order-list">${renderPendingOrderRows(r.pending_orders)}</div>`;
     }
 
@@ -245,7 +321,7 @@
     $('smOpening').textContent   = fmtVnd(r.opening_balance);
     $('smOrderDebt').textContent = fmtVnd(r.order_debt);
     $('smTotalDebt').textContent = fmtVnd(r.total_debt);
-    $('smAmount').value = r.total_debt;     // mac dinh tat toan toan bo
+    Money.set($('smAmount'), Math.max(0, r.total_debt)); // mac dinh tat toan toan bo
     $('smMethod').value = 'cash';
     $('smNote').value = '';
     $('smReceipt').value = '';
@@ -290,7 +366,7 @@
   }
 
   async function submitSettle() {
-    const amount = Number($('smAmount').value);
+    const amount = Money.get($('smAmount'));
     if (!amount || amount <= 0) return ui.toast('Nhập số tiền > 0', 'warning');
     const r = state.selectedCustomer;
     if (amount > r.total_debt * 1.1) {
@@ -319,20 +395,52 @@
     }
   }
 
-  // ==== MODAL: tat toan KTV ====================================
-  function openStaffSettleModal(btn) {
+  // ==== MODAL: duyet nop KTV (Rolling Balance) =================
+  async function openStaffSettleModal(btn) {
     const tid = btn.dataset.tid;
     const name = btn.dataset.name;
-    const amount = Number(btn.dataset.amount);
-    const count = Number(btn.dataset.count);
-    $('ssBody').innerHTML = `
-      <p>Xác nhận đã nhận đủ <b>${count}</b> khoản thu của KTV <b>${escape(name)}</b>:</p>
-      <div class="summary-box" style="background:#dcfce7;border-color:#86efac;color:#166534">
-        <div class="row total" style="border:none">
-          <span>Tổng tiền:</span><span>${fmtVnd(amount)}</span>
+    $('ssBody').innerHTML = '<div class="text-center text-muted" style="padding:40px">Đang tải...</div>';
+    $('staffSettleModal').classList.add('open');
+
+    const r = await api.get(`/admin/debts/staff/${tid}`).catch(() => null);
+    if (!r) { $('staffSettleModal').classList.remove('open'); return; }
+
+    const opening = Number(r.opening_balance) || 0;
+    const holding = Number(r.holding_amount) || 0;
+    const total   = Number(r.total_to_collect) || 0;
+
+    const openingRow = opening !== 0
+      ? `<div class="row"><span>${opening > 0 ? 'Nợ kỳ trước:' : 'Dư kỳ trước:'}</span>
+           <span class="${opening > 0 ? 'opening-balance' : ''}" ${opening < 0 ? 'style="color:#0a7a1f"' : ''}>${fmtVnd(Math.abs(opening))}</span></div>`
+      : '';
+
+    const colsHtml = r.collections.length ? r.collections.map(c => `
+      <div class="order-row">
+        <div class="o-info">
+          <div><b>${escape(c.order_code || '—')}</b> · <span class="text-muted">${fmtDate(c.collected_at)}</span></div>
+          <small class="text-muted">${c.method === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'}</small>
         </div>
+        <div class="o-amount" style="color:#1f6feb">${fmtVnd(c.amount)}</div>
+      </div>`).join('') : '<div class="text-center text-muted" style="padding:20px">Không có khoản đang giữ</div>';
+
+    $('ssBody').innerHTML = `
+      <p style="margin:0 0 10px">KTV: <b>${escape(name)}</b></p>
+      <div class="summary-box">
+        ${openingRow}
+        <div class="row"><span>Đang giữ (${r.collections.length} khoản):</span><span>${fmtVnd(holding)}</span></div>
+        <div class="row total"><span>Tổng phải nộp:</span><span>${fmtVnd(total)}</span></div>
       </div>
+      ${r.collections.length ? `
+      <div class="pending-orders-block">
+        <h4>Khoản đang giữ <small class="text-muted">(sẽ đánh dấu đã nộp khi duyệt)</small></h4>
+        <div class="order-list">${colsHtml}</div>
+      </div>` : ''}
       <div class="grid cols-2">
+        <div class="field">
+          <label>Số tiền KTV nộp *</label>
+          <input type="number" id="ssAmount" class="input" min="0" step="1000" value="${total}">
+          <p class="help">Phần thiếu/dư chuyển sang kỳ sau</p>
+        </div>
         <div class="field">
           <label>Hình thức KTV nộp</label>
           <select id="ssMethod" class="select">
@@ -340,23 +448,31 @@
             <option value="transfer">Chuyển khoản</option>
           </select>
         </div>
-        <div class="field">
-          <label>Ghi chú</label>
-          <input id="ssNote" class="input" placeholder="(tuỳ chọn)">
-        </div>
+      </div>
+      <div class="field">
+        <label>Ghi chú</label>
+        <input id="ssNote" class="input" placeholder="(tuỳ chọn)">
       </div>`;
     $('ssSubmit').dataset.tid = tid;
-    $('ssSubmit').dataset.amount = String(amount);
-    $('staffSettleModal').classList.add('open');
+    $('ssSubmit').dataset.total = String(total);
   }
   async function submitStaffSettle() {
     const tid = $('ssSubmit').dataset.tid;
+    const total = Number($('ssSubmit').dataset.total) || 0;
+    const amount = Number($('ssAmount').value);
+    if (!amount || amount <= 0) return ui.toast('Nhập số tiền > 0', 'warning');
+    if (amount > total * 1.1) {
+      const ok = await ui.confirm({ title: 'Số tiền lớn hơn tổng phải nộp', type: 'warning',
+        message: `KTV nộp ${fmtVnd(amount)} nhưng tổng chỉ ${fmtVnd(total)}. Vẫn tiếp tục?` });
+      if (!ok) return;
+    }
     const method = $('ssMethod').value;
     const note = $('ssNote').value.trim();
     $('ssSubmit').disabled = true;
     try {
       const res = await api.post(`/admin/debts/staff/${tid}/settle`,
-        { method, note }, { loading: true, successMessage: 'Đã ghi nhận lô nộp' }).catch(() => null);
+        { amount_paid: amount, method, note },
+        { loading: true, successMessage: 'Đã ghi nhận lô nộp' }).catch(() => null);
       if (!res) return;
       $('staffSettleModal').classList.remove('open');
       loadStaff();

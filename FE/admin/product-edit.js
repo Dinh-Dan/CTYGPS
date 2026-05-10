@@ -502,7 +502,7 @@
     $('pName').value         = p.name || '';
     $('pCategory').value     = p.category_id || '';
     $('pWarranty').value     = p.warranty_months || 0;
-    $('pCost').value         = p.cost_price || 0;
+    Money.set($('pCost'), p.cost_price || 0);
     $('pDesc').value         = p.description || '';
     $('pImageUrl').value     = p.image_url || '';
     $('pThumbnailUrl').value = p.thumbnail_url || '';
@@ -535,7 +535,7 @@
       name: $('pName').value.trim(),
       category_id: $('pCategory').value || null,
       warranty_months: Number($('pWarranty').value) || 0,
-      cost_price: Number($('pCost').value) || 0,
+      cost_price: Money.get($('pCost')),
       description: $('pDesc').value.trim(),
       image_url: $('pImageUrl').value || null,
       thumbnail_url: $('pThumbnailUrl').value || null,

@@ -1,717 +1,520 @@
-// Logic trang KTV - tasks (cong viec cua toi)
-// Tab nay gop CA cong viec dang lam + da xong (timeline). Co filter rich +
-// canh bao vang cho don chua nop. Multi-select + flow nop tien batch tai cho.
+// /kithuat/tasks.html — KTV xem cong viec cua minh + thao tac (transition / upload anh / complete).
 
 (function () {
+  'use strict';
   const $ = (id) => document.getElementById(id);
-  const fmt = new Intl.NumberFormat('vi-VN');
+  const fmtN = new Intl.NumberFormat('vi-VN');
+  const fmt = (n) => fmtN.format(Number(n) || 0);
 
-  function escape(s) {
-    if (s == null) return '';
-    return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;')
-      .replaceAll('>','&gt;').replaceAll('"','&quot;');
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
   }
+  function fmtDate(d) { return d ? new Date(d).toLocaleString('vi-VN') : '—'; }
 
-  const KIND_LABEL = { install: 'Lắp đặt', maintenance: 'Bảo trì', renew: 'Gia hạn', uninstall: 'Tháo gỡ' };
-  const STATUS_PILL = {
-    assigned:              '<span class="pill gray">Mới giao</span>',
-    warehouse_released:    '<span class="pill blue">Đã xuất kho</span>',
-    in_progress:           '<span class="pill amber">Đang làm</span>',
-    done:                  '<span class="pill green">Hoàn thành</span>',
-    customer_owes:         '<span class="pill amber">Khách còn nợ</span>',
-    pending_admin_confirm: '<span class="pill amber">Chờ admin xác nhận</span>',
-    staff_owes:            '<span class="pill amber">Bạn còn giữ tiền</span>',
-    cancelled:             '<span class="pill red">Huỷ</span>',
+  let state = { bucket: 'active', items: [], detail: null };
+
+  const STATUS_LABELS = {
+    pending:     'Đang chờ',
+    confirmed:   'Lên đơn',
+    in_progress: 'Đang xử lý',
+    done:        'Đã xong',
+    cancelled:   'Đã huỷ',
   };
-  const PAYMENT_PILL = {
-    unpaid: '<span class="pill amber">⚠ Chưa nộp</span>',
-    paid:   '<span class="pill green">✓ Đã nộp</span>',
-  };
-
-  const state = {
-    items: [],
-    detail: null,
-    pendingPhotos: [],     // anh stage=deliver cho complete modal
-    receivePhotos: [],     // anh stage=receive cho receive modal
-    selected: new Set(),   // collection_id da tick de nop
-  };
-
-  function readFiltersFromUrl() {
-    const p = new URLSearchParams(location.search);
-    if (p.has('status')   && $('fStatus'))   $('fStatus').value   = p.get('status');
-    if (p.has('kind')     && $('fKind'))     $('fKind').value     = p.get('kind');
-    if (p.has('payment')  && $('fPayment'))  $('fPayment').value  = p.get('payment');
-    if (p.has('date_from')&& $('fDateFrom')) $('fDateFrom').value = p.get('date_from');
-    if (p.has('date_to')  && $('fDateTo'))   $('fDateTo').value   = p.get('date_to');
-    if (p.has('q')        && $('fSearch'))   $('fSearch').value   = p.get('q');
-    // Shortcut: ?today=1 -> set date_from = date_to = hom nay
-    if (p.get('today') === '1') {
-      const today = new Date().toISOString().slice(0, 10);
-      $('fDateFrom').value = today;
-      $('fDateTo').value   = today;
-    }
+  function pillForStatus(o) {
+    const label = STATUS_LABELS[o.status] || o.status;
+    if (o.status === 'pending')     return { cls: 'amber', label };
+    if (o.status === 'cancelled')   return { cls: 'gray',  label };
+    if (o.status === 'done')        return { cls: 'green', label };
+    if (o.status === 'in_progress') return { cls: 'blue',  label };
+    return { cls: 'purple', label };
   }
 
-  function buildQuery() {
-    const p = new URLSearchParams();
-    if ($('fStatus').value)   p.set('status',   $('fStatus').value);
-    if ($('fKind').value)     p.set('kind',     $('fKind').value);
-    if ($('fPayment').value)  p.set('payment',  $('fPayment').value);
-    if ($('fDateFrom').value) p.set('date_from',$('fDateFrom').value);
-    if ($('fDateTo').value)   p.set('date_to',  $('fDateTo').value);
-    const q = $('fSearch').value.trim();
-    if (q) p.set('q', q);
-    return p;
-  }
-
-  function cardHtml(t) {
-    const isUnpaid = t.payment_status === 'unpaid';
-    // Flow: assigned -> KTV chup anh nhan hang; warehouse_released -> KTV thuc hien.
-    let startBtn = '';
-    if (t.status === 'assigned') {
-      startBtn = `<button class="btn sm" data-act="detail" data-id="${t.id}">📷 Chụp ảnh nhận</button>`;
-    } else if (t.status === 'warehouse_released') {
-      startBtn = `<button class="btn sm" data-act="detail" data-id="${t.id}">▶ Thực hiện</button>`;
-    } else if (t.status === 'in_progress') {
-      startBtn = `<button class="btn sm" data-act="detail" data-id="${t.id}">✓ Hoàn thành</button>`;
-    }
-    const detailBtn   = `<button class="btn ghost sm" data-act="detail" data-id="${t.id}">Chi tiết</button>`;
-
-    const checkbox = isUnpaid
-      ? `<input type="checkbox" class="pick" data-collection="${t.collection_id}" data-amount="${t.collection_amount}" ${state.selected.has(t.collection_id) ? 'checked' : ''}>`
-      : `<span style="width:16px;display:inline-block"></span>`;
-
-    const dateLine = t.completed_at
-      ? `🏁 Xong: ${escape(t.completed_at.replace('T',' ').slice(0,16))}`
-      : (t.due_at ? `⏰ Hạn: ${escape(t.due_at.replace('T',' ').slice(0,16))}` : '');
-
-    return `
-      <div class="task-card ${isUnpaid ? 'unpaid' : ''}" id="order-${t.id}">
-        ${checkbox}
-        <div>
-          <div class="header">
-            <b>${escape(t.code)}</b>
-            <span class="text-muted">${KIND_LABEL[t.kind] || t.kind}</span>
-            ${STATUS_PILL[t.status] || ''}
-            ${PAYMENT_PILL[t.payment_status] || ''}
-          </div>
-          <div class="info-row">👤 <b>${escape(t.customer_name || '')}</b>
-            ${t.customer_phone ? '· 📞 <a href="tel:' + escape(t.customer_phone) + '">' + escape(t.customer_phone) + '</a>' : ''}
-          </div>
-          ${t.address ? `<div class="info-row">📍 ${escape(t.address)}${t.area ? ' (' + escape(t.area) + ')' : ''}</div>` : ''}
-          ${t.vehicle_plate ? `<div class="info-row">🚗 Biển số: <b>${escape(t.vehicle_plate)}</b></div>` : ''}
-          <div class="info-row">
-            💵 Tổng đơn: <b>${fmt.format(Number(t.total_amount) || 0)}đ</b>
-            · Công lắp: <b>${fmt.format(Number(t.wage_amount) || 0)}đ</b>
-          </div>
-          ${dateLine ? `<div class="info-row">${dateLine}</div>` : ''}
-          ${isUnpaid ? `<div class="info-row warn">⚠ Đơn chưa nộp ${fmt.format(t.collection_amount)}đ — tick để nộp về công ty</div>` : ''}
-          ${t.ktv_note ? `<div class="info-row" style="background:#fef3c7;padding:6px 10px;border-radius:6px;margin-top:6px">📝 ${escape(t.ktv_note)}</div>` : ''}
-        </div>
-        <div class="actions">
-          ${startBtn || detailBtn}
-          ${t.customer_phone ? `<a href="tel:${escape(t.customer_phone)}" class="btn ghost sm">📞 Gọi</a>` : ''}
-        </div>
-      </div>
-    `;
-  }
-
-  async function load(opts) {
-    const apiOpts = (opts && opts.silent) ? { silent: true } : undefined;
-    const res = await api.get('/kithuat/orders?' + buildQuery().toString(), apiOpts).catch(() => null);
+  async function loadList() {
+    const res = await api.get('/kithuat/orders?bucket=' + encodeURIComponent(state.bucket)).catch(() => null);
     if (!res) return;
     state.items = res.items || [];
-    // Don dep selected: bo nhung collection_id khong con trong list
-    const validIds = new Set(state.items.filter(t => t.collection_id).map(t => t.collection_id));
-    for (const id of Array.from(state.selected)) {
-      if (!validIds.has(id)) state.selected.delete(id);
-    }
-    if (!state.items.length) {
-      $('taskList').innerHTML = '';
-      $('emptyMsg').classList.remove('hide');
-    } else {
-      $('emptyMsg').classList.add('hide');
-      $('taskList').innerHTML = state.items.map(cardHtml).join('');
-    }
-    renderBatchBar();
-    // Auto open detail neu hash #order-XX (hoac #task-XX cu)
-    if (location.hash.startsWith('#order-')) {
-      openDetail(location.hash.slice(7));
-    } else if (location.hash.startsWith('#task-')) {
-      openDetail(location.hash.slice(6));
-    }
+    render();
   }
 
-  function renderBatchBar() {
-    const items = state.items.filter(t => state.selected.has(t.collection_id));
-    if (!items.length) {
-      $('batchBar').classList.add('hide');
+  function render() {
+    const $box = $('tasksList');
+    if (!state.items.length) {
+      $box.innerHTML = '<p class="text-muted" style="text-align:center;padding:40px">Không có việc nào</p>';
       return;
     }
-    const total = items.reduce((s, t) => s + Number(t.collection_amount || 0), 0);
-    $('batchCount').textContent = items.length;
-    $('batchTotal').textContent = fmt.format(total) + 'đ';
-    $('batchBar').classList.remove('hide');
+    $box.innerHTML = state.items.map(o => {
+      const s = pillForStatus(o);
+      const remain = Math.max(0, Number(o.total_amount) - Number(o.paid_amount));
+      return `
+        <div class="task-card" data-id="${o.id}">
+          <div class="head">
+            <div><b>${esc(o.code)}</b> · ${esc(o.template_names || o.template_name || '')}</div>
+            <span class="pill ${s.cls}">${esc(s.label)}</span>
+          </div>
+          <div class="meta">${esc(o.customer_name || '')} ${o.customer_phone ? `· ${esc(o.customer_phone)}` : ''}</div>
+          ${o.address ? `<div class="meta">${esc(o.address)}</div>` : ''}
+          <div class="meta">Tổng: <b>${fmt(o.total_amount)}đ</b> ${remain > 0 ? `· Còn lại: <span style="color:#dc2626">${fmt(remain)}đ</span>` : '· Đã thu đủ'}</div>
+        </div>
+      `;
+    }).join('');
+    $box.querySelectorAll('.task-card').forEach(el => {
+      el.addEventListener('click', () => openDetail(Number(el.dataset.id)));
+    });
   }
 
-  // ---- Detail modal ------------------------------------------
   async function openDetail(id) {
-    const res = await api.get('/kithuat/orders/' + id, { loading: true }).catch(() => null);
-    if (!res) return;
+    $('modal').classList.add('open');
+    $('odBody').innerHTML = '<p class="text-muted">Đang tải…</p>';
+    const res = await api.get('/kithuat/orders/' + id).catch(() => null);
+    if (!res) { $('odBody').innerHTML = '<p style="color:#dc2626">Không tải được</p>'; return; }
     state.detail = res;
-    const _ts = {
-      assigned:              { text: 'Mới giao',           cls: 'gray'  },
-      warehouse_released:    { text: 'Đã xuất kho',        cls: 'blue'  },
-      in_progress:           { text: 'Đang làm',           cls: 'amber' },
-      done:                  { text: 'Hoàn thành',         cls: 'green' },
-      customer_owes:         { text: 'Khách còn nợ',       cls: 'amber' },
-      pending_admin_confirm: { text: 'Chờ admin xác nhận', cls: 'amber' },
-      staff_owes:            { text: 'Bạn còn giữ tiền',   cls: 'amber' },
-      cancelled:             { text: 'Huỷ',                cls: 'red'   },
-    }[res.status] || { text: res.status, cls: 'gray' };
-    $('detailTitle').innerHTML =
-      `${escape(res.code)} — ${escape(KIND_LABEL[res.kind] || res.kind)} `
-      + `<span class="pill ${_ts.cls}" style="font-size:14px;padding:4px 12px;vertical-align:middle;margin-left:6px">${escape(_ts.text)}</span>`;
+    renderDetail();
+  }
 
-    const itemsHtml = res.items.length ? `
-      <ul style="margin:0;padding-left:20px">
-        ${res.items.map(it => `<li>${escape(it.product_name)} × ${it.qty}</li>`).join('')}
-      </ul>
-    ` : '<p class="text-muted">Không có sản phẩm</p>';
+  function closeDetail() {
+    $('modal').classList.remove('open');
+    state.detail = null;
+  }
 
-    // Khoi tien: Tong tien can thu + breakdown (san pham, cong lap, phi khac, giam gia)
-    const orderTotal = Number(res.total_amount || 0);
-    const orderPaid = Number(res.paid_amount || 0);
-    const orderDue = Math.max(0, orderTotal - orderPaid);
-    const wageAmt = Number(res.wage_amount || 0);
-    // Tinh tu items de chinh xac (BE order_subtotal co the bi backfill cu)
-    const itemsSubtotal = (res.items || []).reduce(
-      (s, it) => s + (Number(it.unit_price) || 0) * (Number(it.qty) || 0), 0);
-    // Tien cong da sync vao order_charges duoi label "Cong lap" (theo quy uoc syncLaborCharge),
-    // -> loc ra de khong hien lai trung dong "Cong lap"
-    const oCharges = (Array.isArray(res.order_charges) ? res.order_charges : [])
-      .filter(c => (c.label || '').trim().toLowerCase() !== 'công lắp');
+  function renderTimeline() {
+    const o = state.detail;
+    const FLOW = [
+      { code: 'pending',     label: 'Đang chờ' },
+      { code: 'confirmed',   label: 'Lên đơn' },
+      { code: 'in_progress', label: 'Đang xử lý' },
+      { code: 'done',        label: 'Đã xong' },
+    ];
+    const curIdx = FLOW.findIndex(s => s.code === o.status);
+    const cancelled = o.status === 'cancelled';
 
-    const row = (label, value, opts = {}) => {
-      const color = opts.color || '#0f172a';
-      const sign = opts.sign || '';
-      return `<div style="display:flex;justify-content:space-between;padding:4px 0">
-        <span style="color:#475569">${escape(label)}</span>
-        <b style="color:${color}">${sign}${fmt.format(Math.abs(value))}đ</b>
+    const stepsHtml = FLOW.map((s, idx) => {
+      let cls = '';
+      if (cancelled) cls = '';
+      else if (curIdx >= 0 && idx < curIdx) cls = 'done';
+      else if (idx === curIdx) cls = 'current';
+      return `<div class="timeline-step ${cls}">
+        <span class="seq">${cls === 'done' ? '✓' : (idx + 1)}</span>
+        <span style="flex:1">${esc(s.label)}</span>
       </div>`;
-    };
+    }).join('');
 
-    const moneyHtml = `
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin:10px 0;font-size:13.5px">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:8px;border-bottom:2px solid #cbd5e1;margin-bottom:6px">
-          <span style="color:#475569;font-weight:600">🧾 Tổng tiền cần thu</span>
-          <b style="color:#1d4ed8;font-size:18px">${fmt.format(orderTotal)}đ</b>
+    // KTV duoc chuyen confirmed→in_progress, in_progress→done, confirmed→done
+    const targets = [];
+    if (o.status === 'confirmed')       targets.push({ code: 'in_progress', label: 'Bắt đầu làm' }, { code: 'done', label: 'Hoàn thành', terminal: true });
+    else if (o.status === 'in_progress') targets.push({ code: 'done', label: 'Hoàn thành', terminal: true });
+
+    const action = cancelled
+      ? `<div style="margin-top:8px;color:#dc2626;text-align:center">Đơn đã huỷ</div>`
+      : (o.status === 'done'
+          ? `<div style="margin-top:8px;color:#16a34a;text-align:center">Đã hoàn thành</div>`
+          : (targets.length
+              ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+                  ${targets.map(t => `<button class="btn sm btn-jump" data-step="${esc(t.code)}" data-terminal="${t.terminal ? 1 : 0}" style="${t.terminal ? 'background:#16a34a' : ''}">${esc(t.label)}</button>`).join('')}
+                </div>` : ''));
+    return stepsHtml + action;
+  }
+
+  function renderDetail() {
+    const o = state.detail;
+    const lines = o.lines || [];
+    const tplNames = lines.map(l => l.template_name).filter(Boolean).join(' + ');
+    $('modalTitle').textContent = `${o.code} — ${tplNames || ''}`;
+    const sCls = pillForStatus(o);
+    const remain = Math.max(0, Number(o.total_amount) - Number(o.paid_amount));
+
+    // Render moi line: fields + items
+    const linesHtml = lines.length ? lines.map((ln, idx) => {
+      const fvs = (ln.field_values || []).length
+        ? ln.field_values.map(f => `<div style="display:flex;gap:8px;padding:3px 0;font-size:13px">
+            <span style="flex:1;color:#64748b">${esc(f.label)}</span>
+            <span style="flex:2">${esc(f.value || '—')}</span>
+          </div>`).join('') : '';
+      const its = (ln.items || []).length
+        ? ln.items.map(i => `<div style="display:flex;gap:8px;padding:3px 0;font-size:13px">
+            <span style="flex:2">${esc(i.product_name || ('SP #' + i.product_id))}</span>
+            <span>x${i.qty}</span>
+          </div>`).join('') : '<p class="text-muted" style="font-size:12.5px">Không có SP</p>';
+      return `<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px;background:#fafbfd">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-weight:700;color:#1e3a8a">
+          <span style="background:#3b82f6;color:#fff;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px">${idx + 1}</span>
+          <span>${esc(ln.template_name || '(?)')}</span>
         </div>
-        ${row('Tiền sản phẩm', itemsSubtotal)}
-        ${wageAmt > 0 ? row('Công lắp', wageAmt) : ''}
-        ${oCharges.map(c => {
-          const amt = Number(c.amount) || 0;
-          const isMinus = amt < 0;
-          return row(c.label || '', amt, {
-            color: isMinus ? '#16a34a' : '#0f172a',
-            sign:  isMinus ? '−' : '+',
-          });
-        }).join('')}
-        <div style="border-top:1px dashed #cbd5e1;margin-top:6px;padding-top:6px">
-          ${row('Đã thanh toán', orderPaid, { color: '#16a34a' })}
-          ${row('Còn lại', orderDue, { color: orderDue > 0 ? '#dc2626' : '#16a34a' })}
+        ${fvs}
+        ${its}
+      </div>`;
+    }).join('') : '<p class="text-muted">Đơn không có dòng công việc</p>';
+
+    const photosHtml = (o.step_photos || []).length
+      ? `<div class="photos">${o.step_photos.map(p =>
+          `<a href="${esc(p.url)}" target="_blank" title="${esc(p.step_code)}"><img src="${esc(p.url)}"></a>`
+        ).join('')}</div>`
+      : '<p class="text-muted">Chưa có ảnh</p>';
+
+    $('odBody').innerHTML = `
+      <div class="od-section">
+        <div><b>Khách:</b> ${esc(o.customer_name || '')} ${o.customer_phone ? `— <a href="tel:${esc(o.customer_phone)}">${esc(o.customer_phone)}</a>` : ''}</div>
+        <div><b>Địa chỉ:</b> ${esc(o.address || '—')}</div>
+        <div><b>Trạng thái:</b> <span class="pill ${sCls.cls}">${esc(sCls.label)}</span></div>
+        ${o.wage_amount ? `<div><b>Tiền công:</b> ${fmt(o.wage_amount)}đ</div>` : ''}
+        <div style="margin-top:6px">
+          <button class="btn ghost sm" id="btnAssetUpdate">📝 Cập nhật thông tin khách</button>
         </div>
       </div>
-    `;
 
-    const photosHtml = res.attachments.length ? `
-      <div class="photo-grid">
-        ${res.attachments.map(a => `<img src="${a.url}" alt="" onclick="window.open('${a.url}', '_blank')">`).join('')}
-      </div>
-    ` : '<p class="text-muted">Chưa có ảnh</p>';
-
-    // Tim payment status tu list (load() da fetch tu BE)
-    const summary = state.items.find(t => t.id === res.id);
-    const isUnpaid = summary && summary.payment_status === 'unpaid';
-    const unpaidWarn = isUnpaid
-      ? `<div style="background:#fef3c7;border:1px solid #f59e0b;color:#92400e;padding:10px;border-radius:8px;margin:10px 0;font-weight:600">
-           ⚠ Đơn này có ${fmt.format(summary.collection_amount)}đ <b>chưa nộp</b> về công ty.
-         </div>`
-      : '';
-
-    // Flow theo status:
-    //   assigned          -> bao KTV chup anh nhan hang TRUOC, sau do admin moi xuat kho.
-    //   warehouse_released -> admin da xuat kho, KTV bam "Thuc hien" de bat dau.
-    let releaseWarn = '';
-    if (res.status === 'assigned') {
-      releaseWarn = `<div style="background:#dbeafe;border:1px solid #3b82f6;color:#1e3a8a;padding:12px;border-radius:8px;margin:10px 0;line-height:1.5">
-         <b>📷 Bước 1: Chụp ảnh nhận hàng</b><br>
-         <small>Bấm <b>Chụp ảnh nhận hàng</b> để tải ảnh thiết bị / hồ sơ. Sau khi bạn upload xong, admin sẽ kiểm tra và bấm <b>Xuất kho</b>. Khi đó bạn mới có nút <b>▶ Thực hiện</b>.</small>
-       </div>`;
-    } else if (res.status === 'warehouse_released') {
-      releaseWarn = `<div style="background:#ecfdf5;border:1px solid #6ee7b7;color:#065f46;padding:12px;border-radius:8px;margin:10px 0;line-height:1.5">
-         <b>✅ Đã nhận đủ thiết bị</b><br>
-         <small>Admin đã xuất kho, thiết bị đã có trong kho cá nhân của bạn. Bấm <b>▶ Thực hiện</b> để tiến hành đi giao.</small>
-       </div>`;
-    }
-
-    $('detailBody').innerHTML = `
-      ${unpaidWarn}
-      ${releaseWarn}
-      <div style="font-size:14px">
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-          ${summary ? (PAYMENT_PILL[summary.payment_status] || '') : ''}
+      <div class="od-section">
+        <h4>Tiến trình</h4>
+        ${renderTimeline()}
+        <div style="margin-top:10px">
+          <label style="font-size:13px;color:#334155;font-weight:600;display:block;margin-bottom:4px">Thực tế hiện tại</label>
+          <textarea id="progressNote" class="textarea" rows="2" placeholder="Ví dụ: Đang trên đường đến khách">${esc(o.progress_note || '')}</textarea>
+          <div style="margin-top:6px;text-align:right">
+            <button class="btn ghost sm" id="btnSaveProgressNote">💾 Lưu</button>
+          </div>
         </div>
-        <p>👤 <b>${escape(res.customer_name)}</b>
-          ${res.customer_phone ? '· 📞 <a href="tel:' + escape(res.customer_phone) + '">' + escape(res.customer_phone) + '</a>' : ''}
-        </p>
-        <p>📍 ${escape(res.address || res.customer_address || '—')}${res.area ? ' (' + escape(res.area) + ')' : ''}</p>
-        ${res.vehicle_plate ? `<p>🚗 Biển số: <b>${escape(res.vehicle_plate)}</b></p>` : ''}
-        ${moneyHtml}
-        ${res.due_at ? `<p>⏰ Hạn: <b>${escape(res.due_at.replace('T',' ').slice(0,16))}</b></p>` : ''}
-        ${res.started_at ? `<p>▶ Bắt đầu: ${escape(res.started_at.replace('T',' ').slice(0,16))}</p>` : ''}
-        ${res.completed_at ? `<p>🏁 Hoàn thành: <b>${escape(res.completed_at.replace('T',' ').slice(0,16))}</b></p>` : ''}
-        ${res.note ? `<div style="background:#fffbeb;border:1px solid #fcd34d;padding:10px 12px;border-radius:8px;margin:8px 0;line-height:1.5;white-space:pre-wrap"><b style="color:#92400e">📌 Ghi chú đơn từ khách:</b>
-${escape(res.note)}</div>` : ''}
-        ${res.ktv_note ? `<div style="background:#fef3c7;padding:8px;border-radius:6px;margin:8px 0"><b>📝 Ghi chú KTV:</b> ${escape(res.ktv_note)}</div>` : ''}
       </div>
-      <div class="order-detail-section" style="margin-top:14px;padding-top:14px;border-top:1px dashed #e2e8f0">
-        <h4 style="margin-bottom:8px;color:#475569">📦 Sản phẩm</h4>
-        ${itemsHtml}
+
+      <div class="od-section">
+        <h4>Dòng công việc</h4>
+        ${linesHtml}
       </div>
-      <div class="order-detail-section" style="margin-top:14px;padding-top:14px;border-top:1px dashed #e2e8f0">
-        <h4 style="margin-bottom:8px;color:#475569">📸 Ảnh đã upload</h4>
+
+      <div class="od-section">
+        <h4>Ảnh các bước
+          <button class="btn ghost sm" id="btnUploadPhoto" style="float:right">📷 Thêm ảnh</button>
+        </h4>
         ${photosHtml}
       </div>
+
+      <div class="od-section" style="background:#f8fafc;padding:12px;border-radius:10px">
+        <div style="display:flex;justify-content:space-between"><span>Tổng đơn</span><b>${fmt(o.total_amount)}đ</b></div>
+        <div style="display:flex;justify-content:space-between"><span>Đã thu</span><span>${fmt(o.paid_amount)}đ</span></div>
+        ${remain > 0 ? `<div style="display:flex;justify-content:space-between;color:#dc2626;font-weight:600"><span>Còn lại</span><span>${fmt(remain)}đ</span></div>` : ''}
+      </div>
     `;
 
-    // Bước 1 — Chụp ảnh nhận hàng: khi đơn ở 'assigned' (chưa xuất kho).
-    if ($('btnUploadReceive')) {
-      $('btnUploadReceive').style.display = (res.status === 'assigned') ? '' : 'none';
-    }
-    // Bước 2 — Thực hiện: chỉ khi đơn đã xuất kho.
-    $('btnStart').style.display = (res.status === 'warehouse_released') ? '' : 'none';
-    // Bước 3 — Hoàn thành: chỉ khi đơn đã bắt đầu (in_progress).
-    $('btnCompleteOpen').style.display = (res.status === 'in_progress') ? '' : 'none';
-    // Nut "Nop khoan nay" hien khi task co collection chua nop
-    let btnRemitOne = $('btnRemitOne');
-    if (!btnRemitOne) {
-      btnRemitOne = document.createElement('button');
-      btnRemitOne.id = 'btnRemitOne';
-      btnRemitOne.type = 'button';
-      btnRemitOne.className = 'btn';
-      btnRemitOne.style.background = '#f59e0b';
-      btnRemitOne.textContent = '💰 Nộp khoản này';
-      $('btnCompleteOpen').parentNode.insertBefore(btnRemitOne, $('btnCompleteOpen').nextSibling);
-    }
-    // Re-bind onclick moi lan (de capture summary moi nhat, khong dinh closure cu)
-    btnRemitOne.onclick = () => {
-      if (!state.detail) return;
-      const sum = state.items.find(t => t.id === state.detail.id);
-      if (!sum || !sum.collection_id) return;
-      state.selected.clear();
-      state.selected.add(sum.collection_id);
-      closeDetail();
-      openRemit();
-    };
-    btnRemitOne.style.display = isUnpaid ? '' : 'none';
-
-    $('detailModal').classList.add('open');
-  }
-  function closeDetail() {
-    $('detailModal').classList.remove('open');
-    state.detail = null;
-    history.replaceState(null, '', location.pathname + location.search);
-  }
-
-  // ---- Start task: mo modal yeu cau upload anh stage=receive ---
-  function openReceive() {
-    if (!state.detail) return;
-    state.receivePhotos = (state.detail.attachments || [])
-      .filter(a => a.stage === 'receive')
-      .map(a => ({ url: a.url, id: a.id }));
-    renderReceiveGrid();
-    $('receiveModal').classList.add('open');
-  }
-  function closeReceive() {
-    $('receiveModal').classList.remove('open');
-    state.receivePhotos = [];
-  }
-  function renderReceiveGrid() {
-    const html = state.receivePhotos.map((p, i) =>
-      `<img src="${p.url}" alt="" data-idx="${i}">`
-    ).join('');
-    $('receivePhotoGrid').innerHTML = html + `<div class="photo-add" id="receivePhotoAddBtn">+</div>`;
-  }
-  async function handleReceivePhotoAdd(e) {
-    const files = Array.from(e.target.files || []);
-    e.target.value = '';
-    if (!files.length) return;
-    await uploadPhotos(files, 'receive', state.receivePhotos, renderReceiveGrid);
-  }
-
-  // Upload nhieu anh tuan tu (1-by-1 de tranh rate-limit imgbb)
-  async function uploadPhotos(files, stage, bucket, renderFn) {
-    let okCount = 0, failCount = 0;
-    ui.loading(true);
-    try {
-      for (const file of files) {
-        if (file.size > 5 * 1024 * 1024) {
-          failCount++;
-          continue;
-        }
-        let url;
-        try {
-          url = await imgbb.upload(file, { name: `order-${state.detail.id}-${stage}` });
-        } catch (err) {
-          failCount++;
-          continue;
-        }
-        const res = await api.post(`/kithuat/orders/${state.detail.id}/upload`,
-          { url, stage }, { silent: true }
-        ).catch(() => null);
-        if (!res) { failCount++; continue; }
-        bucket.push({ url: res.url, id: res.id });
-        okCount++;
-        renderFn();
-      }
-    } finally {
-      ui.loading(false);
-    }
-    if (okCount) ui.toast(`Đã tải ${okCount} ảnh${failCount ? ` (${failCount} ảnh lỗi)` : ''}`, 'success');
-    else if (failCount) ui.toast(`Không tải được ảnh (${failCount} ảnh lỗi)`, 'error');
-  }
-
-  // Đóng modal "Chụp ảnh nhận hàng". Ảnh đã upload tuần tự lên server, ở đây chỉ đóng UI.
-  // KHÔNG gọi /start — đó là bước riêng (sau khi admin xuất kho).
-  async function handleReceiveConfirm() {
-    const hadPhotos = state.receivePhotos.length > 0;
-    closeReceive();
-    ui.toast(
-      hadPhotos
-        ? 'Đã update hình ảnh, chờ quản trị viên duyệt xuất kho'
-        : 'Đã ghi nhận, chờ quản trị viên duyệt xuất kho',
-      'success'
-    );
-    // Refresh lại detail + list để admin thấy ảnh ngay
-    if (state.detail) await openDetail(state.detail.id);
-    load();
-  }
-
-  // Bấm "Thực hiện" — đơn đã warehouse_released, KTV bắt đầu. Không cần modal.
-  async function handleStartTask() {
-    if (!state.detail) return;
-    if (state.detail.status !== 'warehouse_released') {
-      return ui.toast('Đơn chưa được xuất kho — chưa thể thực hiện', 'warning');
-    }
-    const ok = await api.patch(`/kithuat/orders/${state.detail.id}/start`, null, {
-      successMessage: 'Đã bắt đầu — đi giao thôi!',
-    }).catch(() => null);
-    if (ok) {
-      closeDetail();
-      load();
-    }
-  }
-
-  // ---- Complete modal ----------------------------------------
-  // Tien khach phai thanh toan (con lai cua don) duoc chia 3 phan:
-  //   - to_staff:  KTV thu (cash/transfer) -> KTV no cong ty
-  //   - to_admin:  khach bao da/sap tra thang admin -> doi admin xac nhan
-  //   - debt:      khach con no -> auto = remaining - to_staff - to_admin
-  async function openComplete() {
-    if (!state.detail) return;
-    $('c_order_id').value = state.detail.id;
-    state.completeTotalOrig = Number(state.detail.total_amount || 0);
-    state.completePaid = Number(state.detail.paid_amount || 0);
-    $('c_staff_method').value = 'cash';
-    $('c_plate').value = state.detail.vehicle_plate || '';
-    $('c_note').value = state.detail.ktv_note || '';
-    recomputeRemaining(); // set remaining + reset 3 o tien
-    state.pendingPhotos = (state.detail.attachments || [])
-      .filter(a => a.stage !== 'receive')
-      .map(a => ({ url: a.url, id: a.id }));
-    renderPhotoGrid();
-    await loadHoldingsForReturn();
-    $('completeModal').classList.add('open');
-  }
-
-  // Tinh remaining = total - paid, reset 3 o tien
-  function recomputeRemaining() {
-    const total     = Number(state.completeTotalOrig || 0);
-    const paid      = Number(state.completePaid || 0);
-    const remaining = Math.max(0, total - paid);
-    state.completeRemaining = remaining;
-    $('c_remaining').textContent = fmt.format(remaining) + 'đ';
-    $('c_to_staff').value = remaining;
-    $('c_to_admin').value = 0;
-    $('c_debt').value = 0;
-    syncSplit();
-  }
-
-  // Load staff_holdings de hien danh sach co the tra kho.
-  async function loadHoldingsForReturn() {
-    const res = await api.get('/kithuat/inventory', { silent: true }).catch(() => null);
-    const items = res ? (res.items || []) : [];
-    const block = $('c_returns_block');
-    const list = $('c_returns_list');
-    if (!items.length) {
-      block.style.display = 'none';
-      list.innerHTML = '';
-      return;
-    }
-    block.style.display = '';
-    list.innerHTML = items.map(h => `
-      <label style="display:flex;align-items:center;gap:8px;padding:6px;border-bottom:1px solid #f1f5f9;cursor:pointer">
-        <input type="checkbox" class="ret-pick" data-product="${h.product_id}" data-max="${h.qty}">
-        <div style="flex:1;font-size:13px">
-          <b>${escape(h.product_code)}</b> — ${escape(h.product_name)}
-          <span class="text-muted" style="font-size:12px">(đang giữ ${h.qty})</span>
-        </div>
-        <input type="number" class="input ret-qty" data-product="${h.product_id}" min="1" max="${h.qty}" value="${h.qty}" disabled style="width:70px;padding:4px 6px">
-      </label>
-    `).join('');
-    // Enable input qty khi tick
-    list.querySelectorAll('.ret-pick').forEach(cb => {
-      cb.addEventListener('change', () => {
-        const qtyInput = list.querySelector(`.ret-qty[data-product="${cb.dataset.product}"]`);
-        if (qtyInput) qtyInput.disabled = !cb.checked;
+    // Wire transitions
+    document.querySelectorAll('.btn-jump').forEach(b => {
+      b.addEventListener('click', () => {
+        const target = b.dataset.step;
+        const isTerminal = b.dataset.terminal === '1';
+        if (isTerminal) openCompleteDialog(target);
+        else doTransition(target);
       });
     });
-  }
-
-  function collectReturns() {
-    const list = $('c_returns_list');
-    if (!list) return [];
-    const out = [];
-    list.querySelectorAll('.ret-pick:checked').forEach(cb => {
-      const productId = Number(cb.dataset.product);
-      const max = Number(cb.dataset.max);
-      const qtyInput = list.querySelector(`.ret-qty[data-product="${productId}"]`);
-      const qty = Math.max(0, Math.min(max, Number(qtyInput?.value) || 0));
-      if (qty > 0) out.push({ product_id: productId, qty });
-    });
-    return out;
-  }
-  function closeComplete() {
-    $('completeModal').classList.remove('open');
-    state.pendingPhotos = [];
-  }
-
-  function syncSplit() {
-    const remaining = Number(state.completeRemaining || 0);
-    const toStaff = Math.max(0, Number($('c_to_staff').value) || 0);
-    const toAdmin = Math.max(0, Number($('c_to_admin').value) || 0);
-    const debt = remaining - toStaff - toAdmin;
-    $('c_debt').value = debt;
-    const warn = $('c_split_warn');
-    if (debt > 0) {
-      warn.style.display = 'block';
-      warn.style.background = '#fef3c7';
-      warn.style.color = '#92400e';
-      warn.textContent = `→ Khách còn nợ ${fmt.format(debt)}đ sau khi xong việc.`;
-    } else {
-      warn.style.display = 'none';
+    if ($('btnUploadPhoto')) $('btnUploadPhoto').addEventListener('click', uploadStepPhoto);
+    if ($('btnSaveProgressNote')) {
+      $('btnSaveProgressNote').addEventListener('click', async () => {
+        const v = $('progressNote').value;
+        const r = await api.patch(`/kithuat/orders/${o.id}/progress-note`,
+          { progress_note: v }, { onError: 'toast' });
+        if (r) { ui.toast('Đã lưu', 'success'); state.detail.progress_note = v; }
+      });
+    }
+    if ($('btnAssetUpdate')) {
+      $('btnAssetUpdate').addEventListener('click', () => {
+        openAssetUpdateDialog(state.detail.customer_id, state.detail.id);
+      });
     }
   }
 
-  function renderPhotoGrid() {
-    const html = state.pendingPhotos.map((p, i) =>
-      `<img src="${p.url}" alt="" data-idx="${i}" title="Click để xoá">`
-    ).join('');
-    $('photoGrid').innerHTML = html + `<div class="photo-add" id="photoAddBtn">+</div>`;
-  }
-
-  async function handlePhotoAdd(e) {
-    const files = Array.from(e.target.files || []);
-    e.target.value = '';
-    if (!files.length) return;
-    await uploadPhotos(files, 'deliver', state.pendingPhotos, renderPhotoGrid);
-  }
-
-  async function handleComplete(e) {
-    e.preventDefault();
-    if (!state.pendingPhotos.length) {
-      return ui.toast('Bắt buộc chụp ít nhất 1 ảnh bàn giao', 'warning');
+  async function doTransition(stepCode) {
+    const yes = await ui.confirm({ title: `Chuyển sang bước "${stepCode}"?`, okText: 'Chuyển' });
+    if (!yes) return;
+    const ok = await api.post(`/kithuat/orders/${state.detail.id}/transition`,
+      { step_code: stepCode }, { onError: 'toast' });
+    if (ok) {
+      ui.toast('Đã chuyển', 'success');
+      openDetail(state.detail.id);
+      loadList();
     }
-    const remaining = Number(state.completeRemaining || 0);
-    const toStaff = Math.max(0, Number($('c_to_staff').value) || 0);
-    const toAdmin = Math.max(0, Number($('c_to_admin').value) || 0);
-    const debt    = remaining - toStaff - toAdmin;
-    const returns = collectReturns();
+  }
+
+  async function openCompleteDialog(targetStep) {
+    const o = state.detail;
+    const remain = Math.max(0, Number(o.total_amount) - Number(o.paid_amount));
+    const html = `
+      <div style="padding:14px">
+        <p>Tổng cần thu cho đơn này: <b>${fmt(remain)}đ</b></p>
+        <p class="text-muted" style="font-size:12px">Nhập KTV thu / CK admin, phần còn lại tự động ghi nợ. Có thể chỉnh tay ô nợ nếu muốn.</p>
+        <div class="field"><label>Số dự kiến (mặc định = còn lại)</label>
+          <input id="cExpect" type="number" class="input" value="${remain}" min="0">
+        </div>
+        <div class="field"><label>KTV thu (đ)</label>
+          <input id="cToStaff" type="number" class="input" value="0" min="0">
+        </div>
+        <div class="field"><label>Phương thức KTV thu</label>
+          <select id="cToStaffM" class="select">
+            <option value="cash">Tiền mặt</option>
+            <option value="transfer">Chuyển khoản</option>
+          </select>
+        </div>
+        <div class="field"><label>Khách CK admin trực tiếp (đ)</label>
+          <input id="cToAdmin" type="number" class="input" value="0" min="0">
+        </div>
+        <div class="field"><label>Ghi nợ (đ) — tự tính, có thể sửa</label>
+          <input id="cDebt" type="number" class="input" value="${remain}" min="0">
+        </div>
+        <div id="cSumHint" class="text-muted" style="font-size:12px;margin:-4px 0 8px">
+          Tổng 3 phần: <b id="cSumVal">${fmt(remain)}</b>đ / Dự kiến: <b id="cExpVal">${fmt(remain)}</b>đ
+        </div>
+        <div class="field"><label>Ghi chú KTV</label>
+          <textarea id="cNote" class="textarea" rows="2"></textarea>
+        </div>
+      </div>
+    `;
+    const modalPromise = openSimpleModal('Hoàn thành đơn', html, 'Hoàn thành');
+
+    // Tu dong gan no = expected - toStaff - toAdmin khi nguoi dung nhap
+    const $E = document.getElementById('cExpect');
+    const $S = document.getElementById('cToStaff');
+    const $A = document.getElementById('cToAdmin');
+    const $D = document.getElementById('cDebt');
+    const $sum = document.getElementById('cSumVal');
+    const $exp = document.getElementById('cExpVal');
+    let debtTouched = false;
+    function refreshSum() {
+      const e = Number($E.value) || 0;
+      const s = Number($S.value) || 0;
+      const a = Number($A.value) || 0;
+      const d = Number($D.value) || 0;
+      $sum.textContent = fmt(s + a + d);
+      $exp.textContent = fmt(e);
+      $sum.style.color = (s + a + d === e) ? '#16a34a' : '#dc2626';
+    }
+    function recalcDebt() {
+      if (debtTouched) { refreshSum(); return; }
+      const e = Number($E.value) || 0;
+      const s = Number($S.value) || 0;
+      const a = Number($A.value) || 0;
+      $D.value = Math.max(0, e - s - a);
+      refreshSum();
+    }
+    [$E, $S, $A].forEach(el => el.addEventListener('input', recalcDebt));
+    $D.addEventListener('input', () => { debtTouched = true; refreshSum(); });
+
+    const ok = await modalPromise;
+    if (!ok) return;
     const body = {
-      to_staff_amount: toStaff,
-      to_staff_method: $('c_staff_method').value,
-      to_admin_amount: toAdmin,
-      debt_amount: debt,
-      expected_amount: remaining,
-      discount_amount: 0,
-      vehicle_plate: $('c_plate').value.trim() || null,
-      note: $('c_note').value.trim() || null,
-      returns,
+      target_step_code: targetStep,
+      expected_amount:    Number(document.getElementById('cExpect').value) || 0,
+      to_staff_amount:    Number(document.getElementById('cToStaff').value) || 0,
+      to_staff_method:    document.getElementById('cToStaffM').value,
+      to_admin_amount:    Number(document.getElementById('cToAdmin').value) || 0,
+      debt_amount:        Number(document.getElementById('cDebt').value) || 0,
+      note:               document.getElementById('cNote').value.trim() || null,
     };
-    const parts = [];
-    if (returns.length)  parts.push(`trả ${returns.length} loại về kho`);
-    const successMsg = parts.length
-      ? `Đã hoàn thành — ${parts.join(' · ')}`
-      : 'Đã hoàn thành công việc';
-    const ok = await api.patch(`/kithuat/orders/${state.detail.id}/complete`, body, {
-      successMessage: successMsg,
-      loading: true,
-    }).catch(() => null);
-    if (!ok) return;
-    closeComplete();
-    closeDetail();
-    load();
+    closeSimpleModal();
+    const r = await api.patch(`/kithuat/orders/${state.detail.id}/complete`, body, { onError: 'toast' });
+    if (r) {
+      ui.toast('Đã hoàn thành', 'success');
+      const customerId = state.detail.customer_id;
+      const orderId    = state.detail.id;
+      openDetail(state.detail.id);
+      loadList();
+      // Hoi KTV co muon de xuat cap nhat thong tin khach khong
+      setTimeout(() => openAssetUpdateDialog(customerId, orderId), 300);
+    }
   }
 
-  // ---- Remit modal -------------------------------------------
-  function openRemit() {
-    if (!state.selected.size) return;
-    const items = state.items.filter(t => state.selected.has(t.collection_id));
-    const total = items.reduce((s, t) => s + Number(t.collection_amount || 0), 0);
-    $('r_total').textContent = fmt.format(total) + 'đ';
-    $('r_count').textContent = items.length;
-    $('r_method').value = 'cash';
-    $('r_note').value = '';
-    $('r_receipt_url').value = '';
-    $('r_receipt_preview').style.display = 'none';
-    $('r_receipt_preview').src = '';
-    $('r_receipt_file').value = '';
-    $('remitModal').classList.add('open');
-  }
-  function closeRemit() { $('remitModal').classList.remove('open'); }
+  // ============================================================
+  // CUSTOMER ASSET UPDATE — 1 form gop: cu + moi, gui 1 lan
+  // KTV sua truc tiep o tung dong, them dong moi tuy y, bam Gui de xuat
+  // -> FE diff voi snapshot ban dau roi gui nhieu /asset-requests song song.
+  // ============================================================
+  const AU_KINDS = [
+    { kind: 'account', label: 'Tài khoản',  valCol: 'account_name', listKey: 'accounts', placeholder: 'Tên tài khoản mới', icon: '👤' },
+    { kind: 'vehicle', label: 'Biển số xe', valCol: 'plate',        listKey: 'vehicles', placeholder: 'VD: 51A-12345',     icon: '🚗' },
+    { kind: 'sim',     label: 'Số SIM',     valCol: 'sim_number',   listKey: 'sims',     placeholder: 'Số SIM thiết bị',   icon: '📱' },
+  ];
 
-  function fileToDataUrl(file) {
-    return new Promise((res, rej) => {
-      const r = new FileReader();
-      r.onload  = () => res(r.result);
-      r.onerror = () => rej(new Error('Không đọc được file'));
-      r.readAsDataURL(file);
+  async function openAssetUpdateDialog(customerId, orderId) {
+    if (!customerId) return;
+    const r = await api.get(`/kithuat/customers/${customerId}/assets`).catch(() => null);
+    if (!r) return;
+
+    // Snapshot gia tri goc (theo id) de diff khi submit
+    const original = {}; // { 'account:12': 'tenA', ... }
+    const sectionsHtml = AU_KINDS.map(cfg => {
+      const list = r[cfg.listKey] || [];
+      const rowsHtml = list.map(it => {
+        const key = `${cfg.kind}:${it.id}`;
+        original[key] = it[cfg.valCol];
+        const pendingMod = (r.pending_requests || []).find(p =>
+          p.asset_kind === cfg.kind && p.target_id === it.id);
+        return `<div class="af-row au-row${pendingMod ? ' is-pending' : ''}" data-kind="${cfg.kind}" data-id="${it.id}">
+          <input class="input au-val" value="${esc(it[cfg.valCol])}" ${pendingMod ? 'disabled' : ''}>
+          ${pendingMod
+            ? `<span class="af-pending-tag">⏳ chờ duyệt</span>`
+            : `<label class="af-del-toggle"><input type="checkbox" class="au-del"> Xoá</label>`}
+        </div>`;
+      }).join('') || `<div class="af-empty">Chưa có ${esc(cfg.label.toLowerCase())} nào</div>`;
+
+      return `<div class="af-section af-section--${cfg.kind}">
+        <h4>
+          <span class="af-icon">${cfg.icon}</span>
+          <span>${esc(cfg.label)}</span>
+          <span class="af-count">${list.length}</span>
+        </h4>
+        ${rowsHtml}
+        <div class="af-new-wrap" data-au-new="${cfg.kind}">
+          <div class="af-new-row">
+            <input class="input au-new-val" placeholder="${esc(cfg.placeholder)}">
+          </div>
+        </div>
+        <button type="button" class="af-add-row" data-au-add-row="${cfg.kind}">+ Thêm dòng</button>
+      </div>`;
+    }).join('');
+
+    const html = `
+      <div class="asset-form" data-au-customer="${customerId}" data-au-order="${orderId || ''}">
+        <p class="af-hint">Sửa trực tiếp ô cũ, tích <b style="color:#dc2626">Xoá</b> để bỏ, hoặc nhập dòng mới. Bấm <b>Gửi đề xuất</b> để gửi tất cả cho admin duyệt.</p>
+        ${sectionsHtml}
+      </div>
+    `;
+
+    // Mo modal nhung KHONG await ngay — can wire nut "Them dong" truoc
+    const okPromise = openSimpleModal('Cập nhật thông tin khách', html, 'Gửi đề xuất');
+
+    // Wire nut "+ Them dong" (chi them o trong client, khong goi API)
+    document.querySelectorAll('#simpleModal [data-au-add-row]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const kind = btn.dataset.auAddRow;
+        const cfg = AU_KINDS.find(k => k.kind === kind);
+        const wrap = document.querySelector(`#simpleModal [data-au-new="${kind}"]`);
+        if (!wrap || !cfg) return;
+        const div = document.createElement('div');
+        div.className = 'af-new-row';
+        div.innerHTML = `<input class="input au-new-val" placeholder="${esc(cfg.placeholder)}">
+          <button type="button" class="af-new-del" title="Bỏ dòng">×</button>`;
+        wrap.appendChild(div);
+        div.querySelector('.af-new-del').addEventListener('click', () => div.remove());
+        div.querySelector('input').focus();
+      });
     });
+    // Toggle hieu ung strikethrough khi tich Xoa
+    document.querySelectorAll('#simpleModal .au-row .au-del').forEach(cb => {
+      cb.addEventListener('change', () => {
+        cb.closest('.au-row').classList.toggle('is-deleted', cb.checked);
+      });
+    });
+
+    const ok = await okPromise;
+    if (!ok) return false;
+
+    // ---- Diff & build danh sach request ---------------------
+    const reqs = [];
+    document.querySelectorAll('#simpleModal .au-row').forEach(row => {
+      const kind = row.dataset.kind;
+      const id   = Number(row.dataset.id);
+      const inp  = row.querySelector('.au-val');
+      const del  = row.querySelector('.au-del');
+      if (!inp || inp.disabled) return;
+      const newVal = (inp.value || '').trim();
+      const oldVal = original[`${kind}:${id}`] || '';
+      if (del && del.checked) {
+        reqs.push({ asset_kind: kind, action: 'delete', target_id: id });
+      } else if (newVal && newVal !== oldVal) {
+        reqs.push({ asset_kind: kind, action: 'update', target_id: id, value: newVal });
+      }
+    });
+    AU_KINDS.forEach(cfg => {
+      document.querySelectorAll(`#simpleModal [data-au-new="${cfg.kind}"] .au-new-val`).forEach(inp => {
+        const v = (inp.value || '').trim();
+        if (v) reqs.push({ asset_kind: cfg.kind, action: 'add', value: v });
+      });
+    });
+
+    closeSimpleModal();
+    if (!reqs.length) { ui.toast('Không có thay đổi', 'info'); return true; }
+
+    // Gui song song, dem so thanh cong
+    const results = await Promise.all(reqs.map(body =>
+      api.post(`/kithuat/customers/${customerId}/asset-requests`,
+        { ...body, ref_order_id: orderId || null },
+        { onError: 'silent' }
+      ).catch(() => null)
+    ));
+    const okCount  = results.filter(Boolean).length;
+    const failCount = results.length - okCount;
+    if (okCount) ui.toast(`Đã gửi ${okCount} đề xuất, chờ admin duyệt`, 'success');
+    if (failCount) ui.toast(`${failCount} đề xuất gửi lỗi`, 'error');
+    return true;
   }
 
-  async function handleReceiptUpload(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { ui.toast('Ảnh quá 5MB', 'warning'); e.target.value = ''; return; }
-    const dataUrl = await fileToDataUrl(file);
-    const res = await api.post('/kithuat/uploads', { dataUrl, folder: 'receipts' }, {
-      loading: true,
-    }).catch(() => null);
-    e.target.value = '';
-    if (!res) return;
-    $('r_receipt_url').value = res.url;
-    $('r_receipt_preview').src = res.url;
-    $('r_receipt_preview').style.display = 'block';
-  }
-
-  async function handleRemitSubmit(e) {
-    e.preventDefault();
-    const data = {
-      collection_ids: Array.from(state.selected),
-      method: $('r_method').value,
-      receipt_url: $('r_receipt_url').value || null,
-      note: $('r_note').value.trim() || null,
-    };
-    const ok = await api.post('/kithuat/remittances', data, {
-      successMessage: 'Đã nộp, chờ admin duyệt',
-      loading: true,
-    }).catch(() => null);
+  async function uploadStepPhoto() {
+    const o = state.detail;
+    const html = `
+      <div style="padding:14px">
+        <div class="field"><label>Chọn ảnh từ máy</label>
+          <input type="file" id="upFile" accept="image/*">
+        </div>
+        <div class="field"><label>Mô tả (tuỳ chọn)</label>
+          <input id="upCap" type="text" class="input">
+        </div>
+      </div>
+    `;
+    const ok = await openSimpleModal('Thêm ảnh', html, 'Lưu');
     if (!ok) return;
-    state.selected.clear();
-    closeRemit();
-    load();
-  }
-
-  // ---- List click --------------------------------------------
-  function handleListClick(e) {
-    // Tick chon collection
-    if (e.target.classList.contains('pick')) {
-      const id = Number(e.target.dataset.collection);
-      if (e.target.checked) state.selected.add(id);
-      else state.selected.delete(id);
-      renderBatchBar();
+    const file = document.getElementById('upFile').files[0];
+    const caption = document.getElementById('upCap').value.trim() || null;
+    if (!file) { ui.toast('Hãy chọn ảnh', 'warning'); closeSimpleModal(); return; }
+    closeSimpleModal();
+    ui.toast('Đang tải ảnh lên imgbb…');
+    let url;
+    try {
+      url = await imgbb.upload(file);
+    } catch (e) {
+      ui.toast('Upload ảnh thất bại', 'error');
       return;
     }
-    const btn = e.target.closest('button[data-act]');
-    if (!btn) return;
-    if (btn.dataset.act === 'detail') openDetail(btn.dataset.id);
+    const r = await api.post(`/kithuat/orders/${o.id}/photos`, { url, caption }, { onError: 'toast' });
+    if (r) { ui.toast('Đã thêm ảnh', 'success'); openDetail(o.id); }
   }
 
-  // ---- Filter handlers ---------------------------------------
-  function debounce(fn, ms) {
-    let t;
-    return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+  // ---- SIMPLE MODAL OVERLAY -----------------------------------
+  function openSimpleModal(title, html, okText) {
+    return new Promise(resolve => {
+      let div = document.getElementById('simpleModal');
+      if (div) div.remove();
+      div = document.createElement('div');
+      div.id = 'simpleModal';
+      div.className = 'modal-bg open';
+      div.style.zIndex = '300';
+      div.innerHTML = `
+        <div class="modal" style="max-width:520px">
+          <div class="modal-head">
+            <h3>${esc(title)}</h3>
+            <button type="button" class="modal-close" id="smClose">×</button>
+          </div>
+          <div class="modal-body">${html}</div>
+          <div class="modal-foot">
+            <button type="button" class="btn ghost" id="smCancel">Huỷ</button>
+            <button type="button" class="btn" id="smOk">${esc(okText || 'OK')}</button>
+          </div>
+        </div>`;
+      document.body.appendChild(div);
+      div.querySelector('#smClose').addEventListener('click', () => { div.remove(); resolve(false); });
+      div.querySelector('#smCancel').addEventListener('click', () => { div.remove(); resolve(false); });
+      div.querySelector('#smOk').addEventListener('click', () => resolve(true));
+    });
   }
+  function closeSimpleModal() { const d = document.getElementById('simpleModal'); if (d) d.remove(); }
 
-  function init() {
+  // ---- BOOT ---------------------------------------------------
+  document.addEventListener('DOMContentLoaded', async () => {
     techShell.init('tasks');
-    readFiltersFromUrl();
-
-    ['fStatus','fKind','fPayment','fDateFrom','fDateTo'].forEach(id => {
-      $(id).addEventListener('change', load);
+    document.querySelectorAll('#quickTabs button').forEach(b => {
+      b.addEventListener('click', () => {
+        document.querySelectorAll('#quickTabs button').forEach(x => x.classList.remove('on'));
+        b.classList.add('on');
+        state.bucket = b.dataset.bucket;
+        loadList();
+      });
     });
-    $('fSearch').addEventListener('input', debounce(load, 300));
-
-    $('taskList').addEventListener('click', handleListClick);
-
-    $('batchClear').addEventListener('click', () => {
-      state.selected.clear();
-      load();
-    });
-    $('batchRemit').addEventListener('click', openRemit);
-
-    $('detailClose').addEventListener('click', closeDetail);
-    $('detailCloseBtn').addEventListener('click', closeDetail);
-    $('detailModal').addEventListener('click', (e) => { if (e.target.id === 'detailModal') closeDetail(); });
-
-    $('btnUploadReceive').addEventListener('click', openReceive);
-    $('btnStart').addEventListener('click', handleStartTask);
-    $('btnCompleteOpen').addEventListener('click', openComplete);
-
-    // Receive modal
-    $('receiveClose').addEventListener('click', closeReceive);
-    $('receiveModal').addEventListener('click', (e) => { if (e.target.id === 'receiveModal') closeReceive(); });
-    $('receiveConfirm').addEventListener('click', handleReceiveConfirm);
-    $('receivePhotoFile').addEventListener('change', handleReceivePhotoAdd);
-    $('receivePhotoGrid').addEventListener('click', (e) => {
-      if (e.target.id === 'receivePhotoAddBtn' || e.target.closest('#receivePhotoAddBtn')) {
-        $('receivePhotoFile').click();
-      }
-    });
-
-    // Complete modal
-    $('completeClose').addEventListener('click', closeComplete);
-    $('completeCancel').addEventListener('click', closeComplete);
-    $('completeModal').addEventListener('click', (e) => { if (e.target.id === 'completeModal') closeComplete(); });
-    $('completeFrm').addEventListener('submit', handleComplete);
-
-    // 2 input split: thay doi -> tinh lai debt
-    $('c_to_staff').addEventListener('input', syncSplit);
-    $('c_to_admin').addEventListener('input', syncSplit);
-
-    $('photoFile').addEventListener('change', handlePhotoAdd);
-    $('photoGrid').addEventListener('click', (e) => {
-      if (e.target.id === 'photoAddBtn' || e.target.closest('#photoAddBtn')) {
-        $('photoFile').click();
-      }
-    });
-
-    // Remit modal
-    $('remitClose').addEventListener('click', closeRemit);
-    $('remitCancel').addEventListener('click', closeRemit);
-    $('remitModal').addEventListener('click', (e) => { if (e.target.id === 'remitModal') closeRemit(); });
-    $('remitFrm').addEventListener('submit', handleRemitSubmit);
-    $('r_receipt_file').addEventListener('change', handleReceiptUpload);
-
-    load();
-
-    setInterval(() => {
-      if (document.hidden) return;
-      if (document.querySelector('.modal-bg.open')) return;
-      load({ silent: true });
-    }, 3000);
-  }
-
-  document.addEventListener('DOMContentLoaded', init);
+    $('modalClose').addEventListener('click', closeDetail);
+    $('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeDetail(); });
+    await loadList();
+  });
 })();

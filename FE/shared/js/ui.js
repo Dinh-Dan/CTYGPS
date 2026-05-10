@@ -334,3 +334,84 @@
     pushDialog, popDialog, dialogCount,
   };
 })(window);
+
+// ================== MONEY INPUT (vi-VN: 1.000.000) ==================
+(function(global){
+  const fmt = new Intl.NumberFormat('vi-VN');
+  const SEL = 'input.money-input';
+  function parseRaw(s){
+    const str = String(s ?? '');
+    const neg = /^\s*-/.test(str) || str.replace(/[^\d-]/g,'').startsWith('-');
+    const digits = str.replace(/\D/g,'');
+    const n = digits ? +digits : 0;
+    return neg ? -n : n;
+  }
+  function prep(el){
+    if(!el || el.dataset.moneyReady) return;
+    el.dataset.moneyReady = '1';
+    if(el.type === 'number'){
+      el.type = 'text';
+      el.setAttribute('inputmode','numeric');
+      el.removeAttribute('step');
+    } else if(!el.getAttribute('inputmode')){
+      el.setAttribute('inputmode','numeric');
+    }
+    if(el.value){
+      const n = parseRaw(el.value);
+      el.dataset.raw = String(n);
+      el.value = n ? fmt.format(n) : (el.value.trim() === '-' ? '-' : '');
+    } else {
+      el.dataset.raw = '0';
+    }
+  }
+  function formatOnInput(el){
+    const before = el.value;
+    const caret = el.selectionStart ?? before.length;
+    const digitsBefore = before.slice(0, caret).replace(/\D/g,'').length;
+    const raw = parseRaw(before);
+    el.dataset.raw = String(raw);
+    const after = raw ? fmt.format(raw) : (before.trim() === '-' ? '-' : '');
+    if(after !== before){
+      el.value = after;
+      let pos = 0, seen = 0;
+      while(pos < after.length && seen < digitsBefore){
+        if(/\d/.test(after[pos])) seen++;
+        pos++;
+      }
+      try{ el.setSelectionRange(pos, pos); }catch(_){}
+    }
+  }
+  function scan(root){ (root||document).querySelectorAll(SEL).forEach(prep); }
+  document.addEventListener('focusin', e=>{
+    const el = e.target;
+    if(el && el.matches && el.matches(SEL)) prep(el);
+  });
+  document.addEventListener('input', e=>{
+    const el = e.target;
+    if(el && el.matches && el.matches(SEL)){ prep(el); formatOnInput(el); }
+  }, true);
+  document.addEventListener('blur', e=>{
+    const el = e.target;
+    if(el && el.matches && el.matches(SEL)) formatOnInput(el);
+  }, true);
+  if(document.readyState !== 'loading') scan();
+  else document.addEventListener('DOMContentLoaded', ()=>scan());
+
+  global.Money = {
+    scan, prep,
+    get: el => {
+      if(!el) return 0;
+      if(el.dataset && el.dataset.raw != null && el.dataset.raw !== '') return +el.dataset.raw || 0;
+      return parseRaw(el.value);
+    },
+    set: (el, n) => {
+      if(!el) return;
+      prep(el);
+      n = +n || 0;
+      el.dataset.raw = String(n);
+      el.value = n ? fmt.format(n) : '';
+    },
+    format: n => fmt.format(+n || 0),
+    parse: parseRaw
+  };
+})(window);

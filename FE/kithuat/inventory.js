@@ -211,7 +211,6 @@
       product_id: productId,
       qty,
       imei_list: $('i_imei').value.trim() || null,
-      vehicle_plate: $('i_plate').value.trim() || null,
     }, { successMessage: 'Đã đánh dấu đã lắp', loading: true }).catch(() => null);
     if (!ok) return;
     $('installModal').classList.remove('open');
@@ -246,10 +245,108 @@
     return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
   }
 
+  // ==================== STAFF STOCK ISSUES ====================
+  async function loadIssues() {
+    const r = await api.get('/kithuat/staff-issues?status=approved&limit=50', { silent: true })
+      .catch(() => null);
+    const items = (r && r.items) || [];
+    renderIssues(items);
+  }
+  function renderIssues(items) {
+    const block = $('issuesBlock');
+    const list  = $('issuesList');
+    if (!block || !list) return;
+    if (!items.length) { block.style.display = 'none'; list.innerHTML = ''; return; }
+    block.style.display = '';
+    list.innerHTML = items.map(it => `
+      <div class="pool-card">
+        <div class="meta">
+          <div><b>${escape(it.code)}</b> · ${it.line_count} dòng · SL ${it.total_approved}</div>
+          <small class="text-muted">Duyệt lúc ${fmtDate(it.approved_at)}${it.note ? ' · ' + escape(it.note) : ''}</small>
+        </div>
+        <button class="btn primary" data-issue-id="${it.id}" data-act="open-issue">Xem & xác nhận</button>
+      </div>
+    `).join('');
+  }
+
+  async function openIssue(id) {
+    const d = await api.get(`/kithuat/staff-issues/${id}`).catch(() => null);
+    if (!d) return;
+    const lines = d.items.map(it => `
+      <tr>
+        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0">${escape(it.product_code)} · ${escape(it.product_name)}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right;width:80px"><b>${it.qty_approved}</b></td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-family:monospace;font-size:12px">${escape(it.imei_list || '')}</td>
+      </tr>
+    `).join('');
+    const wrap = document.createElement('div');
+    wrap.className = 'modal-bg open';
+    wrap.innerHTML = `
+      <div class="modal" style="max-width:640px">
+        <div class="modal-head">
+          <h3>Phiếu cấp ${escape(d.code)}</h3>
+          <button type="button" class="modal-close" data-x>×</button>
+        </div>
+        <div class="modal-body">
+          <p>Người cấp: <b>${escape(d.staff_name)}</b></p>
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr style="background:#f1f5f9">
+              <th style="padding:6px 8px;text-align:left">Sản phẩm</th>
+              <th style="padding:6px 8px;text-align:right">SL</th>
+              <th style="padding:6px 8px;text-align:left">IMEI</th>
+            </tr></thead>
+            <tbody>${lines}</tbody>
+          </table>
+          <div class="field" style="margin-top:14px">
+            <label>Ảnh xác nhận đã nhận hàng *</label>
+            <input type="file" id="iss_photo" accept="image/*" capture="environment">
+            <p class="help">Ảnh sẽ upload lên imgbb. Bắt buộc.</p>
+            <img id="iss_preview" style="max-height:160px;margin-top:8px;border-radius:6px;display:none">
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn ghost" data-x>Đóng</button>
+          <button type="button" class="btn success" id="iss_submit">Xác nhận đã nhận</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(wrap);
+    wrap.addEventListener('click', (e) => {
+      if (e.target === wrap || e.target.closest('[data-x]')) wrap.remove();
+    });
+
+    let uploadedUrl = null;
+    let uploading = false;
+    wrap.querySelector('#iss_photo').addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      try {
+        uploading = true;
+        ui.toast('Đang upload ảnh...', 'info');
+        const url = await imgbb.upload(file, { name: `issue-${d.code}` });
+        uploadedUrl = url;
+        const img = wrap.querySelector('#iss_preview');
+        img.src = url;
+        img.style.display = '';
+        ui.toast('Đã upload ảnh', 'success');
+      } catch (err) {
+        ui.toast('Upload ảnh lỗi: ' + (err.message || ''), 'error');
+      } finally { uploading = false; }
+    });
+    wrap.querySelector('#iss_submit').addEventListener('click', async () => {
+      if (uploading) { ui.toast('Đợi upload xong', 'warning'); return; }
+      if (!uploadedUrl) { ui.toast('Phải upload ảnh trước', 'warning'); return; }
+      await api.post(`/kithuat/staff-issues/${id}/receive`, { photo_url: uploadedUrl },
+        { successMessage: 'Đã xác nhận nhận hàng' });
+      wrap.remove();
+      await Promise.all([loadIssues(), loadHoldings()]);
+    });
+  }
+
   async function init() {
     techShell.init('inventory');
     await loadTasks();
-    await Promise.all([loadHoldings(), loadPool()]);
+    await Promise.all([loadHoldings(), loadPool(), loadIssues()]);
 
     // Toolbar
     $('btnTakeDirect').addEventListener('click', openTakeDirect);
@@ -257,6 +354,13 @@
     // Pool list
     $('poolList').addEventListener('click', handlePoolClick);
     $('tbody').addEventListener('click', handleTableClick);
+
+    // Phieu cap
+    const issuesList = $('issuesList');
+    if (issuesList) issuesList.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-act="open-issue"]');
+      if (btn) openIssue(Number(btn.dataset.issueId));
+    });
 
     // Take-pool modal
     $('tpClose').addEventListener('click',  () => $('takePoolModal').classList.remove('open'));
