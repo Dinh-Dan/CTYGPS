@@ -37,7 +37,7 @@ router.get('/products', async (req, res, next) => {
     const limit      = Math.min(48, Math.max(1, parseInt(req.query.limit) || 12));
     const offset     = (page - 1) * limit;
 
-    const where = ['p.is_deleted = 0'];
+    const where = ["p.is_deleted = 0", "p.code != 'REPAIR_SERVICE'"];
     const args  = [];
 
     if (q) {
@@ -94,7 +94,7 @@ router.get('/products/:id', async (req, res, next) => {
               p.category_id, c.name AS category_name
          FROM products p
          LEFT JOIN categories c ON p.category_id = c.id
-        WHERE p.id = ? AND p.is_deleted = 0`,
+        WHERE p.id = ? AND p.is_deleted = 0 AND p.code != 'REPAIR_SERVICE'`,
       [id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy sản phẩm' });

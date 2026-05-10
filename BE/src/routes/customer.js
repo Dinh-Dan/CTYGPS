@@ -139,7 +139,7 @@ router.get('/products', async (req, res, next) => {
     const limit      = Math.min(48, Math.max(1, parseInt(req.query.limit) || 12));
     const offset     = (page - 1) * limit;
 
-    const where = ['p.is_deleted = 0'];
+    const where = ["p.is_deleted = 0", "p.code != 'REPAIR_SERVICE'"];
     const args  = [];
     if (q) { where.push('(p.name LIKE ? OR p.code LIKE ?)'); args.push(`%${q}%`, `%${q}%`); }
     if (categoryId) { where.push('p.category_id = ?'); args.push(categoryId); }
@@ -186,7 +186,7 @@ router.get('/products/:id', async (req, res, next) => {
               p.category_id, c.name AS category_name
          FROM products p
          LEFT JOIN categories c ON c.id = p.category_id
-        WHERE p.id = ? AND p.is_deleted = 0`,
+        WHERE p.id = ? AND p.is_deleted = 0 AND p.code != 'REPAIR_SERVICE'`,
       [id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Khong tim thay san pham' });
@@ -335,7 +335,7 @@ router.post('/orders', async (req, res, next) => {
       const uniq = [...new Set(allProductIds)];
       const ph = uniq.map(() => '?').join(',');
       const [products] = await conn.query(
-        `SELECT id FROM products WHERE id IN (${ph}) AND is_deleted = 0`, uniq
+        `SELECT id FROM products WHERE id IN (${ph}) AND is_deleted = 0 AND code != 'REPAIR_SERVICE'`, uniq
       );
       if (products.length !== uniq.length) throw httpErr(404, 'San pham khong ton tai');
       priceMap = await resolvePriceMap(conn, uniq, req.user.sub);
