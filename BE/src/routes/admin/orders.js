@@ -376,7 +376,9 @@ router.post('/', async (req, res, next) => {
     const status = approve ? 'confirmed' : 'pending';
 
     const paymentMethod = PAYMENT_METHODS.includes(req.body.payment_method) ? req.body.payment_method : 'cash';
-    const wage = Math.max(0, Number(req.body.wage_amount) || 0);
+    const wage = req.body.wage_amount === undefined
+      ? null
+      : Math.max(0, Number(req.body.wage_amount) || 0);
     const adminId = req.user && req.user.sub ? req.user.sub : null;
 
     let assignedStaffId = null;
@@ -622,6 +624,7 @@ router.patch('/:id/progress-note', async (req, res, next) => {
 // ASSIGN STAFF — check staff_holdings du san pham trong don
 // ============================================================
 // Neu don dang pending -> auto chuyen confirmed luc gan.
+// wage = null nghia la KHONG gui field -> giu nguyen wage_amount cu (B-010).
 async function _assignStaff(conn, orderId, staffId, wage) {
   const [staffRow] = await conn.query(
     `SELECT id, role FROM staff WHERE id = ? AND is_deleted = 0`, [staffId]
@@ -630,7 +633,7 @@ async function _assignStaff(conn, orderId, staffId, wage) {
   if (staffRow[0].role !== 'kithuat') throw httpErr(400, 'Chi co the gan nhan vien co role kithuat');
 
   const [orderRow] = await conn.query(
-    `SELECT id, status FROM orders WHERE id = ? AND is_deleted = 0`, [orderId]
+    `SELECT id, status, wage_amount FROM orders WHERE id = ? AND is_deleted = 0`, [orderId]
   );
   if (!orderRow.length) throw httpErr(404, 'Khong tim thay don');
 
@@ -667,16 +670,18 @@ async function _assignStaff(conn, orderId, staffId, wage) {
     }
   }
 
-  // OK -> set assigned + wage
-  const sets = ['assigned_staff_id = ?', 'wage_amount = ?'];
-  const args = [staffId, wage];
+  // OK -> set assigned + wage (chi update wage neu duoc gui — B-010)
+  const finalWage = wage === null ? Number(orderRow[0].wage_amount || 0) : wage;
+  const sets = ['assigned_staff_id = ?'];
+  const args = [staffId];
+  if (wage !== null) { sets.push('wage_amount = ?'); args.push(wage); }
   // Pending -> confirmed (gan KTV = duyet luon)
   if (orderRow[0].status === 'pending') {
     sets.push("status = 'confirmed'");
   }
   args.push(orderId);
   await conn.query(`UPDATE orders SET ${sets.join(', ')} WHERE id = ?`, args);
-  await syncLaborCharge(conn, orderId, wage);
+  await syncLaborCharge(conn, orderId, finalWage);
   await recalcOrderTotal(conn, orderId);
   await recalcPaymentStatus(conn, orderId);
 }
@@ -709,7 +714,9 @@ router.post('/:id/assign-staff', async (req, res, next) => {
     const id = Number(req.params.id);
     const staffId = Number(req.body.staff_id);
     if (!staffId) throw httpErr(400, 'Thieu staff_id');
-    const wage = Math.max(0, Number(req.body.wage_amount) || 0);
+    const wage = req.body.wage_amount === undefined
+      ? null
+      : Math.max(0, Number(req.body.wage_amount) || 0);
 
     await conn.beginTransaction();
     await _assignStaff(conn, id, staffId, wage);
@@ -729,7 +736,9 @@ router.patch('/:id/reassign-staff', async (req, res, next) => {
     const id = Number(req.params.id);
     const staffId = Number(req.body.staff_id);
     if (!staffId) throw httpErr(400, 'Thieu staff_id');
-    const wage = Math.max(0, Number(req.body.wage_amount) || 0);
+    const wage = req.body.wage_amount === undefined
+      ? null
+      : Math.max(0, Number(req.body.wage_amount) || 0);
     await conn.beginTransaction();
     await _assignStaff(conn, id, staffId, wage);
     await conn.commit();
