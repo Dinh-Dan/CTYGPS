@@ -378,7 +378,10 @@ router.post('/orders', async (req, res, next) => {
         for (const it of ln.items) {
           const pid = Number(it.product_id);
           if (!pid) continue;
-          const qty = Math.max(1, Number(it.qty) || 1);
+          const qty = Number(it.qty);
+          if (!Number.isInteger(qty) || qty < 1 || qty > 9999) {
+            throw httpErr(400, 'qty phai la so nguyen 1..9999');
+          }
           const price = priceMap.get(pid) || 0;
           await conn.query(
             `INSERT INTO order_items (order_id, line_id, product_id, qty, unit_price)
