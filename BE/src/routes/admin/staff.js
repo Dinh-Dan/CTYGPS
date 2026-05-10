@@ -194,13 +194,33 @@ router.post('/', async (req, res, next) => {
 // ---- PUT /api/admin/staff/:id ---------------------------------
 router.put('/:id', async (req, res, next) => {
   try {
-    const id = req.params.id;
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: 'id khong hop le' });
+    }
     const [exist] = await db.query(
-      `SELECT id FROM staff WHERE id = ? AND is_deleted = 0`, [id]
+      `SELECT id, role FROM staff WHERE id = ? AND is_deleted = 0`, [id]
     );
     if (!exist.length) return res.status(404).json({ error: 'Khong tim thay nhan vien' });
 
     const data = pickPayload(req.body, { isUpdate: true });
+
+    // BX-01: ngan lock-out admin
+    if (data.role && data.role !== exist[0].role) {
+      // Cam tu doi role chinh minh
+      if (Number(req.user && req.user.sub) === id) {
+        return res.status(400).json({ error: 'Khong the tu thay doi role cua minh' });
+      }
+      // Neu dang ha cap admin xuong non-admin: kiem tra so admin con lai
+      if (exist[0].role === 'admin' && data.role !== 'admin') {
+        const [cnt] = await db.query(
+          `SELECT COUNT(*) AS n FROM staff WHERE role = 'admin' AND is_deleted = 0`
+        );
+        if (Number(cnt[0].n) <= 1) {
+          return res.status(400).json({ error: 'Khong the ha cap admin cuoi cung' });
+        }
+      }
+    }
 
     if (data.username) {
       const [dup] = await db.query(
