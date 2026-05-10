@@ -41,6 +41,8 @@ const REASONS = {
   technician_return:      { kind: 'in',  scope: 'staff_holdings' },// -staff_holdings, +product_stock
   install_done:           { kind: 'out', scope: 'staff_holdings' },// -staff_holdings (khong dung kho)
   damaged:                { kind: 'out', scope: 'staff_holdings' },// -staff_holdings
+  staff_grant:            { kind: 'out', scope: 'product_stock' }, // admin cap hang cho KTV
+  staff_revoke:           { kind: 'in',  scope: 'staff_holdings' },// admin thu hoi hang tu KTV
 };
 
 const ADMIN_ALLOWED_REASONS = ['import_supplier', 'adjust_plus', 'return_supplier', 'adjust_minus'];
@@ -380,13 +382,34 @@ router.post('/receipts', async (req, res, next) => {
       if (!qty || qty <= 0) throw httpErr(400, 'qty phai > 0');
       if (productIds.has(productId)) throw httpErr(400, 'Moi san pham chi 1 dong / phieu');
       productIds.add(productId);
+      // B-011: Validate IMEI list neu co
+      let imeiList = null;
+      if (raw.imei_list) {
+        const arr = String(raw.imei_list)
+          .split(/[\s,;\n]+/)
+          .map(s => s.trim())
+          .filter(Boolean);
+        const dedup = [...new Set(arr)];
+        if (dedup.length !== arr.length) {
+          throw httpErr(400, 'IMEI bi trung trong cung phieu');
+        }
+        if (dedup.length && dedup.length !== qty) {
+          throw httpErr(400, `So IMEI (${dedup.length}) phai bang qty (${qty}) hoac de trong`);
+        }
+        for (const im of dedup) {
+          if (im.length > 64 || /[<>"'` ]/.test(im)) {
+            throw httpErr(400, `IMEI khong hop le: ${im}`);
+          }
+        }
+        imeiList = dedup.join(',');
+      }
       lines.push({
         product_id: productId,
         qty,
         unit_price: raw.unit_price !== undefined && raw.unit_price !== null && raw.unit_price !== ''
           ? Number(raw.unit_price) : null,
-        imei_list: raw.imei_list ? String(raw.imei_list).trim() : null,
-        note: raw.note ? String(raw.note).trim() : null,
+        imei_list: imeiList,
+        note: raw.note ? String(raw.note).trim().slice(0, 500) : null,
       });
     }
 
