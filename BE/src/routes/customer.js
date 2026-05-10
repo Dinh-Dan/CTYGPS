@@ -55,6 +55,14 @@ function vAddress(input) {
   if (/[<>]/.test(v))  return { ok: false, error: 'Dia chi chua ky tu khong hop le' };
   return { ok: true, value: v };
 }
+// Note tu do (note don / note line): cho phep xuong dong, cap 1000, cam < > de chong XSS.
+function vFreeText(input, { max = 1000, label = 'Ghi chu' } = {}) {
+  if (input == null || input === '') return { ok: true, value: null };
+  const v = String(input);
+  if (v.length > max) return { ok: false, error: `${label} qua dai (toi da ${max})` };
+  if (/[<>]/.test(v)) return { ok: false, error: `${label} chua ky tu khong hop le` };
+  return { ok: true, value: v.trim() || null };
+}
 
 router.patch('/profile', async (req, res, next) => {
   try {
@@ -311,6 +319,21 @@ router.post('/orders', async (req, res, next) => {
     const lines = Array.isArray(req.body.lines) ? req.body.lines : [];
     if (!lines.length) throw httpErr(400, 'Don phai co it nhat 1 dong cong viec');
 
+    // Cap address + note cap don (B-DLR-4 + BX-06)
+    const vAddr = vAddress(req.body.address);
+    if (!vAddr.ok) throw httpErr(400, vAddr.error);
+    const vNote = vFreeText(req.body.note, { max: 1000, label: 'Ghi chu don' });
+    if (!vNote.ok) throw httpErr(400, vNote.error);
+
+    // Moi line phai co >= 1 item HOAC >= 1 field_value co label (B-005)
+    for (const ln of lines) {
+      const hasItem = Array.isArray(ln.items) && ln.items.some(it => Number(it.product_id) > 0);
+      const hasField = Array.isArray(ln.field_values) && ln.field_values.some(fv => String(fv && fv.label || '').trim());
+      if (!hasItem && !hasField) {
+        throw httpErr(400, 'Moi dong phai co it nhat 1 san pham hoac 1 thong tin');
+      }
+    }
+
     const tplIds = [...new Set(lines.map(l => Number(l.template_id)).filter(Boolean))];
     if (!tplIds.length || tplIds.length !== new Set(lines.map(l => Number(l.template_id))).size) {
       throw httpErr(400, 'Line thieu template_id');
@@ -356,8 +379,8 @@ router.post('/orders', async (req, res, next) => {
                  ?, ?)`,
         [
           code, customerId,
-          req.body.address || null,
-          req.body.note || null,
+          vAddr.value,
+          vNote.value,
           creatorType, customerId,
         ]
       ).then(([r]) => r)
@@ -367,10 +390,12 @@ router.post('/orders', async (req, res, next) => {
     let lineSeq = 0;
     for (const ln of lines) {
       lineSeq++;
+      const vLnNote = vFreeText(ln.note, { max: 500, label: 'Ghi chu dong' });
+      if (!vLnNote.ok) throw httpErr(400, vLnNote.error);
       const [r] = await conn.query(
         `INSERT INTO order_lines (order_id, template_id, seq, note)
          VALUES (?, ?, ?, ?)`,
-        [orderId, Number(ln.template_id), lineSeq, ln.note ? String(ln.note) : null]
+        [orderId, Number(ln.template_id), lineSeq, vLnNote.value]
       );
       const lineId = r.insertId;
 
@@ -396,12 +421,20 @@ router.post('/orders', async (req, res, next) => {
         for (const fv of ln.field_values) {
           const label = String(fv.label || '').trim();
           if (!label) continue;
+          if (label.length > 100 || /[<>"'`]/.test(label)) {
+            throw httpErr(400, 'Nhan thong tin (label) khong hop le');
+          }
+          const rawVal = fv.value == null ? null : String(fv.value);
+          if (rawVal != null) {
+            if (rawVal.length > 500) throw httpErr(400, 'Gia tri thong tin qua dai (toi da 500)');
+            if (/[<>]/.test(rawVal)) throw httpErr(400, 'Gia tri thong tin chua ky tu khong hop le');
+          }
           seq++;
           await conn.query(
             `INSERT INTO order_field_values (order_id, line_id, template_field_id, label, value, seq)
              VALUES (?, ?, ?, ?, ?, ?)`,
             [orderId, lineId, fv.template_field_id ? Number(fv.template_field_id) : null,
-             label, fv.value == null ? null : String(fv.value), seq]
+             label, rawVal, seq]
           );
         }
       }
