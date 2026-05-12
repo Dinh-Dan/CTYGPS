@@ -173,19 +173,12 @@ async function syncLaborCharge(conn, orderId, wageAmount) {
 //   else paid >= total -> 'paid'; paid > 0 -> 'partial'; else 'unpaid'
 async function recalcPaymentStatus(conn, orderId) {
   const [orderRows] = await conn.query(
-    `SELECT total_amount, paid_amount, debt_carried_at, payment_status
+    `SELECT total_amount, paid_amount, debt_carried_at, payment_status, status
        FROM orders WHERE id = ? AND is_deleted = 0`,
     [orderId]
   );
   if (!orderRows.length) return null;
   const o = orderRows[0];
-
-  if (o.debt_carried_at) {
-    if (o.payment_status !== 'paid') {
-      await conn.query(`UPDATE orders SET payment_status = 'paid' WHERE id = ?`, [orderId]);
-    }
-    return 'paid';
-  }
 
   const [colSum] = await conn.query(
     `SELECT COALESCE(SUM(amount), 0) AS unremitted
@@ -206,9 +199,22 @@ async function recalcPaymentStatus(conn, orderId) {
   const adminPending = Number(pendSum[0].admin_pending);
   const effective    = paid + unremitted + adminPending;
 
+  // Don da ket vao phieu rolling balance (debt_carried_at IS NOT NULL):
+  // No chuyen sang customers.opening_balance roi. Don khong con trong bang cong no
+  // (vi DEBT_WHERE loc debt_carried_at IS NULL), nhung payment_status van the hien dung.
+  if (o.debt_carried_at) {
+    const next = (total <= 0 || paid >= total) ? 'paid' : 'customer_owes';
+    if (next !== o.payment_status) {
+      await conn.query(`UPDATE orders SET payment_status = ? WHERE id = ?`, [next, orderId]);
+    }
+    return next;
+  }
+
+  // Chi don da hoan thanh (status='done') moi duoc tag 'customer_owes'.
+  // Don confirmed/in_progress chua chot don, khach tra thieu chi la 'partial'/'unpaid'.
   let next;
   if (total <= 0 && paid <= 0)  next = 'unpaid';
-  else if (effective < total)   next = 'customer_owes';
+  else if (effective < total && o.status === 'done') next = 'customer_owes';
   else if (adminPending > 0)    next = 'pending_admin_confirm';
   else if (unremitted > 0)      next = 'staff_owes';
   else if (paid >= total)       next = 'paid';

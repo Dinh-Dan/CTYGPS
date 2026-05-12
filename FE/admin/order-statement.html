@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Bảng kê đơn hàng – Admin VinaGPS</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  body{background:#f1f5f9;margin:0}
+  .stmt-page{max-width:1100px;margin:18px auto;padding:0 16px 60px}
+  .stmt-actions{display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap}
+  .stmt-actions .spacer{flex:1}
+  .stmt-paper{background:#fff;padding:28px 36px;box-shadow:0 4px 16px rgba(0,0,0,.08);border-radius:8px}
+
+  /* Header */
+  .stmt-header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0f172a;padding-bottom:14px;margin-bottom:18px;flex-wrap:wrap;gap:12px}
+  .stmt-brand{display:flex;align-items:center;gap:10px}
+  .stmt-brand .logo{width:48px;height:48px;border-radius:10px;background:linear-gradient(135deg,#1f6feb,#2563eb);color:#fff;display:grid;place-items:center;font-weight:800;font-size:20px}
+  .stmt-brand .brand-name{font-size:18px;font-weight:700;color:#0f172a}
+  .stmt-brand .brand-sub{font-size:12px;color:#64748b}
+  .stmt-meta{text-align:right;font-size:13px;color:#475569}
+  .stmt-meta .stmt-title{font-size:22px;font-weight:800;color:#1f6feb;letter-spacing:.5px;margin-bottom:4px}
+
+  /* Sections */
+  .stmt-section{margin-bottom:20px}
+  .stmt-section h3{font-size:13px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;margin-bottom:10px}
+  .cust-info{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:14px}
+  .cust-info b{color:#0f172a}
+
+  /* Order card */
+  .order-card{border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:14px;background:#fff}
+  .order-card .oc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed #e2e8f0}
+  .order-card .oc-code{font-weight:700;color:#2563eb;font-size:15px}
+  .order-card .oc-amount{font-weight:700;color:#dc2626;font-size:16px;white-space:nowrap}
+  .order-card .oc-meta{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:#475569;margin-bottom:4px}
+  .order-card .oc-meta b{color:#0f172a}
+  .order-card .oc-tag{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600}
+  .oc-tag.st-do{background:#dcfce7;color:#166534}
+  .oc-tag.st-in{background:#fef3c7;color:#92400e}
+  .oc-tag.st-co{background:#dbeafe;color:#1d4ed8}
+  .oc-tag.st-pe{background:#f1f5f9;color:#475569}
+  .oc-tag.st-ca{background:#fee2e2;color:#991b1b}
+
+  /* Line block */
+  .line-block{margin:10px 0;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc}
+  .line-block .ln-title{font-weight:600;color:#0f172a;margin-bottom:6px;font-size:14px}
+  .ln-fields{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px;color:#475569;margin-bottom:6px}
+  .ln-fields .lf-item b{color:#0f172a}
+  .line-table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border-radius:6px;overflow:hidden}
+  .line-table th,.line-table td{padding:6px 10px;border-bottom:1px solid #e2e8f0;text-align:left}
+  .line-table th{background:#f1f5f9;font-weight:600;color:#475569;font-size:12px}
+  .line-table td.num{text-align:right;font-variant-numeric:tabular-nums}
+
+  /* Totals */
+  .order-totals{display:flex;justify-content:flex-end;gap:18px;padding-top:8px;margin-top:6px;border-top:1px dashed #e2e8f0;font-size:13.5px;flex-wrap:wrap}
+  .order-totals .ot-item{display:flex;gap:6px}
+  .order-totals .ot-item span:last-child{font-weight:600;color:#0f172a}
+  .order-totals .ot-item.remain span:last-child{color:#dc2626;font-weight:700}
+
+  /* Summary box */
+  .summary-box{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:16px 20px;margin-top:4px}
+  .summary-box .row{display:flex;justify-content:space-between;padding:5px 0;font-size:14.5px}
+  .summary-box .row.total{font-size:18px;font-weight:800;color:#1f6feb;padding-top:8px;border-top:1px dashed #fdba74;margin-top:6px}
+
+  /* Bank */
+  .bank-block{display:grid;grid-template-columns:1fr 200px;gap:18px;align-items:center;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px}
+  .bank-block .bk-info{font-size:14px}
+  .bank-block .bk-info .row{padding:3px 0}
+  .bank-block .bk-info b{color:#0f172a}
+  .bank-block .bk-qr{text-align:center}
+  .bank-block .bk-qr img{width:170px;height:170px;object-fit:contain;background:#fff;border:1px solid #e2e8f0;border-radius:6px}
+  .bank-block .bk-qr .qr-label{font-size:12px;color:#64748b;margin-top:4px}
+
+  .empty{color:#94a3b8;font-style:italic;padding:30px;text-align:center}
+  .copied{background:#dcfce7;color:#166534;padding:4px 10px;border-radius:6px;font-size:12px}
+
+  @media print{
+    body{background:#fff}
+    .stmt-page{max-width:none;margin:0;padding:0}
+    .stmt-actions{display:none}
+    .stmt-paper{box-shadow:none;padding:18px 24px;border-radius:0}
+    @page{size:A4;margin:12mm}
+  }
+  @media (max-width:680px){
+    .stmt-paper{padding:18px 16px}
+    .cust-info{grid-template-columns:1fr}
+    .bank-block{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="stmt-page">
+  <div class="stmt-actions">
+    <button class="btn ghost" id="btnBack">← Quay lại</button>
+    <button class="btn ghost" id="btnCopy">📋 Copy link</button>
+    <span id="copyOk" class="copied" style="display:none">Đã copy</span>
+    <div class="spacer"></div>
+    <button class="btn ghost" id="btnPrint">🖨 In trang</button>
+    <button class="btn ghost" id="btnDownload" disabled>📥 Tải ảnh</button>
+    <button class="btn ghost" id="btnDownloadPdf" disabled>📄 Tải PDF</button>
+  </div>
+  <div class="stmt-paper" id="stmtPaper">
+    <div class="empty">Đang tải...</div>
+  </div>
+</div>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="/admin/order-statement.js"></script>
+</body>
+</html>

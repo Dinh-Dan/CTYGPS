@@ -16,11 +16,13 @@
 
 const express = require('express');
 const db = require('../../db');
+const { requireRole } = require('../../middleware/auth');
 
 const router = express.Router();
+const adminOnly = requireRole('admin');
 
 // Cac prefix duoc phep ghi (chong client gui key bay)
-const ALLOWED_PREFIXES = ['qr.', 'bank.'];
+const ALLOWED_PREFIXES = ['qr.', 'bank.', 'assets.'];
 
 function isAllowedKey(k) {
   if (!k || typeof k !== 'string' || k.length > 60) return false;
@@ -36,7 +38,7 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.put('/', async (req, res, next) => {
+router.put('/', adminOnly, async (req, res, next) => {
   try {
     const key = String(req.body.key || '').trim();
     const value = req.body.value == null ? '' : String(req.body.value);
@@ -53,7 +55,7 @@ router.put('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.put('/bulk', async (req, res, next) => {
+router.put('/bulk', adminOnly, async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const items = Array.isArray(req.body.items) ? req.body.items : [];

@@ -31,7 +31,7 @@
     activeTab: 'stock',
     products: [],   // dropdown cache
     suppliers: [],  // dropdown cache
-    stock: { q: '', stock_state: '', page: 1, limit: 20, total: 0 },
+    stock: { q: '', stock_state: '', cat: '', qty_min: '', qty_max: '', page: 1, limit: 20, total: 0 },
     inR:   { q: '', reason: '', from: '', to: '', page: 1, limit: 20, total: 0 },
     outR:  { q: '', reason: '', from: '', to: '', page: 1, limit: 20, total: 0 },
     hold:  { q: '' },
@@ -96,6 +96,9 @@
     const p = new URLSearchParams();
     if (state.stock.q)           p.set('q', state.stock.q);
     if (state.stock.stock_state) p.set('stock_state', state.stock.stock_state);
+    if (state.stock.cat)         p.set('category', state.stock.cat);
+    if (state.stock.qty_min !== '') p.set('qty_min', state.stock.qty_min);
+    if (state.stock.qty_max !== '') p.set('qty_max', state.stock.qty_max);
     p.set('page', state.stock.page);
     p.set('limit', state.stock.limit);
     const res = await api.get('/admin/inventory/stock?' + p.toString()).catch(() => null);
@@ -759,6 +762,15 @@
     ]);
     state.products = pRes ? pRes.items : [];
     state.suppliers = sRes ? (sRes.items || sRes) : [];
+
+    // Populate danh mục filter từ danh sách sản phẩm
+    const cats = [...new Set(state.products.map(p => p.category).filter(Boolean))].sort();
+    const sel = $('f_stock_cat');
+    cats.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c; o.textContent = c;
+      sel.appendChild(o);
+    });
   }
 
   function bindEvents() {
@@ -766,17 +778,27 @@
       btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
 
-    // Tab 1
+    // Tab 1 filters
     $('f_stock_q').addEventListener('input', debounce(() => {
       state.stock.q = $('f_stock_q').value.trim();
-      state.stock.page = 1;
-      loadStock();
+      state.stock.page = 1; loadStock();
     }, 300));
+    $('f_stock_cat').addEventListener('change', () => {
+      state.stock.cat = $('f_stock_cat').value;
+      state.stock.page = 1; loadStock();
+    });
     $('f_stock_state').addEventListener('change', () => {
       state.stock.stock_state = $('f_stock_state').value;
-      state.stock.page = 1;
-      loadStock();
+      state.stock.page = 1; loadStock();
     });
+    $('f_stock_qty_min').addEventListener('input', debounce(() => {
+      state.stock.qty_min = $('f_stock_qty_min').value;
+      state.stock.page = 1; loadStock();
+    }, 400));
+    $('f_stock_qty_max').addEventListener('input', debounce(() => {
+      state.stock.qty_max = $('f_stock_qty_max').value;
+      state.stock.page = 1; loadStock();
+    }, 400));
     $('stockPrev').addEventListener('click', () => { if (state.stock.page > 1) { state.stock.page--; loadStock(); }});
     $('stockNext').addEventListener('click', () => { state.stock.page++; loadStock(); });
 

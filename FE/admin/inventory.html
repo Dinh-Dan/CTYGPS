@@ -7,12 +7,12 @@
 <link rel="stylesheet" href="/shared/css/style.css" />
 <style>
   .inv-tabs{
-    display:flex;gap:4px;border-bottom:1px solid #e2e8f0;margin-bottom:14px;
+    display:flex;gap:4px;border-bottom:1px solid #e2e8f0;margin-bottom:8px;
     flex-shrink:0;
   }
   .inv-tab{
-    padding:10px 16px;background:transparent;border:none;cursor:pointer;
-    font-size:14px;color:#475569;font-weight:500;
+    padding:7px 14px;background:transparent;border:none;cursor:pointer;
+    font-size:13px;color:#475569;font-weight:500;
     border-bottom:2px solid transparent;margin-bottom:-1px;
   }
   .inv-tab:hover{ color:#1e40af; }
@@ -26,8 +26,8 @@
   .inv-pane.active{ display:flex; }
 
   .filters-bar{
-    display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;
-    background:#fff;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:12px;
+    display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;
+    background:#fff;padding:7px 10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px;
     flex-shrink:0;
   }
   .filters-bar .field{ margin:0; }
@@ -89,26 +89,23 @@
   <aside class="sidebar" id="sidebar"></aside>
   <main class="main">
     <div class="topnav">
-      <div class="search">🔍 <input id="search" placeholder="Tìm theo mã hoặc tên thiết bị..." /></div>
+      <div style="display:flex;flex-direction:column;justify-content:center;line-height:1.2">
+        <span style="font-size:16px;font-weight:700;color:#0f172a">Kho thiết bị</span>
+        <span style="font-size:11px;color:#64748b">Quản lý tồn kho theo số lượng + lịch sử nhập/xuất theo phiếu.</span>
+      </div>
       <div class="row" id="topnav-user"></div>
     </div>
     <div class="content flex-page">
-      <div class="page-head">
-        <div>
-          <h1>Kho thiết bị</h1>
-          <p class="text-muted mb-0">Quản lý tồn kho theo số lượng + lịch sử nhập/xuất theo phiếu.</p>
-        </div>
-      </div>
 
-      <div class="grid cols-4 mb-3">
-        <div class="stat"><div class="icon">📦</div>
-          <div><div class="label">SP có tồn</div><div class="value" id="st-products">0</div></div></div>
-        <div class="stat"><div class="icon green">✓</div>
-          <div><div class="label">Tổng đơn vị tồn</div><div class="value" id="st-units">0</div></div></div>
-        <div class="stat"><div class="icon blue">🛠</div>
-          <div><div class="label">KTV đang giữ</div><div class="value" id="st-held">0</div></div></div>
-        <div class="stat"><div class="icon amber">⚠</div>
-          <div><div class="label">Sắp hết (&lt;5)</div><div class="value" id="st-low">0</div></div></div>
+      <div class="grid cols-4 mb-2" style="gap:8px">
+        <div class="stat" style="padding:8px 12px;gap:8px"><div class="icon" style="width:32px;height:32px;font-size:15px">📦</div>
+          <div><div class="label" style="font-size:11px">SP có tồn</div><div class="value" style="font-size:20px" id="st-products">0</div></div></div>
+        <div class="stat" style="padding:8px 12px;gap:8px"><div class="icon green" style="width:32px;height:32px;font-size:15px">✓</div>
+          <div><div class="label" style="font-size:11px">Tổng đơn vị tồn</div><div class="value" style="font-size:20px" id="st-units">0</div></div></div>
+        <div class="stat" style="padding:8px 12px;gap:8px"><div class="icon blue" style="width:32px;height:32px;font-size:15px">🛠</div>
+          <div><div class="label" style="font-size:11px">KTV đang giữ</div><div class="value" style="font-size:20px" id="st-held">0</div></div></div>
+        <div class="stat" style="padding:8px 12px;gap:8px"><div class="icon amber" style="width:32px;height:32px;font-size:15px">⚠</div>
+          <div><div class="label" style="font-size:11px">Sắp hết (&lt;5)</div><div class="value" style="font-size:20px" id="st-low">0</div></div></div>
       </div>
 
       <div class="inv-tabs">
@@ -122,11 +119,17 @@
       <!-- Tab 1: Tồn kho -->
       <div class="inv-pane active" data-pane="stock">
         <div class="filters-bar">
-          <div class="field" style="flex:1;min-width:220px">
-            <label>Tìm</label>
-            <input class="input" id="f_stock_q" placeholder="Mã hoặc tên SP">
+          <div class="field" style="flex:1;min-width:180px;margin:0">
+            <label>Tìm kiếm</label>
+            <input class="input" id="f_stock_q" placeholder="Mã hoặc tên SP...">
           </div>
-          <div class="field" style="flex:0 0 200px">
+          <div class="field" style="flex:0 0 170px;margin:0">
+            <label>Danh mục</label>
+            <select class="select" id="f_stock_cat">
+              <option value="">Tất cả</option>
+            </select>
+          </div>
+          <div class="field" style="flex:0 0 170px;margin:0">
             <label>Trạng thái tồn</label>
             <select class="select" id="f_stock_state">
               <option value="">Tất cả</option>
@@ -134,6 +137,14 @@
               <option value="low">Sắp hết (&lt;5)</option>
               <option value="out">Hết hàng</option>
             </select>
+          </div>
+          <div class="field" style="flex:0 0 110px;margin:0">
+            <label>Tồn từ</label>
+            <input class="input" id="f_stock_qty_min" type="number" min="0" placeholder="0">
+          </div>
+          <div class="field" style="flex:0 0 110px;margin:0">
+            <label>Tồn đến</label>
+            <input class="input" id="f_stock_qty_max" type="number" min="0" placeholder="∞">
           </div>
         </div>
         <div class="table-wrap">

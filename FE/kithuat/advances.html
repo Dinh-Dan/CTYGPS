@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Ứng lương – Kỹ thuật VinaGPS</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .adv-form-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px;box-shadow:var(--shadow)}
+  .adv-form-card h3{font-size:15px;font-weight:700;margin-bottom:14px;color:#0f172a}
+  .adv-list{display:flex;flex-direction:column;gap:10px}
+  .adv-row{border:1px solid var(--border);border-radius:8px;padding:12px 14px;background:#fff}
+  .adv-row.pending{border-left:4px solid #f59e0b;background:#fffbeb}
+  .adv-row.approved{border-left:4px solid #10b981;background:#f0fdf4}
+  .adv-row.rejected{border-left:4px solid #ef4444;background:#fff5f5;opacity:.9}
+  .adv-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+  .adv-amount{font-size:17px;font-weight:700;color:#0f172a}
+  .adv-period{font-size:12.5px;color:#64748b;background:#f1f5f9;padding:2px 8px;border-radius:6px}
+  .adv-meta{font-size:12.5px;color:#64748b}
+  .adv-meta .reject-reason{color:#dc2626;margin-top:4px}
+  .pill.adv-pending{background:#fef3c7;color:#92400e}
+  .pill.adv-approved{background:#dcfce7;color:#166534}
+  .pill.adv-rejected{background:#fee2e2;color:#991b1b}
+  .empty-adv{text-align:center;color:#94a3b8;padding:30px;font-size:13px;border:1px dashed #e2e8f0;border-radius:8px}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topnav"><h2 class="topnav-title">Yêu cầu ứng lương</h2></div>
+    <div class="content">
+
+      <!-- Form gui yeu cau -->
+      <div class="adv-form-card">
+        <h3>💰 Gửi yêu cầu ứng lương mới</h3>
+        <div class="grid cols-2">
+          <div class="field">
+            <label>Kỳ lương *</label>
+            <input type="month" id="advPeriod" class="input">
+          </div>
+          <div class="field">
+            <label>Số tiền ứng *</label>
+            <input type="number" id="advAmount" class="input" placeholder="VD: 2000000" min="1">
+          </div>
+        </div>
+        <div class="field">
+          <label>Ghi chú / Lý do</label>
+          <input type="text" id="advNote" class="input" placeholder="Lý do ứng lương...">
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:4px">
+          <button type="button" class="btn" id="btnSubmitAdv">Gửi yêu cầu</button>
+        </div>
+      </div>
+
+      <!-- Lich su phieu ung -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <h3 style="font-size:15px;font-weight:700;margin:0">Lịch sử phiếu ứng</h3>
+        <div style="display:flex;gap:4px">
+          <button class="btn ghost sm on" data-filter="">Tất cả</button>
+          <button class="btn ghost sm" data-filter="pending">Chờ duyệt</button>
+          <button class="btn ghost sm" data-filter="approved">Đã duyệt</button>
+          <button class="btn ghost sm" data-filter="rejected">Từ chối</button>
+        </div>
+      </div>
+      <div id="advList" class="adv-list">
+        <div class="empty-adv">Đang tải...</div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/tech-shell.js"></script>
+<script src="/kithuat/advances.js"></script>
+</body>
+</html>

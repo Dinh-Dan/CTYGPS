@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Tổng kết đơn – Kỹ thuật VinaGPS</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:flex-end}
+  .filter-bar .field{margin:0}
+  .filter-bar .input,.filter-bar .select{height:36px}
+  .table-wrap{background:#fff;border:1px solid var(--border);border-radius:10px;overflow:auto}
+  table.summary{width:100%;border-collapse:collapse;font-size:13.5px;min-width:900px}
+  table.summary th,table.summary td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+  table.summary th{background:#f8fafc;font-weight:600;color:#475569;position:sticky;top:0;z-index:1}
+  table.summary td.num,table.summary th.num{text-align:right;font-variant-numeric:tabular-nums}
+  table.summary tbody tr:hover td{background:#f8fafc;cursor:pointer}
+  table.summary tfoot td{background:#f1f5f9;font-weight:700;border-top:2px solid #cbd5e1;position:sticky;bottom:0}
+  table.summary tfoot td.num{font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600}
+  .pill.pending{background:#fef3c7;color:#92400e}
+  .pill.confirmed{background:#dbeafe;color:#1e40af}
+  .pill.in_progress{background:#e0e7ff;color:#3730a3}
+  .pill.done{background:#dcfce7;color:#166534}
+  .pill.cancelled{background:#fee2e2;color:#991b1b}
+  .empty{text-align:center;padding:30px;color:#64748b}
+  @media (max-width:768px){
+    .sum-grid{grid-template-columns:repeat(2,1fr)}
+    .sum-card .val{font-size:15px}
+    .filter-bar{gap:6px}
+    .filter-bar .input,.filter-bar .select{font-size:13px}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topnav"><h2 class="topnav-title">Tổng kết đơn</h2></div>
+    <div class="content">
+
+      <div class="filter-bar">
+        <div class="field" style="flex:1;min-width:200px">
+          <input id="fQ" class="input" type="search" placeholder="Mã đơn / tên khách / SĐT…">
+        </div>
+        <div class="field">
+          <select id="fStatus" class="select">
+            <option value="">Tất cả trạng thái</option>
+            <option value="pending">Chờ duyệt</option>
+            <option value="confirmed">Đã duyệt</option>
+            <option value="in_progress">Đang làm</option>
+            <option value="done">Hoàn thành</option>
+            <option value="cancelled">Đã huỷ</option>
+          </select>
+        </div>
+        <div class="field">
+          <input id="fFrom" class="input" type="date" title="Từ ngày">
+        </div>
+        <div class="field">
+          <input id="fTo" class="input" type="date" title="Đến ngày">
+        </div>
+        <button id="btnReset" class="btn ghost sm" type="button">Xoá lọc</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="summary">
+          <thead>
+            <tr>
+              <th>Mã đơn</th>
+              <th>Ngày</th>
+              <th>Khách</th>
+              <th>Trạng thái</th>
+              <th class="num">Tổng đơn</th>
+              <th class="num">Đã thu</th>
+              <th class="num">Còn nợ</th>
+              <th class="num">Chưa nộp</th>
+              <th class="num">Đã nộp</th>
+              <th class="num">Tiền công</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr><td colspan="10" class="empty">Đang tải…</td></tr>
+          </tbody>
+          <tfoot id="tfoot">
+            <tr>
+              <td colspan="4">Tổng (<span id="kOrders">0</span> đơn)</td>
+              <td class="num" id="kTotal">0</td>
+              <td class="num" id="kPaid" style="color:#16a34a">0</td>
+              <td class="num" id="kDebt" style="color:#dc2626">0</td>
+              <td class="num" id="kUnremit" style="color:#b45309">0</td>
+              <td class="num" id="kRemit">0</td>
+              <td class="num" id="kWage" style="color:#16a34a">0</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/tech-shell.js"></script>
+<script src="/kithuat/summary.js"></script>
+</body>
+</html>

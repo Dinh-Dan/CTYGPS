@@ -10,6 +10,8 @@
 
 (function (global) {
   // badgeKey = key trong response cua /api/admin/notifications
+  // adminOnly: muc chi admin chinh thuc moi thay (staff khong thay trong sidebar).
+  // Muc khong gan adminOnly => ca admin va staff deu thay.
   const NAV = [
     { type: 'item', href: '/admin/',              icon: '📊', label: 'Dashboard',    key: 'dashboard' },
     { type: 'sep',  label: 'Khách & Đại lý' },
@@ -23,12 +25,26 @@
     { type: 'item', href: '/admin/inventory.html',   icon: '📦', label: 'Kho thiết bị', key: 'inventory' },
     { type: 'item', href: '/admin/staff-stock.html', icon: '🎒', label: 'Kho cá nhân KTV', key: 'staff-stock' },
     { type: 'item', href: '/admin/suppliers.html',   icon: '🏭', label: 'Nhà cung cấp', key: 'suppliers' },
-    { type: 'item', href: '/admin/technicians.html', icon: '🛠', label: 'Kỹ thuật',     key: 'technicians' },
-    { type: 'item', href: '/admin/payroll.html',     icon: '💵', label: 'Bảng lương KTV', key: 'payroll' },
+    { type: 'item', href: '/admin/staff.html', icon: '👷', label: 'Nhân viên', key: 'staff' },
     { type: 'item', href: '/admin/reports.html',     icon: '📈', label: 'Báo cáo',      key: 'reports' },
-    { type: 'sep',  label: 'Hệ thống' },
-    { type: 'item', href: '/admin/settings.html',  icon: '⚙', label: 'Cài đặt',    key: 'settings' },
+    { type: 'sep',  label: 'Hệ thống', adminOnly: true },
+    { type: 'item', href: '/admin/settings.html',  icon: '⚙', label: 'Cài đặt',    key: 'settings', adminOnly: true },
   ];
+
+  // Loc NAV theo role. Tu dong an luon sep neu sau khi loc khong con item nao theo sau.
+  function filterNav(isAdmin) {
+    const out = [];
+    for (const n of NAV) {
+      if (n.adminOnly && !isAdmin) continue;
+      out.push(n);
+    }
+    // Bo sep "mo coi" (sep ma sau no la sep khac hoac het mang)
+    return out.filter((n, i) => {
+      if (n.type !== 'sep') return true;
+      const next = out[i + 1];
+      return next && next.type !== 'sep';
+    });
+  }
 
   const NOTIF_ICON = {
     order_new:              '🆕',
@@ -102,9 +118,19 @@
     document.head.appendChild(s);
   }
 
+  function roleLabel(role) {
+    switch (role) {
+      case 'admin': return 'QUẢN TRỊ';
+      case 'staff': return 'NHÂN VIÊN';
+      default:      return 'QUẢN LÝ';
+    }
+  }
+
   function renderSidebar(activeKey) {
-    let html = '<div class="brand"><span class="logo-mark">GV</span><span>QUẢN LÝ</span></div>';
-    NAV.forEach(n => {
+    const u = auth.user() || {};
+    const isAdmin = u.role === 'admin';
+    let html = `<div class="brand"><span class="logo-mark">GV</span><span>${roleLabel(u.role)}</span></div>`;
+    filterNav(isAdmin).forEach(n => {
       if (n.type === 'sep') {
         html += `<div class="sep">${n.label}</div>`;
       } else {
@@ -410,6 +436,46 @@
     });
   }
 
+  // Hien dialog chao mung sau khi dang nhap (chi 1 lan moi phien).
+  function maybeShowWelcome(u) {
+    if (!u) return;
+    let flag = null;
+    try { flag = sessionStorage.getItem('gpsviet_just_logged_in'); } catch (_) {}
+    if (flag !== '1') return;
+    try { sessionStorage.removeItem('gpsviet_just_logged_in'); } catch (_) {}
+
+    const isAdmin = u.role === 'admin';
+    const perms = filterNav(isAdmin)
+      .filter(n => n.type === 'item' && !n.disabled)
+      .map(n => `<li>${n.icon} ${escape(n.label)}</li>`)
+      .join('');
+    const roleText = isAdmin ? 'Quản trị (admin)' : (u.role === 'staff' ? 'Nhân viên quản lý (staff)' : escape(u.role || ''));
+    const name = escape(u.full_name || u.username || '');
+
+    const bg = document.createElement('div');
+    bg.className = 'ui-dialog-bg';
+    bg.innerHTML = `
+      <div class="ui-dialog ui-dialog-info" style="max-width:480px">
+        <div class="ui-dialog-head">
+          <h3 class="ui-dialog-title">👋 Chào mừng${name ? ', ' + name : ''}</h3>
+          <button class="modal-close" data-act="ok" aria-label="Đóng">×</button>
+        </div>
+        <div class="ui-dialog-body">
+          <p style="margin:0 0 8px">Bạn đã đăng nhập với quyền <b>${roleText}</b>.</p>
+          <p style="margin:0 0 6px">Bạn có thể truy cập các mục:</p>
+          <ul style="margin:0;padding-left:20px;line-height:1.7">${perms}</ul>
+          ${isAdmin ? '' : '<p style="margin:10px 0 0;color:#64748b;font-size:13px">⚠ Mục <b>Cài đặt hệ thống</b> chỉ dành cho Quản trị.</p>'}
+        </div>
+        <div class="ui-dialog-actions">
+          <button class="btn" data-act="ok">OK</button>
+        </div>
+      </div>`;
+    document.body.appendChild(bg);
+    bg.addEventListener('click', (e) => {
+      if (e.target.closest('button[data-act="ok"]') || e.target === bg) bg.remove();
+    });
+  }
+
   function init(activeKey) {
     const u = auth.user();   // co the null
 
@@ -437,6 +503,7 @@
 
     // Load notifications + auto-refresh
     if (u) {
+      maybeShowWelcome(u);
       loadNotifications();
       if (notifTimer) clearInterval(notifTimer);
       notifTimer = setInterval(loadNotifications, 5000); // 5s

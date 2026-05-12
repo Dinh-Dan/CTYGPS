@@ -326,7 +326,7 @@
 
     const yes = await ui.confirm({
       title: 'Xác nhận xoá',
-      message: 'Xoá sản phẩm này? (Không xoá được nếu còn cá thể trong kho)',
+      message: 'Ẩn sản phẩm khỏi danh sách? Lịch sử đơn/kho vẫn được giữ nguyên. Nếu còn cá thể tồn, bạn sẽ phải dọn dẹp ở trang Kho sau.',
       type: 'warning',
       okText: 'Xoá',
     });
@@ -334,7 +334,10 @@
     const ok = await api.delete('/admin/products/' + btn.dataset.id, {
       successMessage: 'Đã xoá sản phẩm',
     }).catch(() => null);
-    if (ok) load();
+    if (ok) {
+      if (ok.warning) ui.toast(ok.warning, 'warning');
+      load();
+    }
   }
 
   function handleDynRowsClick(e) {

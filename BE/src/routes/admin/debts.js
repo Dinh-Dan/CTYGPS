@@ -18,13 +18,17 @@
 const express = require('express');
 const db = require('../../db');
 const { recalcPaymentStatus } = require('../../utils/orderState');
+const { requireRole } = require('../../middleware/auth');
 
 const router = express.Router();
+const adminOnly = requireRole('admin');
 
 // Sau mig 046, no = orders.status NOT IN ('pending','cancelled')
 //                AND orders.payment_status != 'paid'.
 // Khong con bang warranty_orders rieng — tat ca don di vao orders.
-const DEBT_WHERE = `o.status NOT IN ('pending','cancelled') AND o.payment_status != 'paid'`;
+// Chi don da hoan thanh (done) moi tinh vao cong no & dua vao phieu tat toan.
+// Don confirmed/in_progress dang lam dang dau tu chi phi, chua chot — khong tinh no.
+const DEBT_WHERE = `o.status = 'done' AND o.payment_status != 'paid'`;
 
 // Sinh ma phieu tat toan TT-DDMM-NNN (retry khi gap race UNIQUE).
 async function genSettlementCode(conn, attempt = 0) {
@@ -407,7 +411,7 @@ router.get('/staff/:tech_id', async (req, res, next) => {
 // Tat toan KTV: tao 1 remittance approved gom toan bo collections chua nop cua KTV.
 // Body: { method?: 'cash'|'transfer', note?: string, receipt_url?: string }
 // ==============================================================
-router.post('/staff/:tech_id/settle', async (req, res, next) => {
+router.post('/staff/:tech_id/settle', adminOnly, async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const techId = Number(req.params.tech_id);
@@ -528,7 +532,10 @@ router.get('/settlement/:id', async (req, res, next) => {
               (SELECT GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ')
                  FROM order_lines ol
                  LEFT JOIN order_templates t ON t.id = ol.template_id
-                WHERE ol.order_id = o.id AND ol.is_deleted = 0) AS template_name
+                WHERE ol.order_id = o.id AND ol.is_deleted = 0) AS template_name,
+              (SELECT GROUP_CONCAT(DISTINCT NULLIF(TRIM(oi.vehicle_plate), '') SEPARATOR ', ')
+                 FROM order_items oi
+                WHERE oi.order_id = o.id AND oi.vehicle_plate IS NOT NULL AND TRIM(oi.vehicle_plate) <> '') AS vehicle_plate
          FROM orders o
         WHERE o.debt_settlement_id = ? AND o.is_deleted = 0
         ORDER BY o.confirmed_at ASC`,
@@ -611,6 +618,164 @@ router.get('/settlement/:id', async (req, res, next) => {
 });
 
 // ==============================================================
+// GET /api/admin/debts/:customer_id/settle-preview
+// Du lieu day du de render trang /admin/debt-settle-form.html (truoc khi tao phieu)
+// Tra customer + opening + pending_orders kem chi tiet: tasks(lines),
+// items(san pham), order_charges, field_values (bien so, sim, tai khoan...), KTV.
+// ==============================================================
+router.get('/:customer_id/settle-preview', async (req, res, next) => {
+  try {
+    const customerId = Number(req.params.customer_id);
+    if (!Number.isFinite(customerId) || customerId <= 0) {
+      return res.status(400).json({ error: 'customer_id khong hop le' });
+    }
+
+    const [custRows] = await db.query(
+      `SELECT id, code, full_name, phone, address, type, company_name, tax_code,
+              credit_term_days, debt_limit, opening_balance
+         FROM customers WHERE id = ? AND is_deleted = 0`,
+      [customerId]
+    );
+    if (!custRows.length) return res.status(404).json({ error: 'Khong tim thay khach hang' });
+
+    const dateFrom = req.query.date_from || null; // 'YYYY-MM-DD'
+    const dateTo   = req.query.date_to   || null;
+
+    const debt = await calcCustomerDebt(db, customerId);
+
+    // Loc don theo completed_at neu co date range
+    let filteredOrders = debt.pending_orders;
+    if (dateFrom || dateTo) {
+      filteredOrders = filteredOrders.filter(o => {
+        const d = o.completed_at ? String(o.completed_at).slice(0, 10) : null;
+        if (!d) return false;
+        if (dateFrom && d < dateFrom) return false;
+        if (dateTo   && d > dateTo)   return false;
+        return true;
+      });
+    }
+    const filteredOrderDebt = filteredOrders.reduce((s, o) => s + Number(o.remaining), 0);
+    const filteredTotalDebt = Number(debt.opening_balance) + filteredOrderDebt;
+
+    const pendingIds = filteredOrders.map(o => o.id);
+
+    let ordersDetail = [];
+    if (pendingIds.length) {
+      const placeholders = pendingIds.map(() => '?').join(',');
+
+      // Don + KTV
+      const [orders] = await db.query(
+        `SELECT o.id, o.code, o.total_amount, o.paid_amount, o.status, o.payment_status,
+                o.confirmed_at, o.created_at, o.completed_at, o.due_at,
+                o.address, o.note, o.assigned_staff_id,
+                s.full_name AS assigned_staff_name,
+                s.phone     AS assigned_staff_phone,
+                s.username  AS assigned_staff_username
+           FROM orders o
+           LEFT JOIN staff s ON s.id = o.assigned_staff_id
+          WHERE o.id IN (${placeholders})`,
+        pendingIds
+      );
+
+      // Lines (cong viec)
+      const [lines] = await db.query(
+        `SELECT ol.id, ol.order_id, ol.template_id, ol.custom_name, ol.seq,
+                ol.subtotal, ol.note,
+                COALESCE(ol.custom_name, t.name) AS template_name
+           FROM order_lines ol
+           LEFT JOIN order_templates t ON t.id = ol.template_id
+          WHERE ol.order_id IN (${placeholders}) AND ol.is_deleted = 0
+          ORDER BY ol.order_id, ol.seq, ol.id`,
+        pendingIds
+      );
+
+      // Items (san pham)
+      const [items] = await db.query(
+        `SELECT oi.id, oi.order_id, oi.line_id, oi.product_id, oi.qty,
+                oi.unit_price, oi.vat_percent,
+                p.name AS product_name, p.code AS product_code
+           FROM order_items oi
+           LEFT JOIN products p ON p.id = oi.product_id
+          WHERE oi.order_id IN (${placeholders})`,
+        pendingIds
+      );
+
+      // Charges (chi phi line va chi phi cap don)
+      const [charges] = await db.query(
+        `SELECT id, order_id, line_id, kind, label, amount
+           FROM order_charges
+          WHERE order_id IN (${placeholders}) AND is_deleted = 0
+          ORDER BY id`,
+        pendingIds
+      );
+
+      // Field values (bien so xe, sim, tai khoan...)
+      const [fieldValues] = await db.query(
+        `SELECT id, order_id, line_id, template_field_id, label, value, seq
+           FROM order_field_values
+          WHERE order_id IN (${placeholders}) AND is_deleted = 0
+          ORDER BY seq, id`,
+        pendingIds
+      );
+
+      // Group theo order
+      const orderMap = new Map();
+      for (const o of orders) {
+        orderMap.set(o.id, { ...o, lines: [], order_charges: [] });
+      }
+      const lineMap = new Map();
+      for (const ln of lines) {
+        const node = { ...ln, items: [], charges: [], field_values: [] };
+        lineMap.set(ln.id, node);
+        const od = orderMap.get(ln.order_id);
+        if (od) od.lines.push(node);
+      }
+      for (const it of items) {
+        if (it.line_id && lineMap.has(it.line_id)) lineMap.get(it.line_id).items.push(it);
+      }
+      for (const c of charges) {
+        if (c.label === 'Công lắp') continue;  // an phi cong KTV
+        if (c.line_id == null) {
+          const od = orderMap.get(c.order_id);
+          if (od) od.order_charges.push(c);
+        } else if (lineMap.has(c.line_id)) {
+          lineMap.get(c.line_id).charges.push(c);
+        }
+      }
+      for (const fv of fieldValues) {
+        if (fv.line_id && lineMap.has(fv.line_id)) lineMap.get(fv.line_id).field_values.push(fv);
+      }
+
+      // Merge voi pending_orders cua calcCustomerDebt de giu remaining chinh xac
+      const pendingMap = new Map(filteredOrders.map(p => [p.id, p]));
+      ordersDetail = pendingIds.map(id => {
+        const o = orderMap.get(id);
+        const p = pendingMap.get(id);
+        return o ? { ...o, remaining: p.remaining } : null;
+      }).filter(Boolean);
+    }
+
+    // Settings (qr + bank) cho FE render QR + thong tin chuyen khoan
+    const [settingsRows] = await db.query(
+      `SELECT \`key\`, \`value\` FROM app_settings`
+    );
+    const settings = {};
+    for (const s of settingsRows) settings[s.key] = s.value;
+
+    res.json({
+      customer: custRows[0],
+      opening_balance: debt.opening_balance,
+      order_debt: filteredOrderDebt,
+      total_debt: filteredTotalDebt,
+      pending_orders: ordersDetail,
+      date_from: dateFrom,
+      date_to: dateTo,
+      settings,
+    });
+  } catch (err) { next(err); }
+});
+
+// ==============================================================
 // GET /api/admin/debts/:customer_id — chi tiet 1 khach
 // ==============================================================
 router.get('/:customer_id', async (req, res, next) => {
@@ -654,7 +819,7 @@ router.get('/:customer_id', async (req, res, next) => {
 // POST /api/admin/debts/:customer_id/settle — tao phieu tat toan
 // Body: { amount_paid, qr_slot?, pay_method?, receipt_url?, note? }
 // ==============================================================
-router.post('/:customer_id/settle', async (req, res, next) => {
+router.post('/:customer_id/settle', adminOnly, async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const customerId = Number(req.params.customer_id);
@@ -668,6 +833,8 @@ router.post('/:customer_id/settle', async (req, res, next) => {
       ? req.body.pay_method : 'cash';
     const receiptUrl = String(req.body.receipt_url || '').trim() || null;
     const note = String(req.body.note || '').trim() || null;
+    const dateFrom = req.body.date_from || null; // 'YYYY-MM-DD'
+    const dateTo   = req.body.date_to   || null;
 
     if (amountPaid <= 0) {
       return res.status(400).json({ error: 'So tien tra phai > 0' });
@@ -687,18 +854,32 @@ router.post('/:customer_id/settle', async (req, res, next) => {
     }
 
     const debt = await calcCustomerDebt(conn, customerId);
-    if (debt.total_debt <= 0) {
-      await conn.rollback();
-      return res.status(400).json({ error: 'Khach hang khong co cong no' });
-    }
-    // Cho phep tra thua toi 10% (de fix sai so) — neu tra cao hon thi chan.
-    if (amountPaid > debt.total_debt * 1.1) {
-      await conn.rollback();
-      return res.status(400).json({
-        error: `So tien tra (${amountPaid}) vuot tong no (${debt.total_debt}) qua nhieu`,
+
+    // Loc don theo khoang ngay neu co date range
+    let ordersToSettle = debt.pending_orders;
+    if (dateFrom || dateTo) {
+      ordersToSettle = ordersToSettle.filter(o => {
+        const d = o.completed_at ? String(o.completed_at).slice(0, 10) : null;
+        if (!d) return false;
+        if (dateFrom && d < dateFrom) return false;
+        if (dateTo   && d > dateTo)   return false;
+        return true;
       });
     }
-    const remaining = debt.total_debt - amountPaid; // co the < 0 neu tra thua chut
+    const periodOrderDebt = ordersToSettle.reduce((s, o) => s + Number(o.remaining), 0);
+    const periodTotalDebt = Number(debt.opening_balance) + periodOrderDebt;
+
+    if (periodTotalDebt <= 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Khong co cong no trong khoang thoi gian nay' });
+    }
+    if (amountPaid > periodTotalDebt * 1.1) {
+      await conn.rollback();
+      return res.status(400).json({
+        error: `So tien tra (${amountPaid}) vuot tong no (${periodTotalDebt}) qua nhieu`,
+      });
+    }
+    const remaining = periodTotalDebt - amountPaid;
 
     // Sinh code (retry voi UNIQUE)
     let code = null;
@@ -711,7 +892,7 @@ router.post('/:customer_id/settle', async (req, res, next) => {
              (code, customer_id, total_debt, amount_paid, remaining,
               qr_slot, pay_method, receipt_url, note, created_by, paid_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-          [code, customerId, debt.total_debt, amountPaid, remaining,
+          [code, customerId, periodTotalDebt, amountPaid, remaining,
            qrSlot, payMethod, receiptUrl, note, req.user.sub]
         );
         inserted = r;
@@ -723,8 +904,8 @@ router.post('/:customer_id/settle', async (req, res, next) => {
     if (!inserted) throw new Error('Khong sinh duoc ma phieu sau nhieu lan thu');
     const settlementId = inserted.insertId;
 
-    // UPDATE tat ca don no chua ket cua khach: gan debt_carried_at + debt_settlement_id
-    const orderIds = debt.pending_orders.map(o => o.id);
+    // Gan debt_carried_at cho don trong khoang ngay (hoac tat ca neu khong co date range)
+    const orderIds = ordersToSettle.map(o => o.id);
     if (orderIds.length) {
       await conn.query(
         `UPDATE orders
@@ -745,7 +926,7 @@ router.post('/:customer_id/settle', async (req, res, next) => {
     );
 
     await conn.commit();
-    res.json({ settlement_id: settlementId, code, total_debt: debt.total_debt,
+    res.json({ settlement_id: settlementId, code, total_debt: periodTotalDebt,
                amount_paid: amountPaid, remaining });
   } catch (err) {
     try { await conn.rollback(); } catch (_) {}

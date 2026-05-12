@@ -248,9 +248,16 @@ router.get('/orders/:id', async (req, res, next) => {
               o.address,
               o.total_amount, o.subtotal, o.paid_amount, o.payment_method, o.note,
               c.id AS customer_id, c.full_name AS customer_name,
-              c.phone AS customer_phone, c.address AS customer_address
+              c.phone AS customer_phone, c.address AS customer_address,
+              c.type AS customer_type,
+              ec.id AS end_customer_id, ec.full_name AS end_customer_name,
+              ec.phone AS end_customer_phone, ec.code AS end_customer_code,
+              osc.amount AS commission_amount, osc.approved_at AS commission_approved_at
          FROM orders o
-         LEFT JOIN customers c ON c.id = o.customer_id
+         LEFT JOIN customers c  ON c.id  = o.customer_id
+         LEFT JOIN customers ec ON ec.id = o.end_customer_id
+         LEFT JOIN order_staff_commissions osc
+                ON osc.order_id = o.id AND osc.staff_id = o.assigned_staff_id AND osc.is_deleted = 0
         WHERE o.id = ? AND o.assigned_staff_id = ? AND o.is_deleted = 0`,
       [req.params.id, req.user.sub]
     );
@@ -287,7 +294,44 @@ router.get('/orders/:id', async (req, res, next) => {
 
     const lineMap = new Map(lines.map(l => [l.id, { ...l, items: [], charges: [], field_values: [] }]));
     for (const it of items) if (lineMap.has(it.line_id)) lineMap.get(it.line_id).items.push(it);
-    for (const fv of fieldValues) if (lineMap.has(fv.line_id)) lineMap.get(fv.line_id).field_values.push(fv);
+    
+    // Group cac template_id de fetch order_template_fields
+    const tplIds = [...new Set(lines.map(l => l.template_id).filter(Boolean))];
+    const tplFields = [];
+    if (tplIds.length > 0) {
+      const [tfs] = await db.query(
+        `SELECT template_id, label, seq FROM order_template_fields
+         WHERE template_id IN (?) AND is_deleted = 0 ORDER BY seq`, [tplIds]
+      );
+      tplFields.push(...tfs);
+    }
+
+    // Merge fieldValues vs tplFields
+    for (const [lid, line] of lineMap.entries()) {
+      const savedFvs = fieldValues.filter(fv => fv.line_id === lid);
+      const expectedTfs = line.template_id ? tplFields.filter(tf => tf.template_id === line.template_id) : [];
+      
+      const merged = [];
+      const savedLabels = new Set();
+      // uutien add saved first hoac map theo label? 
+      // Neu ta map theo label cua tpl, giu nguyen thu tu tpl
+      for (const tf of expectedTfs) {
+        const match = savedFvs.find(f => f.label === tf.label);
+        if (match) {
+          merged.push(match);
+          savedLabels.add(match.label);
+        } else {
+          // Virtual field
+          merged.push({ id: null, line_id: lid, label: tf.label, value: '', seq: tf.seq });
+        }
+      }
+      // Add cac field da luu nhung khong nam trong template (field do user them tay)
+      for (const fv of savedFvs) {
+        if (!savedLabels.has(fv.label)) merged.push(fv);
+      }
+      line.field_values = merged;
+    }
+
     const orderCharges = [];
     for (const c of charges) {
       if (c.line_id == null) orderCharges.push(c);
@@ -350,13 +394,15 @@ router.post('/orders/:id/transition', async (req, res, next) => {
               WHERE staff_id = ? AND product_id = ? FOR UPDATE`,
             [req.user.sub, n.product_id]
           );
-          if (!shRows.length || Number(shRows[0].qty) < need) {
-            throw httpErr(409, `Khong du SP id=${n.product_id} de hoan thanh (can ${need}, co ${shRows[0]?.qty || 0})`);
-          }
-          if (Number(shRows[0].qty) === need) {
-            await conn.query(`DELETE FROM staff_holdings WHERE id = ?`, [shRows[0].id]);
-          } else {
-            await conn.query(`UPDATE staff_holdings SET qty = qty - ? WHERE id = ?`, [need, shRows[0].id]);
+          // KHONG throw khi thieu — admin da chap nhan luc gan don.
+          // Tru tat ca holdings hien co (toi 0); audit van ghi du theo nhu cau don.
+          const have = Number(shRows[0]?.qty || 0);
+          if (have > 0) {
+            if (have <= need) {
+              await conn.query(`DELETE FROM staff_holdings WHERE id = ?`, [shRows[0].id]);
+            } else {
+              await conn.query(`UPDATE staff_holdings SET qty = qty - ? WHERE id = ?`, [need, shRows[0].id]);
+            }
           }
           await conn.query(
             `INSERT INTO stock_receipt_items (receipt_id, product_id, qty)
@@ -392,6 +438,216 @@ router.patch('/orders/:id/progress-note', async (req, res, next) => {
       [note, id, req.user.sub]
     );
     if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay don' });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ============================================================
+// PATCH /orders/:id/end-customer — KTV gán hoặc tạo mới khách đầu cuối
+// Chỉ áp dụng cho đơn của KTV hiện tại (assigned_staff_id).
+// Body option 1: { action: 'link',   customer_id: <retail_id> }
+// Body option 2: { action: 'create', full_name, phone?, address?, note? }
+// Body option 3: { action: 'unlink' }
+// ============================================================
+router.patch('/orders/:id/end-customer', async (req, res, next) => {
+  const conn = await db.getConnection();
+  try {
+    const orderId = Number(req.params.id);
+    const [orderRows] = await conn.query(
+      `SELECT id, customer_id, end_customer_id FROM orders
+        WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
+      [orderId, req.user.sub]
+    );
+    if (!orderRows.length) throw httpErr(404, 'Khong tim thay don');
+
+    const action = String(req.body.action || '').trim();
+    let endCustomerId = null;
+    let newCustomer = null;
+
+    if (action === 'link') {
+      endCustomerId = Number(req.body.customer_id);
+      if (!endCustomerId) throw httpErr(400, 'Thieu customer_id');
+      const [ecRows] = await conn.query(
+        `SELECT id, type, full_name, phone, code FROM customers WHERE id = ? AND is_deleted = 0`,
+        [endCustomerId]
+      );
+      if (!ecRows.length) throw httpErr(404, 'Khong tim thay khach hang');
+      if (ecRows[0].type !== 'retail') throw httpErr(400, 'Khach dau cuoi phai la khach le (retail)');
+      newCustomer = ecRows[0];
+
+    } else if (action === 'create') {
+      const fullName = String(req.body.full_name || '').trim();
+      if (!fullName) throw httpErr(400, 'Thieu full_name');
+      const phone = req.body.phone ? String(req.body.phone).trim() : null;
+      const address = req.body.address ? String(req.body.address).trim() : null;
+      const note = req.body.note ? String(req.body.note).trim() : null;
+
+      // Sinh ma KH tu dong
+      const [maxRow] = await conn.query(
+        `SELECT COALESCE(MAX(CAST(SUBSTRING(code, 3) AS UNSIGNED)), 0) AS max_n
+           FROM customers WHERE code REGEXP '^KH[0-9]+$'`
+      );
+      const n = (Number(maxRow[0].max_n) || 0) + 1;
+      const code = 'KH' + String(n).padStart(4, '0');
+
+      await conn.beginTransaction();
+      const [ins] = await conn.query(
+        `INSERT INTO customers (code, type, full_name, phone, address, note)
+         VALUES (?, 'retail', ?, ?, ?, ?)`,
+        [code, fullName, phone, address, note]
+      );
+      endCustomerId = ins.insertId;
+      const [newRows] = await conn.query(
+        `SELECT id, code, full_name, phone, address FROM customers WHERE id = ?`, [endCustomerId]
+      );
+      newCustomer = newRows[0];
+
+    } else if (action === 'unlink') {
+      endCustomerId = null;
+    } else {
+      throw httpErr(400, 'action phai la: link | create | unlink');
+    }
+
+    if (!conn._inTransaction) await conn.beginTransaction();
+    await conn.query(
+      `UPDATE orders SET end_customer_id = ? WHERE id = ?`, [endCustomerId, orderId]
+    );
+    await conn.commit();
+
+    res.json({ ok: true, end_customer_id: endCustomerId, end_customer: newCustomer });
+  } catch (err) {
+    try { await conn.rollback(); } catch (_) {}
+    next(err);
+  } finally {
+    conn.release();
+  }
+});
+
+// GET /orders/customers/search — KTV tim khach le de gan
+router.get('/orders/customers/search', async (req, res, next) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const where = ['is_deleted = 0', "type = 'retail'"];
+    const args = [];
+    if (q) {
+      where.push('(full_name LIKE ? OR phone LIKE ? OR code LIKE ?)');
+      const like = `%${q}%`;
+      args.push(like, like, like);
+    }
+    const [rows] = await db.query(
+      `SELECT id, code, full_name, phone, address
+         FROM customers WHERE ${where.join(' AND ')}
+         ORDER BY full_name LIMIT 30`,
+      args
+    );
+    res.json({ items: rows });
+  } catch (err) { next(err); }
+});
+
+// PATCH /orders/:id/field-values — KTV cap nhat gia tri cac thong so chi tiet
+router.patch('/orders/:id/field-values', async (req, res, next) => {
+  try {
+    const orderId = Number(req.params.id);
+    const updates = req.body.updates;
+    if (!Array.isArray(updates) || !updates.length)
+      return res.status(400).json({ error: 'Thieu updates' });
+
+    const [t] = await db.query(
+      `SELECT id, status FROM orders
+        WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
+      [orderId, req.user.sub]
+    );
+    if (!t.length) return res.status(404).json({ error: 'Khong tim thay don' });
+    if (t[0].status === 'cancelled') return res.status(400).json({ error: 'Don da huy' });
+
+    for (const u of updates) {
+      const id  = Number(u.id);
+      const val = u.value != null ? String(u.value) : '';
+      if (!id) {
+        // Insert truong hop id = 0 (truong ao tu template)
+        const lbl = String(u.label || '').trim();
+        const lineId = Number(u.line_id);
+        if (lbl && lineId) {
+          await db.query(
+            `INSERT INTO order_field_values (order_id, line_id, label, value, seq)
+             VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(seq),0)+1 FROM order_field_values fv2 WHERE fv2.line_id = ? AND fv2.is_deleted = 0))`,
+            [orderId, lineId, lbl, val, lineId]
+          );
+        }
+        continue;
+      }
+      if (u.label != null) {
+        const lbl = String(u.label).trim();
+        if (!lbl) continue;
+        await db.query(
+          `UPDATE order_field_values SET value = ?, label = ?
+            WHERE id = ? AND order_id = ? AND is_deleted = 0`,
+          [val, lbl, id, orderId]
+        );
+      } else {
+        await db.query(
+          `UPDATE order_field_values SET value = ?
+            WHERE id = ? AND order_id = ? AND is_deleted = 0`,
+          [val, id, orderId]
+        );
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// POST /orders/:id/field-values — KTV them moi mot thong so cho line
+router.post('/orders/:id/field-values', async (req, res, next) => {
+  try {
+    const orderId = Number(req.params.id);
+    const lineId  = Number(req.body.line_id);
+    const label   = String(req.body.label || '').trim();
+    const value   = req.body.value != null ? String(req.body.value) : '';
+    if (!lineId)   return res.status(400).json({ error: 'Thieu line_id' });
+    if (!label)    return res.status(400).json({ error: 'Thieu label' });
+
+    const [t] = await db.query(
+      `SELECT id, status FROM orders
+        WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
+      [orderId, req.user.sub]
+    );
+    if (!t.length) return res.status(404).json({ error: 'Khong tim thay don' });
+    if (t[0].status === 'cancelled') return res.status(400).json({ error: 'Don da huy' });
+
+    const [chk] = await db.query(
+      `SELECT id FROM order_lines WHERE id = ? AND order_id = ? AND is_deleted = 0`,
+      [lineId, orderId]
+    );
+    if (!chk.length) return res.status(404).json({ error: 'Khong tim thay line' });
+
+    const [ins] = await db.query(
+      `INSERT INTO order_field_values (order_id, line_id, label, value, seq)
+       VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(seq),0)+1 FROM order_field_values fv2 WHERE fv2.line_id = ? AND fv2.is_deleted = 0))`,
+      [orderId, lineId, label, value, lineId]
+    );
+    res.json({ ok: true, id: ins.insertId, label, value });
+  } catch (err) { next(err); }
+});
+
+// DELETE /orders/:id/field-values/:fvId — KTV xoa mem mot thong so
+router.delete('/orders/:id/field-values/:fvId', async (req, res, next) => {
+  try {
+    const orderId = Number(req.params.id);
+    const fvId    = Number(req.params.fvId);
+
+    const [t] = await db.query(
+      `SELECT id, status FROM orders
+        WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
+      [orderId, req.user.sub]
+    );
+    if (!t.length) return res.status(404).json({ error: 'Khong tim thay don' });
+    if (t[0].status === 'cancelled') return res.status(400).json({ error: 'Don da huy' });
+
+    await db.query(
+      `UPDATE order_field_values SET is_deleted = 1
+        WHERE id = ? AND order_id = ? AND is_deleted = 0`,
+      [fvId, orderId]
+    );
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -563,13 +819,14 @@ router.patch('/orders/:id/complete', async (req, res, next) => {
             WHERE staff_id = ? AND product_id = ? FOR UPDATE`,
           [req.user.sub, n.product_id]
         );
-        if (!shRows.length || Number(shRows[0].qty) < need) {
-          throw httpErr(409, `Khong du SP id=${n.product_id} de hoan thanh (can ${need}, co ${shRows[0]?.qty || 0})`);
-        }
-        if (Number(shRows[0].qty) === need) {
-          await conn.query(`DELETE FROM staff_holdings WHERE id = ?`, [shRows[0].id]);
-        } else {
-          await conn.query(`UPDATE staff_holdings SET qty = qty - ? WHERE id = ?`, [need, shRows[0].id]);
+        // KHONG throw khi thieu — admin da chap nhan luc gan don.
+        const have = Number(shRows[0]?.qty || 0);
+        if (have > 0) {
+          if (have <= need) {
+            await conn.query(`DELETE FROM staff_holdings WHERE id = ?`, [shRows[0].id]);
+          } else {
+            await conn.query(`UPDATE staff_holdings SET qty = qty - ? WHERE id = ?`, [need, shRows[0].id]);
+          }
         }
         await conn.query(
           `INSERT INTO stock_receipt_items (receipt_id, product_id, qty)
@@ -789,6 +1046,91 @@ router.get('/history/export', async (req, res, next) => {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="lichsu_${Date.now()}.csv"`);
     res.send(csv);
+  } catch (err) { next(err); }
+});
+
+// ==========================================================
+// /summary — bao cao tong ket don cua KTV
+//   filter: q (ma don / ten KH / SDT), date_from, date_to, status
+//   tra ve items[] + totals (tong tien, da nop, chua nop, tien cong)
+// ==========================================================
+router.get('/summary', async (req, res, next) => {
+  try {
+    const q        = (req.query.q || '').trim();
+    const dateFrom = req.query.date_from || null;
+    const dateTo   = req.query.date_to   || null;
+    const status   = req.query.status || ''; // pending|confirmed|in_progress|done|cancelled
+
+    const where = ['o.assigned_staff_id = ?', 'o.is_deleted = 0'];
+    const args = [req.user.sub];
+
+    if (status) { where.push('o.status = ?'); args.push(status); }
+    if (q) {
+      where.push('(o.code LIKE ? OR c.full_name LIKE ? OR c.phone LIKE ?)');
+      const like = '%' + q + '%';
+      args.push(like, like, like);
+    }
+    // Loc theo ngay don (uu tien completed_at, fallback due_at -> created_at)
+    if (dateFrom) {
+      where.push('DATE(COALESCE(o.completed_at, o.due_at, o.created_at)) >= ?');
+      args.push(dateFrom);
+    }
+    if (dateTo) {
+      where.push('DATE(COALESCE(o.completed_at, o.due_at, o.created_at)) <= ?');
+      args.push(dateTo);
+    }
+    const whereSql = 'WHERE ' + where.join(' AND ');
+
+    const [items] = await db.query(
+      `SELECT o.id, o.code, o.status,
+              o.due_at, o.completed_at, o.created_at,
+              o.total_amount, o.paid_amount, o.wage_amount,
+              GREATEST(0, COALESCE(o.total_amount,0) - COALESCE(o.paid_amount,0)) AS debt_amount,
+              c.full_name AS customer_name, c.phone AS customer_phone,
+              COALESCE((SELECT SUM(amount) FROM collections
+                          WHERE order_id = o.id AND staff_id = ? AND remitted = 0 AND is_deleted = 0), 0) AS unremitted_amount,
+              COALESCE((SELECT SUM(amount) FROM collections
+                          WHERE order_id = o.id AND staff_id = ? AND remitted = 1 AND is_deleted = 0), 0) AS remitted_amount
+         FROM orders o
+         LEFT JOIN customers c ON c.id = o.customer_id
+         ${whereSql}
+         ORDER BY COALESCE(o.completed_at, o.due_at, o.created_at) DESC, o.id DESC
+         LIMIT 500`,
+      [req.user.sub, req.user.sub, ...args]
+    );
+
+    const [totRows] = await db.query(
+      `SELECT
+         COUNT(*)                                                      AS order_count,
+         COALESCE(SUM(o.total_amount), 0)                              AS total_amount,
+         COALESCE(SUM(o.paid_amount), 0)                               AS total_paid,
+         COALESCE(SUM(GREATEST(0, o.total_amount - o.paid_amount)), 0) AS total_debt,
+         COALESCE(SUM(CASE WHEN o.status='done' THEN o.wage_amount ELSE 0 END), 0) AS total_wage
+         FROM orders o
+         LEFT JOIN customers c ON c.id = o.customer_id
+         ${whereSql}`,
+      args
+    );
+
+    // Tong collections (chua nop / da nop) tren toan bo filter, khong gioi han 500 don.
+    const [colRows] = await db.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN col.remitted = 0 THEN col.amount ELSE 0 END), 0) AS unremit,
+         COALESCE(SUM(CASE WHEN col.remitted = 1 THEN col.amount ELSE 0 END), 0) AS remit
+         FROM collections col
+         JOIN orders o     ON o.id = col.order_id
+         LEFT JOIN customers c ON c.id = o.customer_id
+        WHERE col.staff_id = ? AND col.is_deleted = 0
+          AND ${where.join(' AND ')}`,
+      [req.user.sub, ...args]
+    );
+    const total_unremitted = Number(colRows[0].unremit) || 0;
+    const total_remitted   = Number(colRows[0].remit)   || 0;
+
+    res.json({
+      items,
+      totals: { ...totRows[0], total_unremitted, total_remitted },
+    });
   } catch (err) { next(err); }
 });
 
@@ -1138,7 +1480,9 @@ router.get('/wages', async (req, res, next) => {
   // Cong lap (wage_amount) cua KTV theo thang
   try {
     const [rows] = await db.query(
-      `SELECT o.id, o.code AS order_code, o.completed_at, o.wage_amount,
+      `SELECT o.id, o.code AS order_code, o.completed_at,
+              o.wage_amount + CASE WHEN o.tech_commission_approved_at IS NOT NULL
+                                   THEN o.tech_commission_amount ELSE 0 END AS wage_amount,
               c.full_name AS customer_name
          FROM orders o
          LEFT JOIN customers c ON c.id = o.customer_id
@@ -1150,8 +1494,11 @@ router.get('/wages', async (req, res, next) => {
     const [sumRow] = await db.query(
       `SELECT
          SUM(CASE WHEN MONTH(completed_at)=MONTH(CURDATE()) AND YEAR(completed_at)=YEAR(CURDATE())
-              THEN wage_amount ELSE 0 END) AS this_month_total,
-         SUM(wage_amount) AS lifetime_total
+              THEN wage_amount + CASE WHEN tech_commission_approved_at IS NOT NULL
+                                      THEN tech_commission_amount ELSE 0 END
+              ELSE 0 END) AS this_month_total,
+         SUM(wage_amount + CASE WHEN tech_commission_approved_at IS NOT NULL
+                                THEN tech_commission_amount ELSE 0 END) AS lifetime_total
          FROM orders WHERE assigned_staff_id = ? AND completed_at IS NOT NULL AND is_deleted = 0`,
       [req.user.sub]
     );
@@ -1515,6 +1862,108 @@ router.get('/customers/:id/assets', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/kithuat/customers/:id/asset-requests/batch
+// Body: { changes: [{asset_kind, action, target_id?, value?, note?}], ref_order_id? }
+router.post('/customers/:id/asset-requests/batch', async (req, res, next) => {
+  try {
+    const cid = Number(req.params.id);
+    if (!cid) return res.status(400).json({ error: 'id khong hop le' });
+
+    const changes = Array.isArray(req.body && req.body.changes) ? req.body.changes : [];
+    if (!changes.length) return res.json({ ok: true, inserted: 0 });
+    const ref_order_id = req.body.ref_order_id ? Number(req.body.ref_order_id) : null;
+
+    const VALID_KINDS   = ['account', 'vehicle', 'sim'];
+    const VALID_ACTIONS = ['add', 'update', 'delete'];
+    for (const c of changes) {
+      if (!VALID_KINDS.includes(c.asset_kind))   return res.status(400).json({ error: `asset_kind khong hop le: ${c.asset_kind}` });
+      if (!VALID_ACTIONS.includes(c.action))     return res.status(400).json({ error: `action khong hop le: ${c.action}` });
+      if ((c.action === 'add' || c.action === 'update') && !String(c.value || '').trim())
+        return res.status(400).json({ error: 'Thieu gia tri' });
+      if ((c.action === 'update' || c.action === 'delete') && !c.target_id)
+        return res.status(400).json({ error: 'Thieu target_id' });
+    }
+
+    const [[cust]] = await db.query(
+      `SELECT id, full_name FROM customers WHERE id = ? AND is_deleted = 0`, [cid]
+    );
+    if (!cust) return res.status(404).json({ error: 'Khong tim thay khach' });
+
+    const [[autoRow]] = await db.query(
+      `SELECT \`value\` FROM app_settings WHERE \`key\` = 'assets.auto_approve'`
+    );
+    const autoApprove = autoRow && autoRow.value === '1';
+
+    const KIND_TABLE = {
+      account: { table: 'customer_accounts', valueCol: 'account_name' },
+      vehicle: { table: 'customer_vehicles',  valueCol: 'plate' },
+      sim:     { table: 'customer_sims',       valueCol: 'sim_number' },
+    };
+
+    let inserted = 0;
+    for (const c of changes) {
+      const kind      = c.asset_kind;
+      const action    = c.action;
+      const value     = action !== 'delete' ? String(c.value || '').trim() : null;
+      const target_id = (action === 'update' || action === 'delete') ? Number(c.target_id) : null;
+      const note      = c.note ? String(c.note).slice(0, 500) : null;
+
+      const [ins] = await db.query(
+        `INSERT INTO customer_update_requests
+          (customer_id, asset_kind, action, target_id, value, note,
+           requested_by_role, requested_by_id, ref_order_id, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'kithuat', ?, ?, ?)`,
+        [cid, kind, action, target_id, value, note, req.user.sub, ref_order_id,
+         autoApprove ? 'approved' : 'pending']
+      );
+
+      if (autoApprove) {
+        try {
+          const cfg = KIND_TABLE[kind];
+          if (action === 'add') {
+            await db.query(
+              `INSERT INTO ${cfg.table} (customer_id, ${cfg.valueCol}, note) VALUES (?, ?, ?)`,
+              [cid, value, note]
+            );
+          } else if (action === 'update') {
+            await db.query(
+              `UPDATE ${cfg.table} SET ${cfg.valueCol} = ? WHERE id = ? AND customer_id = ? AND is_deleted = 0`,
+              [value, target_id, cid]
+            );
+          } else if (action === 'delete') {
+            await db.query(
+              `UPDATE ${cfg.table} SET is_deleted = 1 WHERE id = ? AND customer_id = ? AND is_deleted = 0`,
+              [target_id, cid]
+            );
+          }
+          await db.query(
+            `UPDATE customer_update_requests SET reviewed_at = NOW() WHERE id = ?`, [ins.insertId]
+          );
+        } catch (_) {}
+      }
+      inserted++;
+    }
+
+    try {
+      const kindLabels = { account: 'tài khoản', vehicle: 'biển số', sim: 'số SIM' };
+      const actLabels  = { add: 'thêm', update: 'sửa', delete: 'xoá' };
+      const prefix  = autoApprove ? '[Tự động] ' : '';
+      const summary = changes.map(c => `${actLabels[c.action]} ${kindLabels[c.asset_kind]}`).join(', ');
+      await notify.create(db, {
+        type: 'customer_asset_request',
+        title: `${prefix}KTV đề xuất cập nhật thông tin khách`,
+        message: `${cust.full_name}: ${summary}`,
+        link_url: `/admin/customers.html?customer_id=${cid}&tab=requests`,
+        ref_customer_id: cid,
+        ref_staff_id: req.user.sub,
+        ref_order_id,
+      });
+    } catch (_) {}
+
+    res.status(201).json({ ok: true, inserted, auto_approved: autoApprove });
+  } catch (err) { next(err); }
+});
+
 // POST /api/kithuat/customers/:id/asset-requests
 // Body: { asset_kind, action, target_id?, value?, note?, ref_order_id? }
 router.post('/customers/:id/asset-requests', async (req, res, next) => {
@@ -1551,21 +2000,63 @@ router.post('/customers/:id/asset-requests', async (req, res, next) => {
     );
     if (!cust.length) return res.status(404).json({ error: 'Khong tim thay khach' });
 
+    // Kiem tra che do tu dong duyet
+    const [[autoRow]] = await db.query(
+      `SELECT \`value\` FROM app_settings WHERE \`key\` = 'assets.auto_approve'`
+    );
+    const autoApprove = autoRow && autoRow.value === '1';
+
     const [r] = await db.query(
       `INSERT INTO customer_update_requests
         (customer_id, asset_kind, action, target_id, value, note,
          requested_by_role, requested_by_id, ref_order_id, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'kithuat', ?, ?, 'pending')`,
-      [cid, kind, action, target_id, value, note, req.user.sub, ref_order_id]
+       VALUES (?, ?, ?, ?, ?, ?, 'kithuat', ?, ?, ?)`,
+      [cid, kind, action, target_id, value, note, req.user.sub, ref_order_id,
+       autoApprove ? 'approved' : 'pending']
     );
 
-    // Notify admin
+    if (autoApprove) {
+      // Apply luon, khong can admin duyet
+      try {
+        const KIND_TABLE_LOCAL = {
+          account: { table: 'customer_accounts', valueCol: 'account_name' },
+          vehicle: { table: 'customer_vehicles',  valueCol: 'plate' },
+          sim:     { table: 'customer_sims',       valueCol: 'sim_number' },
+        };
+        const cfg = KIND_TABLE_LOCAL[kind];
+        if (cfg) {
+          if (action === 'add') {
+            await db.query(
+              `INSERT INTO ${cfg.table} (customer_id, ${cfg.valueCol}, note) VALUES (?, ?, ?)`,
+              [cid, value, note || null]
+            );
+          } else if (action === 'update') {
+            await db.query(
+              `UPDATE ${cfg.table} SET ${cfg.valueCol} = ? WHERE id = ? AND customer_id = ? AND is_deleted = 0`,
+              [value, target_id, cid]
+            );
+          } else if (action === 'delete') {
+            await db.query(
+              `UPDATE ${cfg.table} SET is_deleted = 1 WHERE id = ? AND customer_id = ? AND is_deleted = 0`,
+              [target_id, cid]
+            );
+          }
+        }
+        await db.query(
+          `UPDATE customer_update_requests SET reviewed_at = NOW() WHERE id = ?`,
+          [r.insertId]
+        );
+      } catch (_) {}
+    }
+
+    // Luon thong bao admin — du tu dong hay thu cong
     try {
       const labels = { account: 'tai khoan', vehicle: 'bien so', sim: 'so SIM' };
       const actLabels = { add: 'them', update: 'sua', delete: 'xoa' };
+      const prefix = autoApprove ? '[Tự động] ' : '';
       await notify.create(db, {
         type: 'customer_asset_request',
-        title: `KTV de xuat ${actLabels[action]} ${labels[kind]}`,
+        title: `${prefix}KTV de xuat ${actLabels[action]} ${labels[kind]}`,
         message: `${cust[0].full_name}: ${value || '(xoa muc)'}${note ? ' — ' + note : ''}`,
         link_url: `/admin/customers.html?customer_id=${cid}&tab=requests`,
         ref_customer_id: cid,
@@ -1574,7 +2065,62 @@ router.post('/customers/:id/asset-requests', async (req, res, next) => {
       });
     } catch (_) {}
 
-    res.status(201).json({ id: r.insertId, ok: true });
+    res.status(201).json({ id: r.insertId, ok: true, auto_approved: autoApprove });
+  } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------
+// GET /api/kithuat/advances?period=YYYY-MM  — KTV xem phieu ung cua minh
+// ----------------------------------------------------------
+router.get('/advances', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user?.sub);
+    const period = (req.query.period || '').trim();
+    const where = ['sa.staff_id = ?', 'sa.is_deleted = 0'];
+    const args = [staffId];
+    if (period) { where.push('sa.period = ?'); args.push(period); }
+    const [rows] = await db.query(
+      `SELECT sa.id, sa.period, sa.amount, sa.note, sa.status,
+              sa.approved_at, sa.reject_reason, sa.created_at,
+              s.full_name AS approved_by_name
+         FROM staff_advances sa
+         LEFT JOIN staff s ON s.id = sa.approved_by
+        WHERE ${where.join(' AND ')}
+        ORDER BY sa.period DESC, sa.created_at ASC`,
+      args
+    );
+    res.json({ items: rows });
+  } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------
+// POST /api/kithuat/advances  — KTV gui yeu cau ung luong (status=pending)
+// ----------------------------------------------------------
+router.post('/advances', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user?.sub);
+    const period  = String(req.body.period || '').trim();
+    if (!/^\d{4}-\d{2}$/.test(period)) {
+      return res.status(400).json({ error: 'period sai dinh dang YYYY-MM' });
+    }
+    const [y, m] = period.split('-').map(Number);
+    if (m < 1 || m > 12) return res.status(400).json({ error: 'Thang khong hop le' });
+
+    const amount = Math.max(0, Math.round(Number(req.body.amount) || 0));
+    const note   = String(req.body.note || '').trim().slice(0, 300);
+    if (!amount) return res.status(400).json({ error: 'So tien ung phai lon hon 0' });
+
+    const [snap] = await db.query(
+      `SELECT id FROM staff_payroll_periods WHERE staff_id = ? AND period = ? AND is_deleted = 0 LIMIT 1`,
+      [staffId, period]
+    );
+    if (snap.length) return res.status(409).json({ error: 'Ky luong da duoc chot, khong the gui yeu cau ung' });
+
+    const [ins] = await db.query(
+      `INSERT INTO staff_advances (staff_id, period, amount, note, created_by, status) VALUES (?,?,?,?,?,'pending')`,
+      [staffId, period, amount, note, staffId]
+    );
+    res.status(201).json({ ok: true, id: ins.insertId });
   } catch (err) { next(err); }
 });
 

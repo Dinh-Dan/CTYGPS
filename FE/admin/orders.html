@@ -225,6 +225,107 @@
   .od-actions { flex-wrap:wrap; justify-content:flex-start; }
   .od-actions .btn { flex:0 1 auto; min-width:0; white-space:nowrap; }
 
+  /* Hoa hong KTV — card noi bat */
+  .commission-card {
+    position:relative; border-radius:14px; padding:16px 18px;
+    background:linear-gradient(135deg,#fff7ed 0%,#fef3c7 55%,#fee2e2 100%);
+    border:1px solid #fcd34d; box-shadow:0 4px 14px rgba(217,119,6,.12);
+    overflow:hidden;
+  }
+  .commission-card::before {
+    content:""; position:absolute; top:-30px; right:-30px;
+    width:120px; height:120px; border-radius:50%;
+    background:radial-gradient(circle,rgba(251,191,36,.35) 0%,transparent 70%);
+  }
+  .commission-card .cc-head {
+    display:flex; align-items:center; gap:8px; margin-bottom:10px;
+    font-weight:700; color:#92400e; font-size:15px; letter-spacing:.2px;
+  }
+  .commission-card .cc-head .star { font-size:18px; }
+  .commission-card .cc-pill {
+    display:inline-flex; align-items:center; gap:4px; padding:2px 8px;
+    border-radius:999px; font-size:11px; font-weight:700; margin-left:auto;
+  }
+  .commission-card .cc-pill.approved { background:#16a34a; color:#fff; }
+  .commission-card .cc-pill.pending  { background:#fde68a; color:#92400e; }
+  .commission-card .cc-amount {
+    font-size:26px; font-weight:800; color:#b45309;
+    letter-spacing:.5px;
+  }
+  .commission-card .cc-amount.empty { font-size:15px; color:#9a3412; font-weight:600; font-style:italic; }
+  .commission-card .cc-meta {
+    margin-top:6px; font-size:12.5px; color:#7c2d12;
+  }
+  .commission-card .cc-note {
+    margin-top:8px; padding:8px 10px; background:rgba(255,255,255,.55);
+    border-radius:8px; font-size:13px; color:#7c2d12; white-space:pre-wrap;
+  }
+  .commission-card .cc-actions {
+    margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;
+  }
+  .commission-card .cc-actions .btn-cc {
+    background:#f59e0b; color:#fff; border:none; padding:7px 14px;
+    border-radius:8px; font-weight:600; cursor:pointer; font-size:13px;
+    transition:all .15s ease;
+  }
+  .commission-card .cc-actions .btn-cc:hover { background:#d97706; transform:translateY(-1px); }
+  .commission-card .cc-actions .btn-cc.ghost {
+    background:transparent; color:#92400e; border:1px solid #fcd34d;
+  }
+  .commission-card .cc-actions .btn-cc.ghost:hover { background:rgba(252,211,77,.3); }
+  .commission-card .cc-actions .btn-cc.danger { background:#ef4444; }
+  .commission-card .cc-actions .btn-cc.danger:hover { background:#dc2626; }
+  .commission-card .cc-edit { margin-top:10px; display:none; gap:8px; flex-wrap:wrap; }
+  .commission-card .cc-edit.open { display:flex; }
+  .commission-card .cc-edit input[type=number] {
+    flex:1; min-width:160px; padding:8px 10px; border-radius:8px;
+    border:1px solid #fcd34d; background:#fff; font-size:14px; font-weight:600;
+  }
+  .commission-card .cc-edit input[type=text] {
+    flex:2; min-width:200px; padding:8px 10px; border-radius:8px;
+    border:1px solid #fcd34d; background:#fff; font-size:13px;
+  }
+
+  /* Phan nhan vien (staff commission) ben trong commission-card */
+  .cc-divider {
+    margin:14px 0 10px; border:none; border-top:1px dashed rgba(180,83,9,.25);
+  }
+  .cc-staff-head {
+    display:flex; align-items:center; gap:8px; margin-bottom:8px;
+    font-weight:700; color:#92400e; font-size:14px;
+  }
+  .cc-staff-list { display:flex; flex-direction:column; gap:6px; }
+  .cc-staff-row {
+    display:flex; align-items:center; gap:8px; padding:8px 10px;
+    background:rgba(255,255,255,.6); border-radius:8px; border:1px solid rgba(252,211,77,.5);
+    flex-wrap:wrap;
+  }
+  .cc-staff-row .name { flex:1; font-weight:600; font-size:13px; color:#7c2d12; min-width:120px; }
+  .cc-staff-row .amt  { font-size:15px; font-weight:800; color:#b45309; }
+  .cc-staff-row .meta { font-size:11.5px; color:#9a3412; width:100%; }
+  .cc-staff-row .row-actions { display:flex; gap:4px; margin-left:auto; }
+  .cc-staff-row .row-actions button {
+    background:transparent; border:1px solid rgba(252,211,77,.6); border-radius:6px;
+    padding:3px 8px; cursor:pointer; font-size:12px; color:#92400e;
+    transition:all .12s;
+  }
+  .cc-staff-row .row-actions button:hover { background:rgba(252,211,77,.35); }
+  .cc-staff-row .row-actions button.danger { border-color:#fca5a5; color:#dc2626; }
+  .cc-staff-row .row-actions button.danger:hover { background:#fee2e2; }
+  .cc-add-staff-form {
+    display:none; flex-direction:column; gap:8px; margin-top:8px;
+    background:rgba(255,255,255,.55); border-radius:10px; padding:10px;
+    border:1px dashed #fcd34d;
+  }
+  .cc-add-staff-form.open { display:flex; }
+  .cc-add-staff-form select, .cc-add-staff-form input {
+    padding:7px 10px; border-radius:8px; border:1px solid #fcd34d;
+    background:#fff; font-size:13px; width:100%; box-sizing:border-box;
+  }
+  .cc-add-staff-form .form-row { display:flex; gap:8px; flex-wrap:wrap; }
+  .cc-add-staff-form .form-row select { flex:1; min-width:160px; }
+  .cc-add-staff-form .form-row input[type=number] { flex:1; min-width:130px; }
+
   /* Date range button + popover */
   .date-range-btn {
     display:flex; align-items:center; width:100%; height:32px; padding:5px 10px;
@@ -245,6 +346,16 @@
   .amt-paid   { color:#16a34a; font-weight:500; }
   .amt-paid-zero { color:#94a3b8; }
   .amt-remain { color:#dc2626; font-weight:600; }
+  /* multi-select chung */
+  .ms-btn { width:100%; height:32px; background:#f1f5f9; border:1px solid transparent; border-radius:6px; padding:0 8px; font-size:12.5px; color:#0f172a; text-align:left; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ms-pop { position:absolute; top:calc(100% + 4px); right:0; z-index:200; background:#fff; border:1px solid #e2e8f0; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.12); padding:4px 0; min-width:160px; width:max-content; }
+  /* multi-select thanh toan */
+  .ps-opt { display:flex; align-items:center; gap:8px; padding:6px 14px; cursor:pointer; font-size:13px; user-select:none; white-space:nowrap; color:#0f172a; }
+  .ps-opt:hover { background:#f8fafc; }
+  .ps-opt input[type=checkbox] { position:absolute; opacity:0; width:0; height:0; }
+  .ps-box { flex-shrink:0; width:15px; height:15px; border:1.5px solid #cbd5e1; border-radius:4px; background:#fff; display:inline-flex; align-items:center; justify-content:center; transition:background .12s, border-color .12s; }
+  .ps-opt input:checked ~ .ps-box { background:#2563eb; border-color:#2563eb; }
+  .ps-opt input:checked ~ .ps-box::after { content:''; display:block; width:4px; height:7px; border:2px solid #fff; border-top:none; border-left:none; transform:rotate(45deg) translateY(-1px); }
 </style>
 </head>
 <body>
@@ -255,32 +366,27 @@
     <div class="content flex-page">
       <div class="toolbar">
         <a href="/admin/new-order.html" class="btn sm">+ Tạo đơn</a>
+        <button type="button" class="btn ghost sm" id="btnOpenStatement" style="margin-left:8px">📋 Xuất bảng kê</button>
         <select data-filter="collected_for_dealer" class="select" style="margin-left:auto;max-width:200px">
           <option value="">Tất cả đơn</option>
           <option value="1">Chỉ đơn thu hộ đại lí</option>
           <option value="0">Bỏ đơn thu hộ đại lí</option>
         </select>
       </div>
-      <div class="quick-tabs" id="quickTabs">
-        <button data-bucket="all"      class="on">Tất cả</button>
-        <button data-bucket="pending">Chờ duyệt</button>
-        <button data-bucket="active">Đang xử lý</button>
-        <button data-bucket="done">Đã xong</button>
-        <button data-bucket="cancelled">Đã huỷ</button>
-      </div>
 
-      <div class="table-wrap">
+<div class="table-wrap">
         <table class="data" id="tbl">
           <thead>
             <tr>
-              <th style="width:140px">Mã đơn</th>
-              <th style="width:280px">Ngày tạo</th>
+              <th style="width:100px">Mã đơn</th>
+              <th style="width:140px">Ngày tạo</th>
               <th>Khách</th>
-              <th style="width:140px">Loại đơn</th>
-              <th style="width:160px">Tổng tiền</th>
-              <th style="width:130px">Trạng thái</th>
-              <th style="width:140px">Thanh toán</th>
-              <th style="width:80px"></th>
+              <th style="width:110px">Loại đơn</th>
+              <th style="width:260px">Thông tin</th>
+              <th style="width:150px">Tổng tiền</th>
+              <th style="width:110px">Trạng thái</th>
+              <th style="width:110px">Thanh toán</th>
+              <th style="width:70px"></th>
             </tr>
             <tr class="filter-row">
               <th><input data-filter="q" placeholder="Mã đơn"></th>
@@ -307,25 +413,53 @@
                 </div>
               </th>
               <th><input data-filter="customer_q" placeholder="Tên / SĐT khách"></th>
-              <th><select data-filter="template_id"><option value="">Tất cả</option></select></th>
+              <th>
+                <div style="position:relative">
+                  <button type="button" id="tplBtn" class="ms-btn">Tất cả</button>
+                  <div id="tplPop" class="ms-pop" style="display:none">
+                    <!-- options nạp động bởi JS -->
+                    <div style="display:flex;gap:6px;justify-content:flex-end;padding:5px 10px;border-top:1px solid #f1f5f9;margin-top:2px">
+                      <button type="button" id="tplClear" class="btn ghost sm">Xoá</button>
+                      <button type="button" id="tplApply" class="btn sm">Áp dụng</button>
+                    </div>
+                  </div>
+                </div>
+              </th>
+              <th><input data-filter="device_q" placeholder="Biển số / TK / SIM"></th>
               <th></th>
-              <th><select data-filter="status">
-                <option value="">Tất cả</option>
-                <option value="pending">Đang chờ</option>
-                <option value="confirmed">Lên đơn</option>
-                <option value="in_progress">Đang xử lý</option>
-                <option value="done">Đã xong</option>
-                <option value="cancelled">Đã huỷ</option>
-              </select></th>
-              <th><select data-filter="payment_status">
-                <option value="">Tất cả</option>
-                <option value="unpaid">Chưa trả</option>
-                <option value="partial">Một phần</option>
-                <option value="paid">Đã trả</option>
-                <option value="customer_owes">KH nợ</option>
-                <option value="staff_owes">KTV giữ</option>
-                <option value="pending_admin_confirm">Chờ admin xác nhận</option>
-              </select></th>
+              <th>
+                <div style="position:relative">
+                  <button type="button" id="stBtn" class="ms-btn">Tất cả</button>
+                  <div id="stPop" class="ms-pop" style="display:none">
+                    <label class="ps-opt"><input type="checkbox" value="pending"><span class="ps-box"></span> Đang chờ</label>
+                    <label class="ps-opt"><input type="checkbox" value="confirmed"><span class="ps-box"></span> Lên đơn</label>
+                    <label class="ps-opt"><input type="checkbox" value="in_progress"><span class="ps-box"></span> Đang xử lý</label>
+                    <label class="ps-opt"><input type="checkbox" value="done"><span class="ps-box"></span> Đã xong</label>
+                    <label class="ps-opt"><input type="checkbox" value="cancelled"><span class="ps-box"></span> Đã huỷ</label>
+                    <div style="display:flex;gap:6px;justify-content:flex-end;padding:5px 10px;border-top:1px solid #f1f5f9;margin-top:2px">
+                      <button type="button" id="stClear" class="btn ghost sm">Xoá</button>
+                      <button type="button" id="stApply" class="btn sm">Áp dụng</button>
+                    </div>
+                  </div>
+                </div>
+              </th>
+              <th>
+                <div style="position:relative">
+                  <button type="button" id="psBtn" class="ms-btn">Tất cả</button>
+                  <div id="psPop" class="ms-pop" style="display:none">
+                    <label class="ps-opt"><input type="checkbox" value="unpaid"><span class="ps-box"></span> Chưa trả</label>
+                    <label class="ps-opt"><input type="checkbox" value="partial"><span class="ps-box"></span> Một phần</label>
+                    <label class="ps-opt"><input type="checkbox" value="paid"><span class="ps-box"></span> Đã trả</label>
+                    <label class="ps-opt"><input type="checkbox" value="customer_owes"><span class="ps-box"></span> KH nợ</label>
+                    <label class="ps-opt"><input type="checkbox" value="staff_owes"><span class="ps-box"></span> KTV giữ</label>
+                    <label class="ps-opt"><input type="checkbox" value="pending_admin_confirm"><span class="ps-box"></span> Chờ xác nhận</label>
+                    <div style="display:flex;gap:6px;justify-content:flex-end;padding:5px 10px;border-top:1px solid #f1f5f9;margin-top:2px">
+                      <button type="button" id="psClear" class="btn ghost sm">Xoá</button>
+                      <button type="button" id="psApply" class="btn sm">Áp dụng</button>
+                    </div>
+                  </div>
+                </div>
+              </th>
               <th></th>
             </tr>
           </thead>
@@ -355,6 +489,7 @@
     <div class="modal-foot od-actions" id="odActions"></div>
   </div>
 </div>
+
 
 <script src="/shared/js/ui.js"></script>
 <script src="/shared/js/api.js"></script>

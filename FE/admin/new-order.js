@@ -993,13 +993,33 @@
 
       const btn = document.getElementById('btnSubmit');
       btn.disabled = true; btn.textContent = 'Đang tạo…';
-      const res = await api.post('/admin/orders', body, { onError: 'toast' });
-      btn.disabled = false; btn.textContent = '✅ Tạo đơn';
-      if (res && res.id) {
-        ui.toast('Đã tạo đơn ' + res.code, 'success');
-        setTimeout(() => { location.href = '/admin/orders.html#order-' + res.id; }, 600);
+      const staffName = staffId
+        ? (document.getElementById('f_staff').selectedOptions[0] || {}).text || ''
+        : '';
+      try {
+        await submitCreate(body, staffName);
+      } finally {
+        btn.disabled = false; btn.textContent = '✅ Tạo đơn';
       }
     });
+
+    async function submitCreate(body, staffName) {
+      try {
+        const res = await api.post('/admin/orders', body, { silent: true });
+        if (res && res.id) {
+          ui.toast('Đã tạo đơn ' + res.code, 'success');
+          setTimeout(() => { location.href = '/admin/orders.html#order-' + res.id; }, 600);
+        }
+      } catch (e) {
+        if (e.status === 409 && e.data && e.data.code === 'INSUFFICIENT_HOLDINGS') {
+          const lacks = (e.data.details && e.data.details.lacks) || [];
+          const yes = await ui.insufficientHoldingsDialog({ staffName, lacks });
+          if (yes) await submitCreate({ ...body, force: true }, staffName);
+          return;
+        }
+        ui.toast(e.message || 'Lỗi tạo đơn', 'error');
+      }
+    }
 
     await loadTemplates();
     await loadProducts();

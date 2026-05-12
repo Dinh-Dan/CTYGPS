@@ -2,7 +2,20 @@
 
 (function () {
   const $   = (id) => document.getElementById(id);
+  const IS_ADMIN = (window.auth && auth.isAdmin && auth.isAdmin()) || false;
   const fmt = new Intl.NumberFormat('vi-VN');
+
+  // Vo hieu hoa cac field tien-bac doi voi staff (debt_limit, credit_term_days,
+  // discount_rate, default_tier_id). BE da chan, FE chi cho dep mat.
+  function lockAdminFields() {
+    if (IS_ADMIN) return;
+    ['f_debt_limit', 'f_credit_term_days', 'f_discount_rate', 'f_default_tier_id', 'f_opening_balance'].forEach(id => {
+      const el = $(id);
+      if (!el) return;
+      el.disabled = true;
+      el.title = 'Chi admin moi sua duoc';
+    });
+  }
 
   const state = {
     filters: { code: '', type: '', name: '', phone: '', email: '' },
@@ -129,7 +142,9 @@
     $('f_credit_term_days').value  = c.credit_term_days || 0;
     $('f_discount_rate').value     = c.discount_rate || 0;
     $('f_default_tier_id').value   = c.default_tier_id || '';
+    Money.set($('f_opening_balance'), c.opening_balance || 0);
     $('f_note').value           = c.note || '';
+    lockAdminFields();
   }
 
   function toggleDealerBlock() {
@@ -156,6 +171,7 @@
       address:    $('f_address').value.trim() || null,
       avatar_url: $('f_avatar_url').value.trim() || null,
       default_tier_id: $('f_default_tier_id').value ? Number($('f_default_tier_id').value) : null,
+      opening_balance: Money.get($('f_opening_balance')),
       note:       $('f_note').value.trim() || null,
     };
     if (data.type === 'dealer') {
@@ -388,6 +404,8 @@
     if (!r) return;
     assetsState.data = r;
     renderAssetForm();
+    // Neu la dealer -> load them khach dau cuoi
+    if (assetsState.customer.type === 'dealer') renderEndCustomers();
   }
 
   function renderAssetForm() {
@@ -412,9 +430,9 @@
         <div class="af-new-wrap" data-ax-new="${cfg.kind}">
           <div class="af-new-row">
             <input class="input ax-new-val" placeholder="${escape(cfg.placeholder)}">
+            <button type="button" class="af-add-row" data-ax-add-row="${cfg.kind}">+ Thêm</button>
           </div>
         </div>
-        <button type="button" class="af-add-row" data-ax-add-row="${cfg.kind}">+ Thêm dòng</button>
       </div>`;
     }).join('');
 
@@ -422,8 +440,56 @@
     $('ax_body').innerHTML = `<div class="asset-form">
       <p class="af-hint">Sửa trực tiếp ô cũ, tích <b style="color:#dc2626">Xoá</b> để bỏ, hoặc nhập dòng mới. Bấm <b>Lưu thay đổi</b> để áp dụng tất cả.</p>
       ${sectionsHtml}
-    </div>`;
+    </div>
+    ${assetsState.customer.type === 'dealer' ? '<div id="ax_ec_section" style="margin-top:16px;padding-top:14px;border-top:2px dashed #bae6fd"><p style="color:#94a3b8;font-size:13px;padding:0 4px">Đang tải khách đầu cuối…</p></div>' : ''}`;
   }
+
+  // Hien thi danh sach khach dau cuoi cua dai ly
+  async function renderEndCustomers() {
+    const $sec = document.getElementById('ax_ec_section');
+    if (!$sec) return;
+    const cid = assetsState.customer.id;
+    const res = await api.get(`/admin/customers/${cid}/end-customers`).catch(() => null);
+    if (!res) { $sec.innerHTML = '<p style="color:#dc2626;font-size:13px">Lỗi tải danh sách</p>'; return; }
+    const items = res.items || [];
+    $sec.innerHTML = `
+      <div style="font-size:12px;font-weight:700;color:#0369a1;margin-bottom:8px;letter-spacing:.3px;text-transform:uppercase">
+        👤 Khách đầu cuối đã từng làm việc (${items.length})
+      </div>
+      ${!items.length
+        ? '<p style="color:#94a3b8;font-size:13px">Chưa có khách đầu cuối nào.</p>'
+        : `<div style="display:flex;flex-direction:column;gap:6px">
+            ${items.map(ec => `
+              <div style="padding:9px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <div style="flex:1;min-width:0">
+                  <span style="font-weight:700">${escape(ec.full_name)}</span>
+                  ${ec.phone ? `<a href="tel:${escape(ec.phone)}" style="color:#0369a1;margin-left:6px">${escape(ec.phone)}</a>` : ''}
+                  <span style="color:#94a3b8;font-size:11px;margin-left:4px">(${escape(ec.code)})</span>
+                  ${ec.address ? `<div style="font-size:12px;color:#64748b;margin-top:2px">📍 ${escape(ec.address)}</div>` : ''}
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                  <span style="font-size:11px;color:#64748b">${ec.order_count} đơn</span>
+                  <button class="btn sm" data-ec-assets="${ec.id}" data-ec-name="${escape(ec.full_name)}" data-ec-code="${escape(ec.code)}" data-ec-type="retail"
+                    style="font-size:12px;padding:4px 10px">Tài sản</button>
+                </div>
+              </div>`).join('')}
+           </div>`}
+    `;
+
+    // Wire nut "Tai san" cho tung khach dau cuoi
+    $sec.querySelectorAll('button[data-ec-assets]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const ec = {
+          id:        Number(btn.dataset.ecAssets),
+          full_name: btn.dataset.ecName,
+          code:      btn.dataset.ecCode,
+          type:      btn.dataset.ecType || 'retail',
+        };
+        openAssetsModal(ec);
+      });
+    });
+  }
+
 
   async function saveAssets() {
     if (!assetsState.customer) return;
@@ -471,7 +537,13 @@
   // ============================================================
   // REQUESTS MODAL — duyet de xuat KTV
   // ============================================================
-  const reqState = { status: 'pending' };
+  const reqState = { status: 'pending', autoApprove: false };
+
+  function renderAutoApproveToggle() {
+    const on = reqState.autoApprove;
+    $('rqToggleTrack').classList.toggle('on', on);
+    $('rqToggleLabel').innerHTML = `Tự động duyệt: <b>${on ? 'Bật' : 'Tắt'}</b>`;
+  }
 
   async function openReqModal() {
     reqState.status = 'pending';
@@ -479,6 +551,10 @@
       b.classList.toggle('on', b.dataset.status === 'pending');
     });
     $('reqModal').classList.add('open');
+    // Load trang thai tu dong duyet
+    const s = await api.get('/admin/settings', { silent: true }).catch(() => null);
+    reqState.autoApprove = s && s['assets.auto_approve'] === '1';
+    renderAutoApproveToggle();
     await reloadRequests();
   }
   function closeReqModal() { $('reqModal').classList.remove('open'); }
@@ -576,6 +652,16 @@
         reqState.status = b.dataset.status;
         reloadRequests();
       });
+    });
+    $('rqToggleTrack').addEventListener('click', async () => {
+      const newVal = reqState.autoApprove ? '0' : '1';
+      const ok = await api.put('/admin/settings', { key: 'assets.auto_approve', value: newVal },
+        { silent: true }).catch(() => null);
+      if (ok) {
+        reqState.autoApprove = newVal === '1';
+        renderAutoApproveToggle();
+        ui.toast(reqState.autoApprove ? 'Đã bật tự động duyệt' : 'Đã tắt tự động duyệt', 'success');
+      }
     });
     $('rq_close').addEventListener('click', closeReqModal);
     $('rq_done').addEventListener('click', closeReqModal);

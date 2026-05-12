@@ -45,7 +45,7 @@
       ordersHtml = `
         <table class="bill-table">
           <thead>
-            <tr><th style="width:120px">Mã đơn</th><th style="width:90px">Ngày</th><th>Loại</th>
+            <tr><th style="width:120px">Mã đơn</th><th style="width:90px">Ngày</th><th>Loại</th><th style="width:110px">Biển số</th>
                 <th class="num" style="width:120px">Tổng đơn</th><th class="num" style="width:120px">Đã trả</th><th class="num" style="width:120px">Còn lại</th></tr>
           </thead>
           <tbody>
@@ -55,6 +55,7 @@
                 <td><b>${escape(o.code)}</b></td>
                 <td>${fmtDate(o.confirmed_at)}</td>
                 <td>${escape(o.template_name || '—')}</td>
+                <td>${escape(o.vehicle_plate || '—')}</td>
                 <td class="num">${fmtVnd(o.total_amount)}</td>
                 <td class="num">${fmtVnd(o.paid_amount)}</td>
                 <td class="num"><b>${fmtVnd(remain)}</b></td>

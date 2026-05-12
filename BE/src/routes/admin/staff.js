@@ -12,9 +12,11 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../../db');
+const { requireRole } = require('../../middleware/auth');
 
 const router = express.Router();
-const ROLES = ['admin', 'kithuat'];
+const ROLES = ['admin', 'kithuat', 'staff'];
+const adminOnly = requireRole('admin');
 
 function httpErr(status, message) {
   const e = new Error(message);
@@ -35,7 +37,7 @@ function pickPayload(body, { isUpdate = false } = {}) {
   }
   if (body.full_name !== undefined)  out.full_name = String(body.full_name).trim();
   if (body.role !== undefined) {
-    if (!ROLES.includes(body.role)) throw httpErr(400, 'role phai la admin hoac kithuat');
+    if (!ROLES.includes(body.role)) throw httpErr(400, 'role phai la admin, kithuat hoac staff');
     out.role = body.role;
   }
   if (body.area !== undefined)       out.area = body.area || null;
@@ -146,7 +148,7 @@ router.get('/:id', async (req, res, next) => {
 
 // Sinh username ngau nhien khong trung
 async function generateStaffUsername(role) {
-  const prefix = role === 'admin' ? 'ad' : 'ktv';
+  const prefix = role === 'admin' ? 'ad' : role === 'staff' ? 'nv' : 'ktv';
   for (let i = 0; i < 20; i++) {
     const u = prefix + String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
     const [rows] = await db.query(
@@ -159,7 +161,7 @@ async function generateStaffUsername(role) {
 
 // ---- POST /api/admin/staff ------------------------------------
 // Body: { username, password, full_name, role, area, phone, cccd, email, avatar_url }
-router.post('/', async (req, res, next) => {
+router.post('/', adminOnly, async (req, res, next) => {
   try {
     const password = String(req.body.password || '');
     if (password.length < 4) throw httpErr(400, 'Mat khau toi thieu 4 ky tu');
@@ -192,7 +194,7 @@ router.post('/', async (req, res, next) => {
 });
 
 // ---- PUT /api/admin/staff/:id ---------------------------------
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', adminOnly, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) {
@@ -243,7 +245,7 @@ router.put('/:id', async (req, res, next) => {
 });
 
 // ---- POST /api/admin/staff/:id/password -----------------------
-router.post('/:id/password', async (req, res, next) => {
+router.post('/:id/password', adminOnly, async (req, res, next) => {
   try {
     const password = String(req.body.password || '');
     if (password.length < 4) return res.status(400).json({ error: 'Mat khau toi thieu 4 ky tu' });
@@ -260,15 +262,71 @@ router.post('/:id/password', async (req, res, next) => {
 });
 
 // ---- DELETE /api/admin/staff/:id (soft delete) ----------------
-router.delete('/:id', async (req, res, next) => {
+// Chan neu KTV/admin con:
+//  - active tasks (orders.assigned_staff_id, status in confirmed/in_progress)
+//  - holdings (staff_holdings.qty > 0)
+//  - release_pool item duoc cap cho rieng staff nay
+// Admin cuoi cung cung khong xoa duoc.
+router.delete('/:id', adminOnly, async (req, res, next) => {
   try {
-    // Khong cho xoa chinh minh
-    if (Number(req.params.id) === Number(req.user.sub)) {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: 'id khong hop le' });
+    }
+    if (id === Number(req.user.sub)) {
       return res.status(400).json({ error: 'Khong the xoa chinh tai khoan dang dang nhap' });
     }
+
+    const [exist] = await db.query(
+      `SELECT id, username, role FROM staff WHERE id = ? AND is_deleted = 0`, [id]
+    );
+    if (!exist.length) return res.status(404).json({ error: 'Khong tim thay nhan vien' });
+
+    // Khong cho xoa admin cuoi cung
+    if (exist[0].role === 'admin') {
+      const [cnt] = await db.query(
+        `SELECT COUNT(*) AS n FROM staff WHERE role = 'admin' AND is_deleted = 0`
+      );
+      if (Number(cnt[0].n) <= 1) {
+        return res.status(400).json({ error: 'Khong the xoa admin cuoi cung' });
+      }
+    }
+
+    const [[blockers]] = await db.query(
+      `SELECT
+         COALESCE((
+           SELECT COUNT(*) FROM orders
+            WHERE assigned_staff_id = ?
+              AND status IN ('confirmed','in_progress')
+              AND is_deleted = 0
+         ), 0) AS active_tasks,
+         COALESCE((
+           SELECT SUM(qty) FROM staff_holdings WHERE staff_id = ?
+         ), 0) AS held_qty,
+         COALESCE((
+           SELECT SUM(qty) FROM release_pool WHERE staff_id = ?
+         ), 0) AS pool_qty`,
+      [id, id, id]
+    );
+
+    const active = Number(blockers.active_tasks) || 0;
+    const held   = Number(blockers.held_qty) || 0;
+    const pool   = Number(blockers.pool_qty) || 0;
+
+    if (active > 0 || held > 0 || pool > 0) {
+      const parts = [];
+      if (active) parts.push(`${active} cong viec dang xu ly`);
+      if (held)   parts.push(`${held} thiet bi dang giu`);
+      if (pool)   parts.push(`${pool} thiet bi cho nhan`);
+      return res.status(409).json({
+        error: `Khong the xoa: nhan vien con ${parts.join(', ')}. Vui long gan lai cong viec va thu hoi thiet bi truoc.`,
+        blockers: { active_tasks: active, held_qty: held, pool_qty: pool },
+      });
+    }
+
     const [result] = await db.query(
       `UPDATE staff SET is_deleted = 1 WHERE id = ? AND is_deleted = 0`,
-      [req.params.id]
+      [id]
     );
     if (!result.affectedRows) return res.status(404).json({ error: 'Khong tim thay nhan vien' });
     res.json({ ok: true });

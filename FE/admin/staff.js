@@ -1,4 +1,4 @@
-// Logic trang admin/technicians — quan ly KTV + phan cong don
+// Logic trang admin/staff — quan ly tat ca nhan vien (kithuat + staff + admin)
 
 (function () {
   const $ = (id) => document.getElementById(id);
@@ -60,7 +60,7 @@
         <div class="ktv-actions">
           ${isKtv ? `<button class="btn sm full" data-act="assign" data-id="${s.id}">📋 Phân đơn</button>` : ''}
           ${isKtv && IS_ADMIN ? `<button class="btn sm full" data-act="issue" data-id="${s.id}" style="background:#0ea5e9">📤 Cấp sản phẩm</button>` : ''}
-          ${isKtv ? `<a class="btn ghost sm full" href="/admin/payroll.html?staff=${s.id}" style="background:#16a34a;color:#fff;border-color:#16a34a">💵 Bảng lương</a>` : ''}
+          <a class="btn ghost sm full" href="/admin/payroll.html?staff=${s.id}" style="background:#16a34a;color:#fff;border-color:#16a34a">💵 Bảng lương</a>
           ${IS_ADMIN ? `<button class="btn ghost sm" data-act="edit" data-id="${s.id}">✏️ Sửa</button>` : ''}
           ${IS_ADMIN ? `<button class="btn ghost sm" data-act="pw" data-id="${s.id}">🔑 Đổi MK</button>` : ''}
           ${IS_ADMIN ? `<button class="btn ghost sm full" data-act="del" data-id="${s.id}" style="color:var(--danger)">🗑️ Xóa</button>` : ''}
@@ -160,14 +160,13 @@
     load();
   }
 
-  // ---- Modal phan cong ---------------------------------------
+  // ---- Modal phan cong (chi KTV) ----------------------------
   async function openAssignModal(ktv) {
     assigningKtv = ktv;
     $('assignKtvName').textContent = ktv.full_name + (ktv.area ? ` (${ktv.area})` : '');
     $('assignList').innerHTML = '<p class="text-muted">Đang tải...</p>';
     $('assignModal').classList.add('open');
 
-    // Lay don chua co KTV (status='new' = "đã chốt", chưa assigned)
     const res = await api.get('/admin/orders?status=new&unassigned=1&limit=50').catch(() => null);
     if (!res) return;
     const orders = res.items || [];
@@ -189,7 +188,6 @@
             👤 ${escape(t.customer_name || '')}
             ${t.customer_phone ? '· 📞 ' + escape(t.customer_phone) : ''}
             ${t.area ? '· 📍 ' + escape(t.area) : ''}
-            
           </div>
           <div class="text-muted" style="font-size:13px">
             💵 Tổng đơn: <b>${fmt.format(t.total_amount || 0)}đ</b>
@@ -239,10 +237,10 @@
 
   // ==================== MODAL CAP SAN PHAM ====================
   let issueKtv = null;
-  let issueProducts = [];   // [{id, code, name}]
-  let issueProductMap = {}; // by id
-  let issueProductLabelMap = {}; // by "CODE · NAME" -> id
-  let issueStockMap = {};   // product_id -> qty
+  let issueProducts = [];
+  let issueProductMap = {};
+  let issueProductLabelMap = {};
+  let issueStockMap = {};
   let issueFilterStatus = '';
   const STATUS_LABEL = {
     draft:     { text: 'Chờ duyệt',    cls: 'cap-draft' },
@@ -285,7 +283,6 @@
       const stockItems = (st && (st.items || st)) || [];
       stockItems.forEach(s => { issueStockMap[s.product_id] = Number(s.quantity) || 0; });
 
-      // Render datalist 1 lan
       $('issProdList').innerHTML = issueProducts.map(p =>
         `<option value="${escape(productLabel(p))}">`).join('');
     }
@@ -328,7 +325,6 @@
       </div>
     `;
     $('issLines').appendChild(row);
-    // Auto focus o SP cua dong moi
     setTimeout(() => row.querySelector('.cProd').focus(), 30);
   }
 
@@ -400,7 +396,6 @@
       .catch(() => null);
     const items = (r && r.items) || [];
 
-    // Lay so phieu draft tong (khong theo filter) cho badge
     const rAll = issueFilterStatus
       ? await api.get(`/admin/staff-issues?staff_id=${issueKtv.id}&status=draft&limit=1`, { silent: true }).catch(() => null)
       : { total: items.filter(x => x.status === 'draft').length };
@@ -468,15 +463,11 @@
     }).join('');
 
     let extra = '';
-    if (d.note) {
-      extra += `<div class="extra"><b>Ghi chú:</b> ${escape(d.note)}</div>`;
-    }
+    if (d.note) extra += `<div class="extra"><b>Ghi chú:</b> ${escape(d.note)}</div>`;
     if (d.approved_at) {
       extra += `<div class="extra"><b>Duyệt:</b> ${escape(d.approved_by_name || '')} · ${escape(fmtTime(d.approved_at))}${d.receipt_code ? ' · phiếu xuất ' + escape(d.receipt_code) : ''}</div>`;
     }
-    if (d.received_at) {
-      extra += `<div class="extra"><b>KTV nhận:</b> ${escape(fmtTime(d.received_at))}</div>`;
-    }
+    if (d.received_at) extra += `<div class="extra"><b>KTV nhận:</b> ${escape(fmtTime(d.received_at))}</div>`;
     if (d.received_photo_url) {
       extra += `<div class="extra"><b>Ảnh nhận:</b><br><a href="${escape(d.received_photo_url)}" target="_blank" class="iss-photo"><img src="${escape(d.received_photo_url)}"></a></div>`;
     }
@@ -540,7 +531,6 @@
     });
     $('issAddLine').addEventListener('click', addIssueLine);
 
-    // Form events: xoa dong, update stock hint + summary realtime
     $('issLines').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-rm]');
       if (!btn) return;
@@ -562,7 +552,6 @@
       const row = e.target.closest('.iss-create-row');
       if (!row) return;
       if (e.target.classList.contains('cProd')) {
-        // Khi user chon datalist option, qty input van giu nguyen — chi update hint
         updateRowStock(row);
         updateIssueSummary();
       }
@@ -570,7 +559,6 @@
 
     $('issSubmit').addEventListener('click', submitIssueCreate);
 
-    // Filter
     $('issFilter').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-st]');
       if (!btn) return;
@@ -580,7 +568,6 @@
       loadIssueHistory();
     });
 
-    // History click
     $('issHistory').addEventListener('click', (e) => {
       const approveBtn = e.target.closest('button[data-act="iss-approve"]');
       const rejectBtn  = e.target.closest('button[data-act="iss-reject"]');
@@ -618,7 +605,7 @@
         title: 'Xác nhận xoá',
         message: `Ẩn nhân viên @${s.username}? Sẽ không cho xoá nếu còn việc đang xử lý hoặc đang giữ thiết bị — hãy gán lại việc và thu hồi thiết bị trước.`,
         type: 'warning',
-        okText: 'Xoá',
+        okText: 'Xóa',
       });
       if (!yes) return;
       const ok = await api.delete('/admin/staff/' + id, {
@@ -628,9 +615,159 @@
     }
   }
 
+  // ==================== MODAL UNG LUONG (NV tu gui) ====================
+  const fmtMoney = (n) => new Intl.NumberFormat('vi-VN').format(n || 0);
+  function advStatusPill(s) {
+    const map = { pending: ['Chờ duyệt','adv-status-pending'], approved: ['Đã duyệt','adv-status-approved'], rejected: ['Từ chối','adv-status-rejected'] };
+    const [lbl, cls] = map[s] || [s, ''];
+    return `<span class="pill ${cls}">${lbl}</span>`;
+  }
+  function fmtDt(d) {
+    if (!d) return '—';
+    const dt = new Date(d);
+    if (isNaN(dt)) return String(d).slice(0,10);
+    const p = n => String(n).padStart(2,'0');
+    return `${p(dt.getDate())}/${p(dt.getMonth()+1)} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
+  }
+
+  function defaultPeriod() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  }
+
+  async function loadMyAdvances() {
+    const wrap = $('myAdvList');
+    const res = await api.get('/admin/staff/me/advances', { silent: true }).catch(() => null);
+    const items = (res && res.items) || [];
+    if (!items.length) {
+      wrap.innerHTML = '<p class="text-muted" style="font-size:13px">Chưa có phiếu ứng nào.</p>';
+      return;
+    }
+    wrap.innerHTML = items.map(a => `
+      <div class="adv-row ${a.status}">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <b style="font-size:14px">${fmtMoney(a.amount)}đ</b>
+          ${advStatusPill(a.status)}
+          <span style="font-size:12px;color:#64748b">Kỳ ${escape(a.period)}</span>
+        </div>
+        <div class="adv-meta">
+          ${a.note ? `📝 ${escape(a.note)} · ` : ''}
+          Gửi: ${escape(fmtDt(a.created_at))}
+          ${a.status === 'rejected' && a.reject_reason ? `<br><span style="color:#dc2626">Lý do: ${escape(a.reject_reason)}</span>` : ''}
+          ${a.status === 'approved' ? `<br><span style="color:#16a34a">Duyệt: ${escape(fmtDt(a.approved_at))}</span>` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function openMyAdvanceModal() {
+    $('adv_period').value = defaultPeriod();
+    $('adv_amount').value = '';
+    $('adv_note').value = '';
+    $('myAdvanceModal').classList.add('open');
+    loadMyAdvances();
+  }
+  function closeMyAdvanceModal() { $('myAdvanceModal').classList.remove('open'); }
+
+  async function submitMyAdvance() {
+    const period = $('adv_period').value;
+    const amount = Number($('adv_amount').value);
+    const note   = $('adv_note').value.trim();
+    if (!period) { ui.toast('Chọn kỳ lương', 'warning'); return; }
+    if (!amount || amount <= 0) { ui.toast('Nhập số tiền ứng', 'warning'); return; }
+    $('myAdvSubmit').disabled = true;
+    const ok = await api.post('/admin/staff/me/advances', { period, amount, note }, {
+      successMessage: 'Đã gửi yêu cầu ứng lương, chờ admin duyệt',
+    }).catch(() => null);
+    $('myAdvSubmit').disabled = false;
+    if (!ok) return;
+    $('adv_amount').value = '';
+    $('adv_note').value = '';
+    loadMyAdvances();
+  }
+
+  // ==================== MODAL DUYET UNG LUONG (Admin) ====================
+  async function loadPendingAdvances() {
+    const wrap = $('pendingAdvList');
+    wrap.innerHTML = '<p class="text-muted" style="font-size:13px;padding:8px 0">Đang tải...</p>';
+    const res = await api.get('/admin/staff/advances/pending', { silent: true }).catch(() => null);
+    const items = (res && res.items) || [];
+
+    const badge = $('pendingBadge');
+    if (items.length) { badge.textContent = items.length; badge.style.display = ''; }
+    else badge.style.display = 'none';
+
+    if (!items.length) {
+      wrap.innerHTML = '<p class="text-muted" style="font-size:13px;padding:16px 0;text-align:center">Không có yêu cầu nào đang chờ duyệt.</p>';
+      return;
+    }
+    wrap.innerHTML = items.map(a => `
+      <div class="adv-row pending" data-adv-id="${a.id}" data-staff-id="${a.staff_id}">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <b style="font-size:14px">${fmtMoney(a.amount)}đ</b>
+          <span style="font-size:12px;color:#64748b">Kỳ ${escape(a.period)}</span>
+          <span class="pill" style="background:#dbeafe;color:#1e40af">${escape(a.staff_name)}</span>
+        </div>
+        <div class="adv-meta">
+          ${a.note ? `📝 ${escape(a.note)} · ` : ''}Gửi: ${escape(fmtDt(a.created_at))}
+        </div>
+        <div class="adv-acts">
+          <button type="button" class="btn ghost sm" data-act="adv-reject" style="color:var(--danger)">Từ chối</button>
+          <button type="button" class="btn sm" data-act="adv-approve" style="background:#16a34a;border-color:#16a34a">Duyệt</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function openPendingAdvModal() {
+    $('pendingAdvModal').classList.add('open');
+    loadPendingAdvances();
+  }
+  function closePendingAdvModal() { $('pendingAdvModal').classList.remove('open'); }
+
+  async function handlePendingAdvClick(e) {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const row = btn.closest('.adv-row');
+    const advId   = row.dataset.advId;
+    const staffId = row.dataset.staffId;
+
+    if (btn.dataset.act === 'adv-approve') {
+      const yes = await ui.confirm({ title: 'Duyệt phiếu ứng', message: 'Xác nhận duyệt yêu cầu này?', okText: 'Duyệt' });
+      if (!yes) return;
+      const ok = await api.patch(`/admin/staff/${staffId}/advances/${advId}/approve`, {}, {
+        successMessage: 'Đã duyệt phiếu ứng',
+      }).catch(() => null);
+      if (ok) loadPendingAdvances();
+    } else if (btn.dataset.act === 'adv-reject') {
+      const reason = prompt('Lý do từ chối:');
+      if (reason === null) return;
+      const ok = await api.patch(`/admin/staff/${staffId}/advances/${advId}/reject`, { reason: reason.trim() }, {
+        successMessage: 'Đã từ chối phiếu ứng',
+      }).catch(() => null);
+      if (ok) loadPendingAdvances();
+    }
+  }
+
+  function bindAdvanceModals() {
+    // NV modal
+    $('myAdvClose').addEventListener('click', closeMyAdvanceModal);
+    $('myAdvCancelBtn').addEventListener('click', closeMyAdvanceModal);
+    $('myAdvanceModal').addEventListener('click', e => { if (e.target.id === 'myAdvanceModal') closeMyAdvanceModal(); });
+    $('myAdvSubmit').addEventListener('click', submitMyAdvance);
+    $('btnMyAdvance').addEventListener('click', openMyAdvanceModal);
+
+    // Admin modal
+    $('pendingAdvClose').addEventListener('click', closePendingAdvModal);
+    $('pendingAdvCancelBtn').addEventListener('click', closePendingAdvModal);
+    $('pendingAdvModal').addEventListener('click', e => { if (e.target.id === 'pendingAdvModal') closePendingAdvModal(); });
+    $('btnPendingAdvances').addEventListener('click', openPendingAdvModal);
+    $('pendingAdvList').addEventListener('click', handlePendingAdvClick);
+  }
+
   // ---- Init --------------------------------------------------
   function init() {
-    adminShell.init('technicians');
+    adminShell.init('staff');
 
     let timer;
     $('searchBox').addEventListener('input', (e) => {
@@ -644,6 +781,15 @@
 
     if (!IS_ADMIN && $('btnAdd')) $('btnAdd').style.display = 'none';
     if ($('btnAdd')) $('btnAdd').addEventListener('click', () => openModal(null));
+
+    // Hien nut theo role
+    if (IS_ADMIN) {
+      $('btnPendingAdvances').style.display = '';
+      loadPendingAdvances(); // load badge ngay khi vao trang
+    } else {
+      $('btnMyAdvance').style.display = '';
+    }
+    bindAdvanceModals();
     $('modalClose').addEventListener('click', closeModal);
     $('btnCancel').addEventListener('click', closeModal);
     $('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });

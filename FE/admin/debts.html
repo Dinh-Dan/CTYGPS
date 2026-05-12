@@ -49,7 +49,8 @@
   .progress-bar .pb-paid{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#16a34a,#22c55e)}
   .progress-bar .pb-hold{position:absolute;top:0;bottom:0;background:#fbbf24}
   .progress-bar .pb-pend{position:absolute;top:0;bottom:0;background:#fb923c}
-  .history-row{padding:8px 12px;background:#f1f5f9;border-radius:6px;display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px}
+  .history-row{padding:8px 12px;background:#f1f5f9;border-radius:6px;display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;cursor:pointer;transition:background .12s}
+  .history-row:hover{background:#e2e8f0}
   .summary-box{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px;margin:12px 0}
   .summary-box .row{display:flex;justify-content:space-between;padding:4px 0;font-size:14px}
   .summary-box .row.total{font-size:16px;font-weight:700;color:var(--primary);padding-top:8px;border-top:1px dashed #fdba74;margin-top:6px}
@@ -227,75 +228,6 @@
   </div>
 </div>
 
-<!-- Modal: form tat toan khach -->
-<div id="settleModal" class="modal-bg">
-  <div class="modal" style="max-width:680px">
-    <div class="modal-head">
-      <div class="modal-title-wrap">
-        <h3>Tạo phiếu tất toán</h3>
-        <button type="button" class="modal-help-btn" data-help="settle" title="Hướng dẫn">?</button>
-      </div>
-      <button type="button" class="modal-close" id="smClose" aria-label="Đóng">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="help-box" data-help-for="settle" hidden>
-        <b>Tạo phiếu tất toán</b>
-        <ul>
-          <li>Phiếu này ghi nhận khách <b>trả tiền</b>. Tiền trả sẽ trừ vào đơn cũ nhất trước, đến khi hết.</li>
-          <li><b>Trả thiếu</b>: phần thiếu chuyển sang nợ kỳ sau (ghi vào <i>opening_balance</i>).</li>
-          <li><b>Trả dư</b>: phần dư cũng chuyển sang kỳ sau (opening_balance âm) — dùng đối trừ lần sau.</li>
-          <li>Chọn <b>QR</b> phù hợp để in lên bill cho khách. Cấu hình QR tại <a href="/admin/settings.html">Cài đặt</a>.</li>
-          <li>Bấm <b>Xác nhận & xem bill</b> sẽ chuyển sang trang in phiếu.</li>
-        </ul>
-      </div>
-      <div class="summary-box">
-        <div class="row"><span>Nợ kỳ trước:</span><span id="smOpening">0đ</span></div>
-        <div class="row"><span>Nợ phát sinh từ đơn:</span><span id="smOrderDebt">0đ</span></div>
-        <div class="row total"><span>Tổng phải thu:</span><span id="smTotalDebt">0đ</span></div>
-      </div>
-      <div id="smOrdersBlock" class="pending-orders-block" style="display:none">
-        <h4>Đơn đang nợ <small id="smOrdersCount" class="text-muted"></small></h4>
-        <div class="order-list" id="smOrdersList"></div>
-      </div>
-      <div class="grid cols-2">
-        <div class="field">
-          <label>Số tiền khách trả *</label>
-          <input type="text" id="smAmount" class="input money-input" inputmode="numeric" placeholder="VD: 5.000.000">
-          <p class="help">Còn lại sẽ chuyển sang nợ kỳ sau</p>
-        </div>
-        <div class="field">
-          <label>Hình thức</label>
-          <select id="smMethod" class="select">
-            <option value="cash">Tiền mặt</option>
-            <option value="transfer">Chuyển khoản</option>
-            <option value="mixed">Hỗn hợp</option>
-          </select>
-        </div>
-      </div>
-      <div class="field">
-        <label>QR thanh toán (cho bill in)</label>
-        <div class="qr-grid" id="smQrGrid"></div>
-        <p class="help">Chọn QR sẽ in lên bill. Cấu hình QR ở trang <a href="/admin/settings.html">Cài đặt</a>.</p>
-      </div>
-      <div class="field">
-        <label>Ảnh biên lai (tuỳ chọn)</label>
-        <input type="file" id="smReceipt" accept="image/*">
-        <div class="receipt-preview" id="smReceiptPrev" style="display:none">
-          <img id="smReceiptImg"><button type="button" class="btn ghost sm" id="smReceiptClear">Xoá</button>
-        </div>
-      </div>
-      <div class="field">
-        <label>Ghi chú</label>
-        <textarea id="smNote" class="textarea" rows="2"></textarea>
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button type="button" class="btn ghost" id="smCancel">Huỷ</button>
-      <button type="button" class="btn" id="smSubmit">Xác nhận & xem bill</button>
-    </div>
-  </div>
-</div>
-
 <!-- Modal: tat toan KTV -->
 <div id="staffSettleModal" class="modal-bg">
   <div class="modal" style="max-width:640px">
@@ -347,6 +279,45 @@
     </div>
     <div class="modal-foot">
       <button type="button" class="btn ghost" id="prCloseBtn">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: danh sach lich su tat toan cua 1 khach -->
+<div id="settlementListModal" class="modal-bg">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-head">
+      <h3 id="slTitle">Lịch sử tất toán</h3>
+      <button type="button" class="modal-close" id="slClose" aria-label="Đóng">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-shrink:0">
+        <input type="date" id="slFrom" class="input" style="width:150px" />
+        <input type="date" id="slTo"   class="input" style="width:150px" />
+        <button type="button" class="btn sm ghost" id="slFilter">Lọc</button>
+        <button type="button" class="btn sm ghost" id="slClear">Xoá lọc</button>
+      </div>
+      <div id="slBody"></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="slCloseBtn">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: chi tiet 1 phieu tat toan -->
+<div id="settlementDetailModal" class="modal-bg">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-head">
+      <h3 id="sdTitle">Chi tiết phiếu tất toán</h3>
+      <button type="button" class="modal-close" id="sdClose" aria-label="Đóng">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="sdBody"></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="sdCloseBtn">Đóng</button>
+      <button type="button" class="btn ghost" id="sdPrint">In phiếu ↗</button>
     </div>
   </div>
 </div>

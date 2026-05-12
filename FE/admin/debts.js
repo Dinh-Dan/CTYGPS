@@ -4,6 +4,7 @@
 
 (function () {
   const $ = (id) => document.getElementById(id);
+  const IS_ADMIN = (window.auth && auth.isAdmin && auth.isAdmin()) || false;
   const fmt = new Intl.NumberFormat('vi-VN');
   const fmtVnd = (n) => fmt.format(Number(n) || 0) + 'đ';
   const escape = (s) => String(s == null ? '' : s)
@@ -25,7 +26,6 @@
     selectedCustomer: null,
     settings: null, // app_settings (qr.* + bank.*)
     selectedQrSlot: null,
-    receiptUrl: '',
     pendingRemits: [],
   };
 
@@ -121,8 +121,8 @@
           <td>${days}</td>
           <td><b>${fmtVnd(it.total_amount)}</b></td>
           <td>
-            <button class="btn ghost sm" data-act="settle-staff"
-              data-tid="${it.staff_id}" data-name="${escape(it.name)}">Duyệt nộp</button>
+            ${IS_ADMIN ? `<button class="btn ghost sm" data-act="settle-staff"
+              data-tid="${it.staff_id}" data-name="${escape(it.name)}">Duyệt nộp</button>` : ''}
             <a class="btn ghost sm" href="/admin/payroll.html?staff=${it.staff_id}" title="Xem bảng lương">💵 Lương</a>
           </td>
         </tr>`;
@@ -301,98 +301,128 @@
     }
 
     if (r.history.length) {
-      html += `<h4 style="margin:14px 0 8px;font-size:14px;color:#475569">Lịch sử tất toán (${r.history.length})</h4>`;
-      for (const h of r.history.slice(0, 10)) {
-        html += `<div class="history-row">
+      const PREVIEW = 5;
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px">
+        <h4 style="margin:0;font-size:14px;color:#475569">Lịch sử tất toán (${r.history.length})</h4>
+        ${r.history.length > PREVIEW ? `<button type="button" class="btn sm ghost" data-act="settle-history" data-cid="${c.id}">Xem tất cả →</button>` : ''}
+      </div>`;
+      for (const h of r.history.slice(0, PREVIEW)) {
+        html += `<div class="history-row" data-act="settle-detail" data-sid="${h.id}" title="Bấm để xem chi tiết phiếu">
           <span><b>${escape(h.code)}</b> · ${fmtDate(h.paid_at)}</span>
           <span>Trả <b>${fmtVnd(h.amount_paid)}</b> / Nợ ${fmtVnd(h.total_debt)}${h.remaining > 0 ? ` · còn ${fmtVnd(h.remaining)}` : ''}</span>
         </div>`;
       }
     }
 
+    // Khu vuc chon ky bang ke (luon hien, admin moi dung duoc)
+    const today = new Date().toISOString().slice(0, 10);
+    const firstOfMonth = today.slice(0, 8) + '01';
+    html += `<div style="margin-top:16px;padding:12px 14px;background:#f8fafc;border:1px solid var(--border);border-radius:10px">
+      <div style="font-size:13px;font-weight:600;color:#334155;margin-bottom:8px">Tạo bảng kê theo kỳ</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label style="font-size:13px;color:#475569">Từ</label>
+        <input type="date" id="cmDateFrom" class="input" style="width:148px" value="${firstOfMonth}" />
+        <label style="font-size:13px;color:#475569">đến</label>
+        <input type="date" id="cmDateTo"   class="input" style="width:148px" value="${today}" />
+        <button type="button" class="btn sm" id="cmOpenStatement" data-cid="${c.id}">Mở bảng kê →</button>
+      </div>
+    </div>`;
+
     $('cmBody').innerHTML = html;
-    $('cmSettle').disabled = r.total_debt <= 0;
+    if (!IS_ADMIN) { $('cmSettle').style.display = 'none'; $('cmOpenStatement') && ($('cmOpenStatement').style.display = 'none'); }
+    else $('cmSettle').disabled = r.total_debt <= 0;
   }
 
-  // ==== MODAL: form tat toan khach =============================
-  async function openSettleModal() {
-    const r = state.selectedCustomer;
-    if (!r) return;
-    $('smOpening').textContent   = fmtVnd(r.opening_balance);
-    $('smOrderDebt').textContent = fmtVnd(r.order_debt);
-    $('smTotalDebt').textContent = fmtVnd(r.total_debt);
-    Money.set($('smAmount'), Math.max(0, r.total_debt)); // mac dinh tat toan toan bo
-    $('smMethod').value = 'cash';
-    $('smNote').value = '';
-    $('smReceipt').value = '';
-    $('smReceiptPrev').style.display = 'none';
-    state.receiptUrl = '';
-
-    // Hien danh sach don dang no de khach thay ro tra cho don nao
-    const orders = r.pending_orders || [];
-    if (orders.length) {
-      $('smOrdersBlock').style.display = '';
-      $('smOrdersCount').textContent = `(${orders.length} đơn — trừ từ cũ → mới)`;
-      $('smOrdersList').innerHTML = renderPendingOrderRows(orders);
-    } else {
-      $('smOrdersBlock').style.display = 'none';
-    }
-
-    if (!state.settings) {
-      state.settings = await api.get('/admin/settings', { silent: true }).catch(() => ({}));
-    }
-    const defaultSlot = Number(state.settings['bank.default_qr_slot']) || 1;
-    state.selectedQrSlot = defaultSlot;
-    renderQrGrid();
-
-    $('settleModal').classList.add('open');
+  // ==== MODAL: danh sach lich su tat toan (day du) ===============
+  function openSettlementList(customerId, history) {
+    state._slHistory = history; // cache de loc phia FE
+    state._slCid = customerId;
+    renderSettlementList(history);
+    const cust = state.selectedCustomer && state.selectedCustomer.customer;
+    const name = cust ? (cust.company_name || cust.full_name) : '';
+    $('slTitle').textContent = `Lịch sử tất toán${name ? ': ' + name : ''} (${history.length})`;
+    $('settlementListModal').classList.add('open');
   }
-  function renderQrGrid() {
-    const grid = $('smQrGrid');
+
+  function renderSettlementList(list) {
+    if (!list.length) {
+      $('slBody').innerHTML = '<p class="text-muted text-center" style="padding:24px">Chưa có phiếu tất toán nào.</p>';
+      return;
+    }
     let html = '';
-    for (let i = 1; i <= 5; i++) {
-      const url = state.settings[`qr.slot${i}.image_url`] || '';
-      const label = state.settings[`qr.slot${i}.label`] || ('Slot ' + i);
-      const empty = !url;
-      const sel = state.selectedQrSlot === i && !empty ? 'selected' : '';
-      const klass = empty ? 'qr-pick empty' : `qr-pick ${sel}`;
-      html += `<div class="${klass}" data-slot="${i}" ${empty ? 'title="Chưa cấu hình"' : ''}>
-        ${empty ? '<div style="aspect-ratio:1;display:grid;place-items:center">trống</div>'
-                : `<img src="${escape(url)}" alt="${escape(label)}">`}
-        <div class="qr-label">${escape(label)}</div>
+    for (const h of list) {
+      const methodLabel = { cash: 'Tiền mặt', transfer: 'Chuyển khoản', mixed: 'Hỗn hợp' }[h.pay_method] || h.pay_method || '';
+      html += `<div class="history-row" data-act="settle-detail" data-sid="${h.id}" title="Bấm để xem chi tiết">
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <b>${escape(h.code)}</b>
+          <span class="text-muted" style="font-size:12px">${fmtDate(h.paid_at)}${methodLabel ? ' · ' + methodLabel : ''}</span>
+        </div>
+        <div style="text-align:right">
+          <div>Trả <b>${fmtVnd(h.amount_paid)}</b> / <span class="text-muted">${fmtVnd(h.total_debt)}</span></div>
+          ${h.remaining > 0 ? `<div style="color:#dc2626;font-size:12px">Còn thiếu ${fmtVnd(h.remaining)}</div>` : '<div style="color:#16a34a;font-size:12px">Đã đủ</div>'}
+        </div>
       </div>`;
     }
-    grid.innerHTML = html;
+    $('slBody').innerHTML = html;
   }
 
-  async function submitSettle() {
-    const amount = Money.get($('smAmount'));
-    if (!amount || amount <= 0) return ui.toast('Nhập số tiền > 0', 'warning');
-    const r = state.selectedCustomer;
-    if (amount > r.total_debt * 1.1) {
-      const ok = await ui.confirm({ title: 'Số tiền lớn hơn tổng nợ', type: 'warning',
-        message: `Khách trả ${fmtVnd(amount)} nhưng tổng nợ chỉ ${fmtVnd(r.total_debt)}. Vẫn tiếp tục?` });
-      if (!ok) return;
+  // ==== MODAL: chi tiet 1 phieu tat toan =========================
+  async function openSettlementDetail(id) {
+    $('sdTitle').textContent = 'Đang tải...';
+    $('sdBody').innerHTML = '<div class="text-center text-muted" style="padding:40px">Đang tải...</div>';
+    $('settlementDetailModal').classList.add('open');
+    $('sdPrint').dataset.sid = id;
+
+    const r = await api.get('/admin/debts/settlement/' + id).catch(() => null);
+    if (!r) { $('settlementDetailModal').classList.remove('open'); return; }
+
+    const s = r.settlement;
+    const methodLabel = { cash: 'Tiền mặt', transfer: 'Chuyển khoản', mixed: 'Hỗn hợp' }[s.pay_method] || '';
+    $('sdTitle').textContent = `Phiếu tất toán ${escape(s.code)}`;
+
+    let html = `
+      <div class="summary-box" style="margin-top:0">
+        <div class="row"><span>Ngày tất toán:</span><span>${fmtDate(s.paid_at)}</span></div>
+        <div class="row"><span>Tổng nợ lúc chốt:</span><span>${fmtVnd(s.total_debt)}</span></div>
+        <div class="row"><span>Khách đã trả:</span><span><b>${fmtVnd(s.amount_paid)}</b>${methodLabel ? ' (' + methodLabel + ')' : ''}</span></div>
+        ${s.remaining > 0 ? `<div class="row"><span>Chuyển nợ kỳ sau:</span><span style="color:#dc2626"><b>${fmtVnd(s.remaining)}</b></span></div>` : ''}
+        ${s.note ? `<div class="row"><span>Ghi chú:</span><span>${escape(s.note)}</span></div>` : ''}
+        ${s.created_by_name ? `<div class="row"><span>Người tạo:</span><span>${escape(s.created_by_name)}</span></div>` : ''}
+      </div>`;
+
+    if (r.carried_orders && r.carried_orders.length) {
+      html += `<h4 style="margin:14px 0 8px;font-size:14px;color:#475569">Đơn đã kết vào phiếu (${r.carried_orders.length})</h4>
+        <div class="order-list">`;
+      for (const o of r.carried_orders) {
+        const remaining = o.total_amount - o.paid_amount;
+        html += `<a class="order-row" href="/admin/orders.html?id=${o.id}" target="_blank" rel="noopener">
+          <div class="o-head">
+            <span class="o-code">${escape(o.code)}</span>
+            <span class="o-amount">${fmtVnd(o.total_amount)}</span>
+          </div>
+          <div class="o-meta">
+            ${o.template_name ? `<span>${escape(o.template_name)}</span>` : ''}
+            ${o.vehicle_plate ? `<span class="o-tag plate">${escape(o.vehicle_plate)}</span>` : ''}
+            <span class="o-tag date">${fmtDate(o.confirmed_at)}</span>
+            ${remaining > 0 ? `<span class="o-tag pend">Còn nợ ${fmtVnd(remaining)}</span>` : '<span class="o-tag paid">Đã đủ</span>'}
+          </div>
+        </a>`;
+      }
+      html += '</div>';
+    } else {
+      html += '<p class="text-muted" style="margin-top:12px;font-size:13px">Không có đơn hàng nào kết vào phiếu này.</p>';
     }
 
-    $('smSubmit').disabled = true;
-    try {
-      const body = {
-        amount_paid: amount,
-        qr_slot: state.selectedQrSlot,
-        pay_method: $('smMethod').value,
-        note: $('smNote').value.trim(),
-      };
-      if (state.receiptUrl) body.receipt_url = state.receiptUrl;
-      const res = await api.post(`/admin/debts/${r.customer.id}/settle`, body, {
-        loading: true, successMessage: 'Đã tạo phiếu tất toán'
-      }).catch(() => null);
-      if (!res) return;
-      // Redirect sang trang in bill
-      location.href = `/admin/debt-settle.html?id=${res.settlement_id}`;
-    } finally {
-      $('smSubmit').disabled = false;
-    }
+    $('sdBody').innerHTML = html;
+  }
+
+  // Tat toan: mo tab moi sang trang form chi tiet (replace cho modal cu).
+  function openSettleModal() {
+    const r = state.selectedCustomer;
+    if (!r) return;
+    const cid = r.customer && r.customer.id;
+    if (!cid) return;
+    window.open(`/admin/debt-settle-form.html?cid=${cid}`, '_blank', 'noopener');
   }
 
   // ==== MODAL: duyet nop KTV (Rolling Balance) =================
@@ -552,13 +582,30 @@
     if (orders) return openOrdersListModal(orders.dataset.cid);
     const detail = e.target.closest('button[data-act="detail"]');
     if (detail) return openCustModal(detail.dataset.cid);
+    const settleHistory = e.target.closest('[data-act="settle-history"]');
+    if (settleHistory) {
+      const hist = state.selectedCustomer && state.selectedCustomer.history || [];
+      return openSettlementList(settleHistory.dataset.cid, hist);
+    }
+    const settleDetail = e.target.closest('[data-act="settle-detail"]');
+    if (settleDetail) return openSettlementDetail(Number(settleDetail.dataset.sid));
+
+    // Nut "Mo bang ke theo ky"
+    const openStmt = e.target.closest('#cmOpenStatement');
+    if (openStmt) {
+      const cid = openStmt.dataset.cid;
+      const from = $('cmDateFrom') && $('cmDateFrom').value;
+      const to   = $('cmDateTo')   && $('cmDateTo').value;
+      if (!from || !to) return ui.toast('Chọn đủ ngày từ và đến', 'warning');
+      if (from > to)    return ui.toast('Ngày từ phải trước ngày đến', 'warning');
+      const qs = new URLSearchParams({ cid });
+      if (from) qs.set('date_from', from);
+      if (to)   qs.set('date_to',   to);
+      window.open(`/admin/debt-settle-form.html?${qs}`, '_blank', 'noopener');
+      return;
+    }
     const settleStaff = e.target.closest('button[data-act="settle-staff"]');
     if (settleStaff) return openStaffSettleModal(settleStaff);
-    const qrPick = e.target.closest('.qr-pick:not(.empty)');
-    if (qrPick) {
-      state.selectedQrSlot = Number(qrPick.dataset.slot);
-      renderQrGrid();
-    }
     const pact = e.target.closest('button[data-pact]');
     if (pact) {
       const id = Number(pact.dataset.rid);
@@ -588,10 +635,6 @@
   $('olCloseBtn').onclick = () => $('ordersListModal').classList.remove('open');
   $('olSettle').onclick   = () => { $('ordersListModal').classList.remove('open'); openSettleModal(); };
 
-  $('smClose').onclick  = () => $('settleModal').classList.remove('open');
-  $('smCancel').onclick = () => $('settleModal').classList.remove('open');
-  $('smSubmit').onclick = submitSettle;
-
   $('ssClose').onclick  = () => $('staffSettleModal').classList.remove('open');
   $('ssCancel').onclick = () => $('staffSettleModal').classList.remove('open');
   $('ssSubmit').onclick = submitStaffSettle;
@@ -600,25 +643,30 @@
   $('prClose').onclick    = () => $('pendingRemitModal').classList.remove('open');
   $('prCloseBtn').onclick = () => $('pendingRemitModal').classList.remove('open');
 
-  $('smReceipt').onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    try {
-      ui.loading(true);
-      const url = await imgbb.upload(file, { name: 'debt-receipt' });
-      state.receiptUrl = url;
-      $('smReceiptImg').src = url;
-      $('smReceiptPrev').style.display = '';
-    } catch (err) {
-      ui.toast('Lỗi upload: ' + err.message, 'error');
-    } finally {
-      ui.loading(false);
-    }
+  $('slClose').onclick    = () => $('settlementListModal').classList.remove('open');
+  $('slCloseBtn').onclick = () => $('settlementListModal').classList.remove('open');
+  $('slFilter').onclick = () => {
+    const from = $('slFrom').value;
+    const to   = $('slTo').value;
+    const list = (state._slHistory || []).filter(h => {
+      const d = h.paid_at ? h.paid_at.slice(0, 10) : '';
+      if (from && d < from) return false;
+      if (to   && d > to)   return false;
+      return true;
+    });
+    renderSettlementList(list);
   };
-  $('smReceiptClear').onclick = () => {
-    state.receiptUrl = '';
-    $('smReceipt').value = '';
-    $('smReceiptPrev').style.display = 'none';
+  $('slClear').onclick = () => {
+    $('slFrom').value = '';
+    $('slTo').value   = '';
+    renderSettlementList(state._slHistory || []);
+  };
+
+  $('sdClose').onclick    = () => $('settlementDetailModal').classList.remove('open');
+  $('sdCloseBtn').onclick = () => $('settlementDetailModal').classList.remove('open');
+  $('sdPrint').onclick    = () => {
+    const sid = $('sdPrint').dataset.sid;
+    if (sid) window.open('/admin/debt-settle.html?id=' + sid, '_blank', 'noopener');
   };
 
   // ==== INIT ===================================================

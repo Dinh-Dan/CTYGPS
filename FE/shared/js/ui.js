@@ -16,9 +16,9 @@
     if (!msg) return;
     const el = document.createElement('div');
     const cls = type === 'success' ? 'ok'
-              : type === 'error'   ? 'err'
-              : type === 'warning' ? 'warn'
-              : '';
+      : type === 'error' ? 'err'
+        : type === 'warning' ? 'warn'
+          : '';
     el.className = 'toast' + (cls ? ' ' + cls : '');
     el.textContent = String(msg);
     ensureContainer().appendChild(el);
@@ -40,9 +40,9 @@
   // de tu an khi co modal mo, tranh che button.
   const _listeners = {};
   const bus = {
-    on(ev, fn)  { (_listeners[ev] = _listeners[ev] || []).push(fn); return () => bus.off(ev, fn); },
+    on(ev, fn) { (_listeners[ev] = _listeners[ev] || []).push(fn); return () => bus.off(ev, fn); },
     off(ev, fn) { _listeners[ev] = (_listeners[ev] || []).filter(f => f !== fn); },
-    emit(ev, data) { (_listeners[ev] || []).slice().forEach(fn => { try { fn(data); } catch (_) {} }); },
+    emit(ev, data) { (_listeners[ev] || []).slice().forEach(fn => { try { fn(data); } catch (_) { } }); },
   };
 
   let _dialogCount = 0;
@@ -93,7 +93,7 @@
       }
       function onKey(e) {
         if (e.key === 'Escape' && allowCancel) close(false);
-        if (e.key === 'Enter')  close(true);
+        if (e.key === 'Enter') close(true);
       }
 
       bg.addEventListener('click', (e) => {
@@ -153,7 +153,7 @@
     try {
       localStorage.removeItem('gpsviet_token');
       localStorage.removeItem('gpsviet_user');
-    } catch (_) {}
+    } catch (_) { }
 
     // Xac dinh cac kind cho phep theo cong (path) hien tai
     const path = location.pathname;
@@ -242,7 +242,7 @@
 
     // Dong dialog: nut X, nut Bo qua, Esc, click ra ngoai backdrop
     bg.querySelector('#lgClose').onclick = closeDialog;
-    bg.querySelector('#lgSkip').onclick  = closeDialog;
+    bg.querySelector('#lgSkip').onclick = closeDialog;
     bg.addEventListener('click', (e) => { if (e.target === bg) closeDialog(); });
     document.addEventListener('keydown', onKeyDown);
 
@@ -298,8 +298,12 @@
 
         // Luu session. Neu role khong khop cong hien tai -> redirect ve home;
         // ngoai ra reload de fresh state.
-        api.setToken(res.token);
-        localStorage.setItem('gpsviet_user', JSON.stringify(res.user));
+        if (global.auth && auth.setSession) {
+          auth.setSession(res.token, res.user);
+        } else {
+          api.setToken(res.token);
+          localStorage.setItem('gpsviet_user', JSON.stringify(res.user));
+        }
         toast('Đăng nhập thành công', 'success');
 
         const home = (global.auth && auth.homeForRole)
@@ -324,39 +328,105 @@
       .replaceAll('>', '&gt;').replaceAll('"', '&quot;');
   }
 
+  // ---- Dialog canh bao KTV thieu hang (hard warning, cho phep override) ----
+  // Tra ve Promise<boolean>: true = "Van gan", false = huy.
+  function insufficientHoldingsDialog({ staffName, lacks }) {
+    return new Promise((resolve) => {
+      const rows = (lacks || []).map(l => `
+        <tr>
+          <td>${escapeHtml(l.product_name || ('SP#' + l.product_id))}</td>
+          <td style="text-align:right;color:#dc2626"><b>${Number(l.need) - Number(l.have)}</b></td>
+          <td style="text-align:right">${l.have}</td>
+          <td style="text-align:right">${l.need}</td>
+        </tr>`).join('');
+      const bg = document.createElement('div');
+      bg.className = 'ui-dialog-bg';
+      bg.innerHTML = `
+        <div class="ui-dialog ui-dialog-warning" style="max-width:560px">
+          <div class="ui-dialog-head">
+            <h3 class="ui-dialog-title">⚠️ KTV không đủ hàng trong kho cá nhân</h3>
+            <button class="modal-close" data-act="cancel" aria-label="Đóng">×</button>
+          </div>
+          <div class="ui-dialog-body">
+            <p style="margin:0 0 10px;font-size:14px">
+              ${staffName ? 'KTV <b>' + escapeHtml(staffName) + '</b> đang thiếu các sản phẩm sau:' : 'KTV đang thiếu các sản phẩm sau:'}
+            </p>
+            <div style="border:1px solid #fde68a;border-radius:6px;overflow:hidden">
+              <table style="width:100%;border-collapse:collapse;font-size:13px">
+                <thead style="background:#fef3c7">
+                  <tr>
+                    <th style="text-align:left;padding:6px 10px">Sản phẩm</th>
+                    <th style="text-align:right;padding:6px 10px">Thiếu</th>
+                    <th style="text-align:right;padding:6px 10px">Đang có</th>
+                    <th style="text-align:right;padding:6px 10px">Cần</th>
+                  </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+            <p style="margin:10px 0 0;font-size:13px;color:#92400e">
+              Bạn có thể vẫn gán đơn này. nhưng ktv đang không có sản phẩm, khuyến nghị nên xác nhận lại với ktv 
+            </p>
+          </div>
+          <div class="ui-dialog-actions">
+            <button class="btn ghost" data-act="cancel">Huỷ</button>
+            <button class="btn danger" data-act="ok">Vẫn gán</button>
+          </div>
+        </div>`;
+      document.body.appendChild(bg);
+      pushDialog();
+      function close(v) {
+        bg.remove();
+        popDialog();
+        document.removeEventListener('keydown', onKey);
+        resolve(v);
+      }
+      function onKey(e) {
+        if (e.key === 'Escape') close(false);
+      }
+      bg.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-act]');
+        if (!btn) { if (e.target === bg) close(false); return; }
+        close(btn.dataset.act === 'ok');
+      });
+      document.addEventListener('keydown', onKey);
+    });
+  }
+
   global.ui = {
     toast,
-    alert:   alertDialog,
+    alert: alertDialog,
     confirm: confirmDialog,
     loading,
     loginDialog,
+    insufficientHoldingsDialog,
     bus,
     pushDialog, popDialog, dialogCount,
   };
 })(window);
 
 // ================== MONEY INPUT (vi-VN: 1.000.000) ==================
-(function(global){
+(function (global) {
   const fmt = new Intl.NumberFormat('vi-VN');
   const SEL = 'input.money-input';
-  function parseRaw(s){
+  function parseRaw(s) {
     const str = String(s ?? '');
-    const neg = /^\s*-/.test(str) || str.replace(/[^\d-]/g,'').startsWith('-');
-    const digits = str.replace(/\D/g,'');
+    const neg = /^\s*-/.test(str) || str.replace(/[^\d-]/g, '').startsWith('-');
+    const digits = str.replace(/\D/g, '');
     const n = digits ? +digits : 0;
     return neg ? -n : n;
   }
-  function prep(el){
-    if(!el || el.dataset.moneyReady) return;
+  function prep(el) {
+    if (!el || el.dataset.moneyReady) return;
     el.dataset.moneyReady = '1';
-    if(el.type === 'number'){
+    if (el.type === 'number') {
       el.type = 'text';
-      el.setAttribute('inputmode','numeric');
+      el.setAttribute('inputmode', 'numeric');
       el.removeAttribute('step');
-    } else if(!el.getAttribute('inputmode')){
-      el.setAttribute('inputmode','numeric');
+    } else if (!el.getAttribute('inputmode')) {
+      el.setAttribute('inputmode', 'numeric');
     }
-    if(el.value){
+    if (el.value) {
       const n = parseRaw(el.value);
       el.dataset.raw = String(n);
       el.value = n ? fmt.format(n) : (el.value.trim() === '-' ? '-' : '');
@@ -364,48 +434,48 @@
       el.dataset.raw = '0';
     }
   }
-  function formatOnInput(el){
+  function formatOnInput(el) {
     const before = el.value;
     const caret = el.selectionStart ?? before.length;
-    const digitsBefore = before.slice(0, caret).replace(/\D/g,'').length;
+    const digitsBefore = before.slice(0, caret).replace(/\D/g, '').length;
     const raw = parseRaw(before);
     el.dataset.raw = String(raw);
     const after = raw ? fmt.format(raw) : (before.trim() === '-' ? '-' : '');
-    if(after !== before){
+    if (after !== before) {
       el.value = after;
       let pos = 0, seen = 0;
-      while(pos < after.length && seen < digitsBefore){
-        if(/\d/.test(after[pos])) seen++;
+      while (pos < after.length && seen < digitsBefore) {
+        if (/\d/.test(after[pos])) seen++;
         pos++;
       }
-      try{ el.setSelectionRange(pos, pos); }catch(_){}
+      try { el.setSelectionRange(pos, pos); } catch (_) { }
     }
   }
-  function scan(root){ (root||document).querySelectorAll(SEL).forEach(prep); }
-  document.addEventListener('focusin', e=>{
+  function scan(root) { (root || document).querySelectorAll(SEL).forEach(prep); }
+  document.addEventListener('focusin', e => {
     const el = e.target;
-    if(el && el.matches && el.matches(SEL)) prep(el);
+    if (el && el.matches && el.matches(SEL)) prep(el);
   });
-  document.addEventListener('input', e=>{
+  document.addEventListener('input', e => {
     const el = e.target;
-    if(el && el.matches && el.matches(SEL)){ prep(el); formatOnInput(el); }
+    if (el && el.matches && el.matches(SEL)) { prep(el); formatOnInput(el); }
   }, true);
-  document.addEventListener('blur', e=>{
+  document.addEventListener('blur', e => {
     const el = e.target;
-    if(el && el.matches && el.matches(SEL)) formatOnInput(el);
+    if (el && el.matches && el.matches(SEL)) formatOnInput(el);
   }, true);
-  if(document.readyState !== 'loading') scan();
-  else document.addEventListener('DOMContentLoaded', ()=>scan());
+  if (document.readyState !== 'loading') scan();
+  else document.addEventListener('DOMContentLoaded', () => scan());
 
   global.Money = {
     scan, prep,
     get: el => {
-      if(!el) return 0;
-      if(el.dataset && el.dataset.raw != null && el.dataset.raw !== '') return +el.dataset.raw || 0;
+      if (!el) return 0;
+      if (el.dataset && el.dataset.raw != null && el.dataset.raw !== '') return +el.dataset.raw || 0;
       return parseRaw(el.value);
     },
     set: (el, n) => {
-      if(!el) return;
+      if (!el) return;
       prep(el);
       n = +n || 0;
       el.dataset.raw = String(n);

@@ -4,8 +4,10 @@
 
 const express = require('express');
 const db = require('../../db');
+const { requireRole } = require('../../middleware/auth');
 
 const router = express.Router();
+const adminOnly = requireRole('admin');
 
 // Code: chu thuong, so, dau gach. Tu sinh tu name neu khong truyen.
 function slugifyCode(s) {
@@ -43,7 +45,7 @@ router.get('/', async (req, res, next) => {
 
 // ---- POST /api/admin/price-tiers -------------------------------
 // Body: { name, code?, sort_order? }
-router.post('/', async (req, res, next) => {
+router.post('/', adminOnly, async (req, res, next) => {
   try {
     const name = String(req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Thieu ten muc gia' });
@@ -87,7 +89,7 @@ router.post('/', async (req, res, next) => {
 
 // ---- PUT /api/admin/price-tiers/:id ----------------------------
 // Body: { name?, code?, sort_order? }
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', adminOnly, async (req, res, next) => {
   try {
     const id = req.params.id;
     const sets = [];
@@ -126,7 +128,7 @@ router.put('/:id', async (req, res, next) => {
 // ---- PUT /api/admin/price-tiers/:id/set-default ----------------
 // Dat tier nay lam mac dinh (cho khach public + fallback khi customer/dealer
 // chua duoc gan tier rieng). Chi 1 tier mac dinh tai 1 thoi diem.
-router.put('/:id/set-default', async (req, res, next) => {
+router.put('/:id/set-default', adminOnly, async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const id = req.params.id;
@@ -157,7 +159,7 @@ router.put('/:id/set-default', async (req, res, next) => {
 // Chan khi: (a) tier nay dang la mac dinh, hoac
 //           (b) con san pham dung tier nay (product_prices), hoac
 //           (c) con khach hang/dai ly duoc gan tier nay (customers.default_tier_id).
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', adminOnly, async (req, res, next) => {
   try {
     const [tierRow] = await db.query(
       `SELECT id, name, is_default FROM price_tiers WHERE id = ? AND is_deleted = 0`,

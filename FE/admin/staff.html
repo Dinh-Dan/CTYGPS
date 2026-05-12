@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Kỹ thuật – Admin VinaGPS</title>
+<title>Nhân viên – Admin VinaGPS</title>
 <link rel="stylesheet" href="/shared/css/style.css" />
 <style>
   .ktv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px}
@@ -116,6 +116,17 @@
   .pill.cap-cancelled{background:#f1f5f9;color:#475569}
   .iss-photo{display:inline-block;border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-top:4px}
   .iss-photo img{display:block;max-height:80px}
+
+  /* ===== Phieu ung luong ===== */
+  .adv-status-pending{background:#fef3c7;color:#92400e}
+  .adv-status-approved{background:#dcfce7;color:#166534}
+  .adv-status-rejected{background:#fee2e2;color:#991b1b}
+  .adv-row{border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:8px;background:#fafbfc}
+  .adv-row.pending{border-left:4px solid #f59e0b}
+  .adv-row.approved{border-left:4px solid #10b981}
+  .adv-row.rejected{border-left:4px solid #ef4444;opacity:.85}
+  .adv-row .adv-meta{font-size:12.5px;color:#64748b;margin-top:4px}
+  .adv-acts{display:flex;gap:6px;margin-top:8px;justify-content:flex-end}
   .iss-empty{text-align:center;color:#94a3b8;padding:30px 16px;font-size:13px;font-style:italic;border:1px dashed #e2e8f0;border-radius:8px;background:#fafbfc}
 
   /* Mobile: stack 2 cot, modal vua sat man hinh, moi pane scroll rieng */
@@ -131,19 +142,21 @@
   <aside class="sidebar" id="sidebar"></aside>
   <main class="main">
     <div class="topnav">
-      <h2 class="topnav-title">Kỹ thuật &amp; phân công</h2>
+      <h2 class="topnav-title">Nhân viên</h2>
       <div id="topnav-user" class="row" style="gap:10px"></div>
     </div>
     <div class="content">
       <div class="toolbar">
         <input type="text" id="searchBox" class="search-box" placeholder="Tìm theo tên, username, SĐT, khu vực...">
         <select id="filterRole" class="select" style="width:160px">
-          <option value="">Tất cả vai trò</option>
+          <option value="">Tất cả bộ phận</option>
           <option value="kithuat">Kỹ thuật</option>
           <option value="staff">Nhân viên</option>
           <option value="admin">Quản trị</option>
         </select>
         <button class="btn" id="btnAdd">+ Thêm nhân sự</button>
+        <button class="btn ghost" id="btnMyAdvance" style="display:none">💰 Yêu cầu ứng lương</button>
+        <button class="btn ghost" id="btnPendingAdvances" style="display:none">📋 Xem yêu cầu ứng <span id="pendingBadge" class="badge" style="display:none;background:#dc2626;color:#fff;padding:1px 7px;border-radius:999px;font-size:11px;margin-left:4px"></span></button>
       </div>
       <div id="ktvGrid" class="ktv-grid"></div>
       <p id="emptyMsg" class="text-muted text-center mt-3 hide">Không có nhân viên nào.</p>
@@ -151,11 +164,11 @@
   </main>
 </div>
 
-<!-- Modal them/sua KTV -->
+<!-- Modal them/sua nhan vien -->
 <div id="modal" class="modal-bg">
   <div class="modal" style="max-width:600px">
     <div class="modal-head">
-      <h3 id="modalTitle">Thêm kỹ thuật</h3>
+      <h3 id="modalTitle">Thêm nhân viên</h3>
       <button type="button" class="modal-close" id="modalClose" aria-label="Đóng">×</button>
     </div>
     <form id="frm" style="display:contents">
@@ -198,7 +211,7 @@
   </div>
 </div>
 
-<!-- Modal phan cong don -->
+<!-- Modal phan cong don (chi KTV) -->
 <div id="assignModal" class="modal-bg">
   <div class="modal" style="max-width:680px">
     <div class="modal-head">
@@ -264,10 +277,57 @@
   </div>
 </div>
 
+<!-- Modal NV tu gui yeu cau ung luong -->
+<div id="myAdvanceModal" class="modal-bg">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-head">
+      <h3>💰 Yêu cầu ứng lương</h3>
+      <button type="button" class="modal-close" id="myAdvClose">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Kỳ lương *</label>
+        <input type="month" id="adv_period" class="input">
+      </div>
+      <div class="field">
+        <label>Số tiền ứng *</label>
+        <input type="number" id="adv_amount" class="input" placeholder="VD: 2000000" min="1">
+      </div>
+      <div class="field">
+        <label>Ghi chú</label>
+        <input type="text" id="adv_note" class="input" placeholder="Lý do ứng lương...">
+      </div>
+      <hr style="margin:12px 0">
+      <h4 style="font-size:13px;color:#475569;margin-bottom:8px">Phiếu đã gửi</h4>
+      <div id="myAdvList"><p class="text-muted" style="font-size:13px">Đang tải...</p></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="myAdvCancelBtn">Đóng</button>
+      <button type="button" class="btn" id="myAdvSubmit">Gửi yêu cầu</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal admin xem + duyet yeu cau ung luong -->
+<div id="pendingAdvModal" class="modal-bg">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-head">
+      <h3>📋 Yêu cầu ứng lương chờ duyệt</h3>
+      <button type="button" class="modal-close" id="pendingAdvClose">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="pendingAdvList"><p class="text-muted" style="font-size:13px;padding:8px 0">Đang tải...</p></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="pendingAdvCancelBtn">Đóng</button>
+    </div>
+  </div>
+</div>
+
 <script src="/shared/js/ui.js"></script>
 <script src="/shared/js/api.js"></script>
 <script src="/shared/js/auth.js"></script>
 <script src="/shared/js/admin-shell.js"></script>
-<script src="/admin/technicians.js"></script>
+<script src="/admin/staff.js"></script>
 </body>
 </html>

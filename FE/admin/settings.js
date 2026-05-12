@@ -132,7 +132,7 @@
     if (!('bank.default_qr_slot' in state.edits)) {
       state.edits['bank.default_qr_slot'] = String(state.defaultSlot);
     }
-    const items = Object.entries(state.edits).map(([key, value]) => ({ key, value }));
+const items = Object.entries(state.edits).map(([key, value]) => ({ key, value }));
     if (!items.length) return ui.toast('Không có thay đổi', 'info');
     $('btnSave').disabled = true;
     try {
@@ -145,6 +145,14 @@
   };
 
   // ==== INIT ===================================================
+  // Staff khong duoc vao trang cai dat — redirect ve dashboard.
+  // Neu chua login, de loadSettings tu trigger ui.loginDialog qua 401.
+  const _u = (window.auth && auth.user && auth.user()) || null;
+  if (_u && _u.role && _u.role !== 'admin') {
+    if (window.ui && ui.toast) ui.toast('Chi admin moi truy cap duoc Cai dat', 'error');
+    location.href = '/admin/';
+    return;
+  }
   adminShell.init('settings');
   loadSettings();
 })();

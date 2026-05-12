@@ -4,8 +4,19 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../../db');
+const { requireRole } = require('../../middleware/auth');
 
 const router = express.Router();
+const adminOnly = requireRole('admin');
+
+// Cac field tac dong toi tien/cong no -> chi admin moi duoc set qua POST/PUT.
+// Staff van CRUD khach binh thuong, nhung khong duoc dong vao gia/han no.
+const ADMIN_ONLY_FIELDS = [
+  'debt_limit', 'credit_term_days', 'discount_rate', 'default_tier_id',
+];
+function stripAdminFields(body) {
+  for (const k of ADMIN_ONLY_FIELDS) delete body[k];
+}
 
 // ---- Helpers ---------------------------------------------------
 
@@ -195,6 +206,7 @@ async function ensurePhoneUnique(phone, excludeId = null) {
 // ---- POST /api/admin/customers --------------------------------
 router.post('/', async (req, res, next) => {
   try {
+    if (req.user.role !== 'admin') stripAdminFields(req.body);
     const data = pickPayload(req.body, { isUpdate: false });
 
     if (!data.code) {
@@ -234,6 +246,7 @@ router.put('/:id', async (req, res, next) => {
 
     // Neu khong gui type thi giu nguyen type cu (de pickPayload xu ly dung nhanh retail-reset)
     const body = { ...req.body };
+    if (req.user.role !== 'admin') stripAdminFields(body);
     if (body.type === undefined) body.type = exist[0].type;
 
     const data = pickPayload(body, { isUpdate: true });
@@ -265,7 +278,7 @@ router.put('/:id', async (req, res, next) => {
 // ---- POST /api/admin/customers/:id/password -------------------
 // Admin set / doi mat khau cho dealer.
 // Body: { password }
-router.post('/:id/password', async (req, res, next) => {
+router.post('/:id/password', adminOnly, async (req, res, next) => {
   try {
     const password = String(req.body.password || '');
     if (password.length < 4) {
@@ -288,7 +301,7 @@ router.post('/:id/password', async (req, res, next) => {
 });
 
 // ---- DELETE /api/admin/customers/:id (soft delete) ------------
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', adminOnly, async (req, res, next) => {
   try {
     const [result] = await db.query(
       `UPDATE customers SET is_deleted = 1 WHERE id = ? AND is_deleted = 0`,
@@ -299,4 +312,35 @@ router.delete('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ---- GET /:id/end-customers — danh sach khach dau cuoi cua dai ly -----
+// Tra ve cac khach retail da tung duoc gan vao don cua dai ly nay.
+router.get('/:id/end-customers', async (req, res, next) => {
+  try {
+    const dealerId = Number(req.params.id);
+    // Kiem tra la dealer
+    const [chk] = await db.query(
+      `SELECT id, type FROM customers WHERE id = ? AND is_deleted = 0`, [dealerId]
+    );
+    if (!chk.length) return res.status(404).json({ error: 'Khong tim thay khach hang' });
+    if (chk[0].type !== 'dealer') return res.status(400).json({ error: 'Khach nay khong phai dai ly' });
+
+    // Lay distinct khach dau cuoi + thong tin don gan nhat
+    const [rows] = await db.query(
+      `SELECT
+         ec.id, ec.code, ec.full_name, ec.phone, ec.address, ec.note,
+         COUNT(o.id)             AS order_count,
+         MAX(o.created_at)       AS last_order_at,
+         MAX(o.completed_at)     AS last_completed_at
+       FROM orders o
+       JOIN customers ec ON ec.id = o.end_customer_id
+       WHERE o.customer_id = ? AND o.is_deleted = 0 AND ec.is_deleted = 0
+       GROUP BY ec.id, ec.code, ec.full_name, ec.phone, ec.address, ec.note
+       ORDER BY MAX(o.created_at) DESC`,
+      [dealerId]
+    );
+    res.json({ items: rows });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
+

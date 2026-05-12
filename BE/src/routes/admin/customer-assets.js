@@ -165,6 +165,7 @@ router.get('/requests/list', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+
 async function applyRequest(req) {
   const cfg = KIND_TABLE[req.asset_kind];
   if (!cfg) throw httpErr(500, 'asset_kind sai');

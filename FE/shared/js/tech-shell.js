@@ -11,10 +11,12 @@
     { type: 'item', href: '/kithuat/',                icon: '📊', label: 'Dashboard',     key: 'dashboard' },
     { type: 'sep',  label: 'Công việc' },
     { type: 'item', href: '/kithuat/tasks.html',      icon: '🛠', label: 'Công việc',     key: 'tasks' },
+    { type: 'item', href: '/kithuat/summary.html',    icon: '📈', label: 'Tổng kết đơn',   key: 'summary' },
     { type: 'item', href: '/kithuat/inventory.html',  icon: '📦', label: 'Thiết bị',       key: 'inventory' },
     { type: 'sep',  label: 'Liên hệ' },
     { type: 'item', href: '/kithuat/chat.html',       icon: '💬', label: 'Chat khách',     key: 'chat' },
     { type: 'sep',  label: 'Cá nhân' },
+    { type: 'item', href: '/kithuat/advances.html',   icon: '💰', label: 'Ứng lương',       key: 'advances' },
     { type: 'item', href: '/kithuat/profile.html',    icon: '👤', label: 'Hồ sơ',          key: 'profile' },
   ];
 

@@ -17,6 +17,7 @@
   function setSession(token, user) {
     api.setToken(token);
     localStorage.setItem(USER_KEY, JSON.stringify(user));
+    try { sessionStorage.setItem('gpsviet_just_logged_in', '1'); } catch (_) {}
   }
   function clearSession() {
     api.clearToken();
@@ -29,11 +30,18 @@
   function homeForRole(role) {
     switch (role) {
       case 'admin':    return '/admin/';
+      case 'staff':    return '/admin/';   // nhan vien dung chung portal admin
       case 'kithuat':  return '/kithuat/';
       case 'daily':
       case 'customer':
       default:         return '/customer/';
     }
+  }
+
+  // Tien ich: kiem tra co phai admin chinh thuc khong (de an/disable nut admin-only).
+  function isAdmin() {
+    const u = getUser();
+    return !!u && u.role === 'admin';
   }
 
   // Tra ve user neu da login va dung role; null neu chua login.
@@ -65,6 +73,7 @@
   global.auth = {
     user: getUser,
     isLoggedIn,
+    isAdmin,
     setSession,
     clearSession,
     homeForRole,

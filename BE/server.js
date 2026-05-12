@@ -61,7 +61,12 @@ app.use((err, req, res, next) => {
   if (status >= 500 && (err.code || '').toString().startsWith('ER_')) {
     message = 'Loi he thong, vui long thu lai';
   }
-  res.status(status).json({ error: message });
+  const body = { error: message };
+  if (err.code && typeof err.code === 'string' && !err.code.startsWith('ER_')) {
+    body.code = err.code;
+  }
+  if (err.details) body.details = err.details;
+  res.status(status).json(body);
 });
 
 // Socket.IO (chat realtime) — auth + handler trong src/socket.js

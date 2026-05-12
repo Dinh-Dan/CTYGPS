@@ -4,8 +4,10 @@
 const express = require('express');
 const db = require('../../db');
 const { resolvePriceMap } = require('../../utils/priceResolver');
+const { requireRole } = require('../../middleware/auth');
 
 const router = express.Router();
+const adminOnly = requireRole('admin');
 
 function httpErr(status, message) {
   const e = new Error(message);
@@ -161,7 +163,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // ---- POST /api/admin/products (transaction) ------------------
-router.post('/', async (req, res, next) => {
+router.post('/', adminOnly, async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const data   = pickPayload(req.body, { isUpdate: false });
@@ -222,7 +224,7 @@ router.post('/', async (req, res, next) => {
 
 // ---- PUT /api/admin/products/:id (transaction) ---------------
 // Neu body co prices / attributes -> ghi de toan bo (delete all + insert lai)
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', adminOnly, async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const id     = req.params.id;
@@ -330,7 +332,7 @@ router.get('/:id/customer-prices', async (req, res, next) => {
 // ---- PUT /api/admin/products/:id/customer-prices ------------
 // Body: { customer_id, price }
 // Upsert gia override. Validate customer ton tai + la dai ly.
-router.put('/:id/customer-prices', async (req, res, next) => {
+router.put('/:id/customer-prices', adminOnly, async (req, res, next) => {
   try {
     const productId = Number(req.params.id);
     const customerId = Number(req.body.customer_id);
@@ -364,7 +366,7 @@ router.put('/:id/customer-prices', async (req, res, next) => {
 
 // ---- DELETE /api/admin/products/:id/customer-prices/:customerId ----
 // Hard delete override (chi la config, khong audit).
-router.delete('/:id/customer-prices/:customerId', async (req, res, next) => {
+router.delete('/:id/customer-prices/:customerId', adminOnly, async (req, res, next) => {
   try {
     const [r] = await db.query(
       `DELETE FROM customer_product_prices WHERE product_id = ? AND customer_id = ?`,
@@ -376,8 +378,16 @@ router.delete('/:id/customer-prices/:customerId', async (req, res, next) => {
 });
 
 // ---- DELETE /api/admin/products/:id (soft delete) -----------
-router.delete('/:id', async (req, res, next) => {
+// Luon cho phep soft delete. Tra ve canh bao neu con ton kho / KTV giu / pool
+// de FE hien thi cho admin biet (rang du lieu lich su van con, can don dep sau).
+router.delete('/:id', adminOnly, async (req, res, next) => {
   try {
+    const [r] = await db.query(
+      `UPDATE products SET is_deleted = 1 WHERE id = ? AND is_deleted = 0`,
+      [req.params.id]
+    );
+    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay san pham' });
+
     const [linked] = await db.query(
       `SELECT
          COALESCE((SELECT quantity FROM product_stock WHERE product_id = ?), 0) AS stock_qty,
@@ -385,19 +395,16 @@ router.delete('/:id', async (req, res, next) => {
          COALESCE((SELECT SUM(qty) FROM release_pool WHERE product_id = ?), 0) AS pool_qty`,
       [req.params.id, req.params.id, req.params.id]
     );
-    const total = Number(linked[0].stock_qty) + Number(linked[0].held_qty) + Number(linked[0].pool_qty);
-    if (total > 0) {
-      return res.status(409).json({
-        error: `Khong the xoa: con ${total} don vi (kho ${linked[0].stock_qty}, KTV giu ${linked[0].held_qty}, cho nhan ${linked[0].pool_qty})`,
-      });
-    }
+    const stock = Number(linked[0].stock_qty) || 0;
+    const held  = Number(linked[0].held_qty)  || 0;
+    const pool  = Number(linked[0].pool_qty)  || 0;
+    const total = stock + held + pool;
 
-    const [r] = await db.query(
-      `UPDATE products SET is_deleted = 1 WHERE id = ? AND is_deleted = 0`,
-      [req.params.id]
-    );
-    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay san pham' });
-    res.json({ ok: true });
+    const warning = total > 0
+      ? `San pham da bi an khoi danh sach, nhung con ${total} don vi ton dong (kho ${stock}, KTV giu ${held}, cho nhan ${pool}). Vui long don dep o trang kho.`
+      : null;
+
+    res.json({ ok: true, warning, leftover: { stock, held, pool } });
   } catch (err) { next(err); }
 });
 

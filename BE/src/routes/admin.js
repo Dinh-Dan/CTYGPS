@@ -3,11 +3,14 @@ const { verifyToken, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Tat ca route admin yeu cau dang nhap + role admin
-router.use(verifyToken, requireRole('admin'));
+// Mig 059: portal /admin/ phuc vu CA admin VA staff (nhan vien thuong).
+// Tung route nhay cam (duyet thanh toan, tat toan no, finalize luong, CRUD NV,
+// sua opening_balance, sua gia tier, ghi settings) tu gate requireRole('admin')
+// ben trong sub-router.
+router.use(verifyToken, requireRole('admin', 'staff'));
 
 router.get('/ping', (req, res) => {
-  res.json({ ok: true, role: 'admin', user: req.user });
+  res.json({ ok: true, role: req.user.role, user: req.user });
 });
 
 router.use('/customers',   require('./admin/customers'));
