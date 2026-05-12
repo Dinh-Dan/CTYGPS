@@ -669,6 +669,58 @@
     if (sid) window.open('/admin/debt-settle.html?id=' + sid, '_blank', 'noopener');
   };
 
+  // ==== MODAL: GHI NO CU =======================================
+  async function openOldDebtModal() {
+    $('od_customer_id').innerHTML = '<option value="">-- Đang tải danh sách --</option>';
+    $('od_amount').value = '';
+    $('od_date').value = new Date().toISOString().slice(0, 10);
+    $('od_note').value = '';
+    $('oldDebtModal').classList.add('open');
+
+    const r = await api.get('/admin/customers?limit=1000', { silent: true }).catch(() => null);
+    if (!r || !r.items) {
+      $('od_customer_id').innerHTML = '<option value="">Lỗi tải danh sách</option>';
+      return;
+    }
+    $('od_customer_id').innerHTML = '<option value="">-- Chọn khách hàng --</option>' + r.items.map(c => {
+      const name = c.type === 'dealer' && c.company_name ? `${c.company_name} (${c.full_name})` : c.full_name;
+      return `<option value="${c.id}">${escape(c.code)} - ${escape(name)}</option>`;
+    }).join('');
+  }
+
+  async function submitOldDebt(e) {
+    e.preventDefault();
+    const cid = $('od_customer_id').value;
+    if (!cid) return ui.toast('Vui lòng chọn khách hàng', 'warning');
+    const amount = Number($('od_amount').value.replace(/\\D/g, '')) || 0;
+    if (!amount) return ui.toast('Vui lòng nhập số tiền hợp lệ', 'warning');
+    const data = {
+      amount,
+      debt_date: $('od_date').value,
+      note: $('od_note').value.trim()
+    };
+    
+    const btn = $('oldDebtModal').querySelector('button[type="submit"]');
+    btn.disabled = true;
+    try {
+      const ok = await api.post(`/admin/debts/${cid}/old-debts`, data, {
+        loading: true, successMessage: 'Đã tạo phiếu nợ cũ thành công'
+      }).catch(() => null);
+      if (ok) {
+        $('oldDebtModal').classList.remove('open');
+        loadSummary();
+        loadCustomers();
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  $('btnCreateOldDebt') && ($('btnCreateOldDebt').onclick = openOldDebtModal);
+  $('odClose') && ($('odClose').onclick = () => $('oldDebtModal').classList.remove('open'));
+  $('odCancel') && ($('odCancel').onclick = () => $('oldDebtModal').classList.remove('open'));
+  $('odForm') && ($('odForm').onsubmit = submitOldDebt);
+
   // ==== INIT ===================================================
   adminShell.init('debts');
   loadSummary();
