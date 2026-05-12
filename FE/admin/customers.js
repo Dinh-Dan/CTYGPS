@@ -9,7 +9,7 @@
   // discount_rate, default_tier_id). BE da chan, FE chi cho dep mat.
   function lockAdminFields() {
     if (IS_ADMIN) return;
-    ['f_debt_limit', 'f_credit_term_days', 'f_discount_rate', 'f_default_tier_id', 'f_opening_balance'].forEach(id => {
+    ['f_debt_limit', 'f_credit_term_days', 'f_discount_rate', 'f_default_tier_id'].forEach(id => {
       const el = $(id);
       if (!el) return;
       el.disabled = true;
@@ -142,7 +142,6 @@
     $('f_credit_term_days').value  = c.credit_term_days || 0;
     $('f_discount_rate').value     = c.discount_rate || 0;
     $('f_default_tier_id').value   = c.default_tier_id || '';
-    Money.set($('f_opening_balance'), c.opening_balance || 0);
     $('f_note').value           = c.note || '';
     lockAdminFields();
   }
@@ -171,7 +170,6 @@
       address:    $('f_address').value.trim() || null,
       avatar_url: $('f_avatar_url').value.trim() || null,
       default_tier_id: $('f_default_tier_id').value ? Number($('f_default_tier_id').value) : null,
-      opening_balance: Money.get($('f_opening_balance')),
       note:       $('f_note').value.trim() || null,
     };
     if (data.type === 'dealer') {
