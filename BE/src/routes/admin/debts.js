@@ -934,4 +934,66 @@ router.post('/:customer_id/settle', adminOnly, async (req, res, next) => {
   } finally { conn.release(); }
 });
 
+// ==============================================================
+// POST /api/admin/debts/:customer_id/old-debts — Tao phieu no cu
+// Body: { amount, note, debt_date }
+// ==============================================================
+router.post('/:customer_id/old-debts', adminOnly, async (req, res, next) => {
+  const conn = await db.getConnection();
+  try {
+    const customerId = Number(req.params.customer_id);
+    if (!Number.isFinite(customerId) || customerId <= 0) {
+      conn.release();
+      return res.status(400).json({ error: 'customer_id khong hop le' });
+    }
+    const amount = Number(req.body.amount) || 0;
+    const note = String(req.body.note || '').trim() || null;
+    const debtDate = req.body.debt_date || null;
+
+    if (amount === 0) {
+      conn.release();
+      return res.status(400).json({ error: 'So tien phai khac 0' });
+    }
+    if (!debtDate) {
+      conn.release();
+      return res.status(400).json({ error: 'Thieu ngay no' });
+    }
+
+    await conn.beginTransaction();
+
+    // Lock customer row
+    const [custRows] = await conn.query(
+      `SELECT id, opening_balance FROM customers
+        WHERE id = ? AND is_deleted = 0 FOR UPDATE`,
+      [customerId]
+    );
+    if (!custRows.length) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Khong tim thay khach hang' });
+    }
+
+    // Insert to customer_old_debts
+    await conn.query(
+      `INSERT INTO customer_old_debts (customer_id, amount, note, debt_date, created_by)
+       VALUES (?, ?, ?, ?, ?)`,
+      [customerId, amount, note, debtDate, req.user.sub]
+    );
+
+    // Update opening balance
+    const newOpening = Number(custRows[0].opening_balance) + amount;
+    await conn.query(
+      `UPDATE customers SET opening_balance = ? WHERE id = ?`,
+      [newOpening, customerId]
+    );
+
+    await conn.commit();
+    res.json({ success: true, new_opening_balance: newOpening });
+  } catch (err) {
+    try { await conn.rollback(); } catch (_) {}
+    next(err);
+  } finally {
+    conn.release();
+  }
+});
+
 module.exports = router;
