@@ -121,6 +121,7 @@
             <option value="dealer">Đại lý</option>
           </select>
           <input id="fQ" class="search-box" placeholder="🔍 Tìm tên / SĐT / mã / công ty..." />
+          <button class="btn ghost sm" id="btnCreateOldDebt">+ Ghi nợ cũ</button>
         </div>
         <div class="table-wrap">
           <table class="data" id="tblCust">
@@ -319,6 +320,43 @@
       <button type="button" class="btn ghost" id="sdCloseBtn">Đóng</button>
       <button type="button" class="btn ghost" id="sdPrint">In phiếu ↗</button>
     </div>
+  </div>
+</div>
+
+<!-- Modal: Tao phieu no cu -->
+<div id="oldDebtModal" class="modal-bg">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-head">
+      <h3>Tạo phiếu nợ cũ (Ghi nợ)</h3>
+      <button type="button" class="modal-close" id="odClose" aria-label="Đóng">×</button>
+    </div>
+    <form id="odForm" style="display:contents">
+      <div class="modal-body">
+        <div class="field">
+          <label>Khách hàng *</label>
+          <select id="od_customer_id" class="select" required>
+            <option value="">-- Đang tải danh sách --</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Số tiền nợ (VND) *</label>
+          <input type="text" id="od_amount" class="input money-input" inputmode="numeric" required>
+          <p class="help text-muted">Số tiền này sẽ được cộng thêm vào "Nợ kỳ trước" của khách.</p>
+        </div>
+        <div class="field">
+          <label>Ngày nợ *</label>
+          <input type="date" id="od_date" class="input" required>
+        </div>
+        <div class="field">
+          <label>Ghi chú</label>
+          <textarea id="od_note" class="textarea" placeholder="Vd: Nợ mua hàng tháng 10/2023"></textarea>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="odCancel">Huỷ</button>
+        <button type="submit" class="btn">Lưu phiếu nợ</button>
+      </div>
+    </form>
   </div>
 </div>
 
