@@ -1,166 +1,634 @@
 <!doctype html>
 <html lang="vi">
+
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Tạo phiếu tất toán – Admin VinaGPS</title>
-<link rel="stylesheet" href="/shared/css/style.css" />
-<style>
-  body{background:#f1f5f9;margin:0}
-  .quote-page{max-width:1100px;margin:18px auto;padding:0 16px 60px}
-  .quote-actions{display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap}
-  .quote-actions .spacer{flex:1}
-  .quote-paper{background:#fff;padding:28px 36px;box-shadow:0 4px 16px rgba(0,0,0,.08);border-radius:8px}
-  .quote-header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0f172a;padding-bottom:14px;margin-bottom:18px;flex-wrap:wrap;gap:12px}
-  .quote-brand{display:flex;align-items:center;gap:10px}
-  .quote-brand .logo{width:48px;height:48px;border-radius:10px;background:linear-gradient(135deg,#1f6feb,#2563eb);color:#fff;display:grid;place-items:center;font-weight:800;font-size:20px}
-  .quote-brand .brand-name{font-size:18px;font-weight:700;color:#0f172a}
-  .quote-brand .brand-sub{font-size:12px;color:#64748b}
-  .quote-meta{text-align:right;font-size:13px;color:#475569}
-  .quote-meta .quote-title{font-size:22px;font-weight:800;color:#1f6feb;letter-spacing:.5px;margin-bottom:4px}
-  .quote-section{margin-bottom:20px}
-  .quote-section h3{font-size:13px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;margin-bottom:10px}
-  .cust-info{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:14px}
-  .cust-info b{color:#0f172a}
-  .order-card{border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:14px;background:#fff}
-  .order-card .oc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed #e2e8f0}
-  .order-card .oc-code{font-weight:700;color:#2563eb;font-size:15px;text-decoration:none}
-  .order-card .oc-code:hover{text-decoration:underline}
-  .order-card .oc-amount{font-weight:700;color:#dc2626;font-size:16px;white-space:nowrap}
-  .order-card .oc-meta{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:#475569;margin-bottom:6px}
-  .order-card .oc-meta b{color:#0f172a}
-  .order-card .oc-tag{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600}
-  .order-card .oc-tag.st-dn{background:#dcfce7;color:#166534}
-  .order-card .oc-tag.st-ip{background:#fef3c7;color:#92400e}
-  .order-card .oc-tag.st-cf{background:#dbeafe;color:#1d4ed8}
-  .line-block{margin:10px 0;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc}
-  .line-block .ln-title{font-weight:600;color:#0f172a;margin-bottom:6px;font-size:14px}
-  .line-block .ln-fields{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:#475569;margin-bottom:6px}
-  .line-block .ln-fields .lf-item b{color:#0f172a}
-  .line-table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border-radius:6px;overflow:hidden}
-  .line-table th,.line-table td{padding:6px 10px;border-bottom:1px solid #e2e8f0;text-align:left}
-  .line-table th{background:#f1f5f9;font-weight:600;color:#475569;font-size:12px}
-  .line-table td.num{text-align:right;font-variant-numeric:tabular-nums}
-  .order-totals{display:flex;justify-content:flex-end;gap:18px;padding-top:8px;margin-top:6px;border-top:1px dashed #e2e8f0;font-size:13.5px}
-  .order-totals .ot-item{display:flex;gap:6px}
-  .order-totals .ot-item span:last-child{font-weight:600;color:#0f172a}
-  .order-totals .ot-item.remain span:last-child{color:#dc2626;font-weight:700}
-  .summary-box{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:16px 20px;margin-top:12px}
-  .summary-box .row{display:flex;justify-content:space-between;padding:5px 0;font-size:14.5px}
-  .summary-box .row.total{font-size:18px;font-weight:800;color:#1f6feb;padding-top:8px;border-top:1px dashed #fdba74;margin-top:6px}
-  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  .qr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:8px}
-  .qr-pick{border:2px solid #e2e8f0;border-radius:8px;padding:8px;cursor:pointer;text-align:center;background:#fff;transition:all .12s}
-  .qr-pick:hover{border-color:#2563eb}
-  .qr-pick.selected{border-color:#2563eb;background:#eff6ff}
-  .qr-pick img{width:100%;aspect-ratio:1;object-fit:contain;border-radius:6px;background:#f8fafc}
-  .qr-pick .qr-label{font-size:11px;margin-top:6px;color:#475569}
-  .qr-pick.empty{background:#f8fafc;color:#94a3b8;cursor:not-allowed}
-  .qr-pick.empty:hover{border-color:#e2e8f0}
-  .receipt-preview{margin-top:8px;display:flex;align-items:center;gap:8px}
-  .receipt-preview img{max-width:120px;max-height:120px;object-fit:contain;border:1px solid #e2e8f0;border-radius:6px}
-  .submit-bar{position:sticky;bottom:0;background:#fff;border-top:1px solid #e2e8f0;padding:12px 0;margin-top:18px;display:flex;justify-content:flex-end;gap:10px}
-  .empty{color:#94a3b8;font-style:italic;padding:30px;text-align:center}
-  .copied{background:#dcfce7;color:#166534;padding:4px 10px;border-radius:6px;font-size:12px}
-  .bank-block{display:grid;grid-template-columns:1fr 200px;gap:18px;align-items:center;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px}
-  .bank-block .bk-info{font-size:14px}
-  .bank-block .bk-info .row{padding:3px 0}
-  .bank-block .bk-info b{color:#0f172a}
-  .bank-block .bk-qr{text-align:center}
-  .bank-block .bk-qr img{width:170px;height:170px;object-fit:contain;background:#fff;border:1px solid #e2e8f0;border-radius:6px}
-  .bank-block .bk-qr .qr-label{font-size:12px;color:#64748b;margin-top:4px}
-  .pay-mode{display:flex;gap:8px;margin-bottom:8px}
-  .pay-mode label{flex:1;border:2px solid #e2e8f0;border-radius:8px;padding:8px 10px;cursor:pointer;text-align:center;font-size:13.5px;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .12s}
-  .pay-mode label:hover{border-color:#2563eb}
-  .pay-mode input{display:none}
-  .pay-mode input:checked + span{font-weight:700;color:#2563eb}
-  .pay-mode label:has(input:checked){border-color:#2563eb;background:#eff6ff}
-  @media print{
-    body{background:#fff}
-    .quote-page{max-width:none;margin:0;padding:0}
-    .quote-actions{display:none}
-    .quote-paper{box-shadow:none;padding:18px 24px;border-radius:0}
-    @page{size:A4;margin:12mm}
-  }
-  @media (max-width:680px){
-    .quote-paper{padding:18px 16px}
-    .cust-info,.form-grid{grid-template-columns:1fr}
-  }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tạo phiếu yêu cầu thanh toán – Admin VinaGPS</title>
+  <link rel="stylesheet" href="/shared/css/style.css" />
+  <style>
+    body {
+      background: #cbd5e1;
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      color: #1e293b
+    }
+
+    .quote-page {
+      max-width: 900px;
+      margin: 30px auto;
+      padding: 0 16px 60px
+    }
+
+    .quote-actions {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+      align-items: center;
+      flex-wrap: wrap;
+      background: #fff;
+      padding: 12px 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, .05)
+    }
+
+    .quote-actions .spacer {
+      flex: 1
+    }
+
+    .quote-paper {
+      background: #fff;
+      padding: 40px 50px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, .1);
+      border-radius: 2px;
+      min-height: 1000px
+    }
+
+    .quote-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #0f172a;
+      padding-bottom: 14px;
+      margin-bottom: 24px
+    }
+
+    .quote-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px
+    }
+
+    .quote-brand .logo {
+      width: 56px;
+      height: 56px;
+      border-radius: 4px;
+      background: #1e293b;
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      font-size: 24px;
+      letter-spacing: 1px
+    }
+
+    .quote-brand .brand-name {
+      font-size: 16px;
+      font-weight: 700;
+      color: #0f172a;
+      text-transform: uppercase
+    }
+
+    .quote-brand .brand-sub {
+      font-size: 12px;
+      color: #475569;
+      margin-top: 2px;
+      line-height: 1.4
+    }
+
+    .quote-meta {
+      text-align: right;
+      font-size: 13px;
+      color: #334155
+    }
+
+    .doc-title {
+      text-align: center;
+      margin: 30px 0 24px
+    }
+
+    .doc-title h1 {
+      font-size: 24px;
+      font-weight: 800;
+      color: #0f172a;
+      text-transform: uppercase;
+      margin: 0 0 6px;
+      letter-spacing: 1px
+    }
+
+    .doc-title p {
+      margin: 0;
+      font-size: 14px;
+      color: #475569;
+      font-style: italic
+    }
+
+    .quote-section {
+      margin-bottom: 24px
+    }
+
+    .quote-section h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #0f172a;
+      text-transform: uppercase;
+      border-bottom: 1px solid #cbd5e1;
+      padding-bottom: 6px;
+      margin-bottom: 12px
+    }
+
+    .cust-info {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 24px;
+      font-size: 14px;
+      line-height: 1.5
+    }
+
+    .cust-info b {
+      color: #0f172a;
+      font-weight: 600;
+      display: inline-block;
+      width: 100px
+    }
+
+    .order-card {
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px dashed #cbd5e1
+    }
+
+    .order-card:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0
+    }
+
+    .order-card .oc-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 10px
+    }
+
+    .order-card .oc-code {
+      font-weight: 700;
+      color: #0f172a;
+      font-size: 16px;
+      text-decoration: none
+    }
+
+    .order-card .oc-status {
+      font-size: 13px;
+      color: #475569;
+      font-style: italic
+    }
+
+    .order-card .oc-meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 16px;
+      font-size: 13px;
+      color: #334155;
+      margin-bottom: 12px;
+      line-height: 1.5
+    }
+
+    .order-card .oc-meta b {
+      color: #0f172a;
+      font-weight: 600
+    }
+
+    .order-card .oc-full-width {
+      grid-column: 1/-1
+    }
+
+    .line-block {
+      margin: 12px 0;
+      font-size: 13px
+    }
+
+    .line-block .ln-title {
+      font-weight: 600;
+      color: #0f172a;
+      margin-bottom: 6px;
+      font-size: 14px
+    }
+
+    .line-block .ln-fields {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 16px;
+      font-size: 12px;
+      color: #475569;
+      margin-bottom: 8px
+    }
+
+    .line-block .ln-fields .lf-item b {
+      color: #0f172a
+    }
+
+    .line-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      background: #fff;
+      margin-bottom: 8px
+    }
+
+    .line-table th,
+    .line-table td {
+      padding: 6px 8px;
+      border: 1px solid #cbd5e1;
+      text-align: left
+    }
+
+    .line-table th {
+      background: #f8fafc;
+      font-weight: 600;
+      color: #0f172a
+    }
+
+    .line-table td.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums
+    }
+
+    .order-totals {
+      display: flex;
+      justify-content: flex-end;
+      gap: 24px;
+      padding-top: 8px;
+      font-size: 14px
+    }
+
+    .order-totals .ot-item {
+      display: flex;
+      gap: 8px
+    }
+
+    .order-totals .ot-item span:last-child {
+      font-weight: 600;
+      color: #0f172a
+    }
+
+    .order-totals .ot-item.remain span:last-child {
+      font-weight: 700
+    }
+
+    .summary-box {
+      border: 2px solid #0f172a;
+      padding: 16px 24px;
+      margin-top: 16px
+    }
+
+    .summary-box .row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      font-size: 15px
+    }
+
+    .summary-box .row.total {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0f172a;
+      padding-top: 10px;
+      border-top: 1px solid #cbd5e1;
+      margin-top: 4px
+    }
+
+    .signatures {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 50px;
+      padding: 0 30px
+    }
+
+    .signatures .sig-box {
+      text-align: center;
+      width: 200px
+    }
+
+    .signatures .sig-box h4 {
+      margin: 0 0 4px;
+      font-size: 15px;
+      color: #0f172a
+    }
+
+    .signatures .sig-box p {
+      margin: 0;
+      font-size: 13px;
+      color: #64748b;
+      font-style: italic
+    }
+
+    .signatures .sig-box .sig-space {
+      height: 100px
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px
+    }
+
+    .qr-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 10px;
+      margin-top: 8px
+    }
+
+    .qr-pick {
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 8px;
+      cursor: pointer;
+      text-align: center;
+      background: #fff;
+      transition: all .12s
+    }
+
+    .qr-pick:hover {
+      border-color: #2563eb
+    }
+
+    .qr-pick.selected {
+      border-color: #2563eb;
+      background: #eff6ff
+    }
+
+    .qr-pick img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: contain;
+      border-radius: 6px;
+      background: #f8fafc
+    }
+
+    .qr-pick .qr-label {
+      font-size: 11px;
+      margin-top: 6px;
+      color: #475569
+    }
+
+    .qr-pick.empty {
+      background: #f8fafc;
+      color: #94a3b8;
+      cursor: not-allowed
+    }
+
+    .qr-pick.empty:hover {
+      border-color: #e2e8f0
+    }
+
+    .receipt-preview {
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px
+    }
+
+    .receipt-preview img {
+      max-width: 120px;
+      max-height: 120px;
+      object-fit: contain;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px
+    }
+
+    .submit-bar {
+      position: sticky;
+      bottom: 0;
+      background: #fff;
+      border-top: 1px solid #e2e8f0;
+      padding: 12px 0;
+      margin-top: 18px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px
+    }
+
+    .empty {
+      color: #64748b;
+      font-style: italic;
+      padding: 20px 0;
+      text-align: center
+    }
+
+    .copied {
+      background: #dcfce7;
+      color: #166534;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px
+    }
+
+    .bank-block {
+      display: grid;
+      grid-template-columns: 1fr 200px;
+      gap: 24px;
+      align-items: center;
+      border: 1px solid #cbd5e1;
+      padding: 20px
+    }
+
+    .bank-block .bk-info {
+      font-size: 14px;
+      line-height: 1.6
+    }
+
+    .bank-block .bk-info .row {
+      display: flex;
+      gap: 8px
+    }
+
+    .bank-block .bk-info .row span:first-child {
+      width: 120px;
+      color: #475569
+    }
+
+    .bank-block .bk-info b {
+      color: #0f172a
+    }
+
+    .bank-block .bk-qr {
+      text-align: center
+    }
+
+    .bank-block .bk-qr img {
+      width: 160px;
+      height: 160px;
+      object-fit: contain;
+      border: 1px solid #cbd5e1;
+      padding: 4px
+    }
+
+    .bank-block .bk-qr .qr-label {
+      font-size: 12px;
+      color: #475569;
+      margin-top: 8px
+    }
+
+    .pay-mode {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px
+    }
+
+    .pay-mode label {
+      flex: 1;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 8px 10px;
+      cursor: pointer;
+      text-align: center;
+      font-size: 13.5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all .12s
+    }
+
+    .pay-mode label:hover {
+      border-color: #2563eb
+    }
+
+    .pay-mode input {
+      display: none
+    }
+
+    .pay-mode input:checked+span {
+      font-weight: 700;
+      color: #2563eb
+    }
+
+    .pay-mode label:has(input:checked) {
+      border-color: #2563eb;
+      background: #eff6ff
+    }
+
+    .view-tabs { display: flex; gap: 4px }
+    .view-tab {
+      padding: 5px 13px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      background: #fff;
+      cursor: pointer;
+      font-size: 13px;
+      color: #475569;
+      font-weight: 500;
+    }
+    .view-tab:hover { border-color: #2563eb; color: #2563eb }
+    .view-tab.active { background: #1e40af; color: #fff; border-color: #1e40af; font-weight: 600 }
+
+    @media print {
+      body {
+        background: #fff;
+        margin: 0;
+        padding: 0
+      }
+
+      .quote-page {
+        max-width: none;
+        margin: 0;
+        padding: 0
+      }
+
+      .quote-actions {
+        display: none
+      }
+
+      .quote-paper {
+        box-shadow: none;
+        padding: 0;
+        border-radius: 0;
+        min-height: 0
+      }
+
+      @page {
+        size: A4;
+        margin: 15mm
+      }
+    }
+
+    @media (max-width:680px) {
+      .quote-paper {
+        padding: 20px
+      }
+
+      .cust-info,
+      .form-grid,
+      .order-card .oc-meta {
+        grid-template-columns: 1fr
+      }
+
+      .order-totals {
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-end
+      }
+
+      .signatures {
+        flex-direction: column;
+        gap: 40px;
+        align-items: center
+      }
+    }
+  </style>
 </head>
+
 <body>
-<div class="quote-page">
-  <div class="quote-actions">
-    <button class="btn ghost" id="btnCopy">📋 Copy link</button>
-    <button class="btn ghost" id="btnDownload" disabled>📥 Tải ảnh</button>
-    <button class="btn ghost" id="btnDownloadPdf" disabled>📄 Tải PDF</button>
-    <span id="copyOk" class="copied" style="display:none">Đã copy</span>
-    <div class="spacer"></div>
-    <label style="font-size:13px;color:#475569;white-space:nowrap">Từ ngày</label>
-    <input type="date" id="filterFrom" class="input" style="width:148px" />
-    <label style="font-size:13px;color:#475569;white-space:nowrap">đến</label>
-    <input type="date" id="filterTo" class="input" style="width:148px" />
-    <button class="btn ghost sm" id="btnReload">↺ Cập nhật</button>
-    <button class="btn" id="btnOpenConfirm" disabled>✓ Xác nhận đã thanh toán</button>
+  <div class="quote-page">
+    <div class="quote-actions">
+      <button class="btn ghost" id="btnCopy">📋 Copy link</button>
+      <button class="btn ghost" id="btnDownload" disabled>📥 Tải ảnh</button>
+      <button class="btn ghost" id="btnDownloadPdf" disabled>📄 Tải PDF</button>
+      <span id="copyOk" class="copied" style="display:none">Đã copy</span>
+      <div class="spacer"></div>
+      <button class="btn ghost sm" id="btnReload">↺ Tải lại</button>
+      <div class="view-tabs">
+        <button class="view-tab active" id="btnView_full">Chi tiết</button>
+        <button class="view-tab" id="btnView_summary">Tóm tắt</button>
+        <button class="view-tab" id="btnView_stats">Thống kê</button>
+      </div>
+      <button class="btn" id="btnOpenConfirm" disabled>Tạo Phiếu Yêu Cầu</button>
+    </div>
+    <div class="quote-paper" id="quotePaper">
+      <div class="empty">Đang tải...</div>
+    </div>
   </div>
-  <div class="quote-paper" id="quotePaper">
-    <div class="empty">Đang tải...</div>
-  </div>
-</div>
 
-<!-- Modal: xac nhan tao phieu (form nhap tien) -->
-<div id="confirmModal" class="modal-bg">
-  <div class="modal" style="max-width:640px">
-    <div class="modal-head">
-      <h3>Xác nhận đã thanh toán</h3>
-      <button type="button" class="modal-close" id="cmClose" aria-label="Đóng">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="summary-box" style="margin-top:0">
-        <div class="row"><span>Nợ kỳ trước:</span><span id="cfOpening">0đ</span></div>
-        <div class="row"><span>Nợ phát sinh từ đơn:</span><span id="cfOrderDebt">0đ</span></div>
-        <div class="row total"><span>Tổng phải thu:</span><span id="cfTotalDebt">0đ</span></div>
+  <!-- Modal: xac nhan tao phieu -->
+  <div id="confirmModal" class="modal-bg">
+    <div class="modal" style="max-width:500px">
+      <div class="modal-head">
+        <h3>Tạo Phiếu Yêu Cầu Thanh Toán</h3>
+        <button type="button" class="modal-close" id="cmClose" aria-label="Đóng">×</button>
       </div>
-      <div class="field">
-        <label>Khách thanh toán</label>
-        <div class="pay-mode">
-          <label><input type="radio" name="payMode" value="full" checked><span>💰 Toàn bộ</span></label>
-          <label><input type="radio" name="payMode" value="partial"><span>✂ Một phần</span></label>
+      <div class="modal-body">
+        <p>Hệ thống sẽ tạo 1 phiếu yêu cầu gồm các đơn hàng đang hiển thị trên bảng kê.</p>
+        <p>Sau khi tạo bạn có thể gửi link phiếu cho khách đối chiếu và ghi nhận thanh toán nhiều lần.</p>
+        <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer">
+            <input type="checkbox" id="cmIncludeOB" style="width:18px;height:18px"> Bao gồm nợ gối đầu (opening balance)
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer">
+            <input type="checkbox" id="cmIncludePR" style="width:18px;height:18px"> Bao gồm nợ từ phiếu cũ (rolling balance)
+          </label>
+        </div>
+        <div class="summary-box" style="margin-top:10px">
+          <div class="row"><span>Tổng số đơn:</span><span id="cfOrderCount">0</span></div>
+          <div class="row total"><span>Tổng tiền yêu cầu:</span><span id="cfTotalDebt">0đ</span></div>
         </div>
       </div>
-      <div class="grid cols-2">
-        <div class="field">
-          <label>Số tiền khách trả *</label>
-          <input type="text" id="fmAmount" class="input money-input" inputmode="numeric" placeholder="VD: 5.000.000" readonly>
-          <p class="help" id="fmAmountHelp">Tự động bằng tổng phải thu</p>
-        </div>
-        <div class="field">
-          <label>Hình thức</label>
-          <select id="fmMethod" class="select">
-            <option value="cash">Tiền mặt</option>
-            <option value="transfer">Chuyển khoản</option>
-            <option value="mixed">Hỗn hợp</option>
-          </select>
-        </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="btnCancel">Huỷ</button>
+        <button type="button" class="btn" id="btnSubmit">Tạo Phiếu Yêu Cầu</button>
       </div>
-      <div class="field">
-        <label>Ghi chú</label>
-        <input id="fmNote" class="input" placeholder="(tuỳ chọn)">
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button type="button" class="btn ghost" id="btnCancel">Huỷ</button>
-      <button type="button" class="btn" id="btnSubmit">Xác nhận thanh toán</button>
     </div>
   </div>
-</div>
 
-<script src="/shared/js/ui.js"></script>
-<script src="/shared/js/api.js"></script>
-<script src="/shared/js/auth.js"></script>
-<script src="/shared/js/imgbb.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-<script src="/admin/debt-settle-form.js"></script>
+  <script src="/shared/js/ui.js"></script>
+  <script src="/shared/js/api.js"></script>
+  <script src="/shared/js/auth.js"></script>
+  <script src="/shared/js/order-quick-view.js"></script>
+  <script src="/shared/js/imgbb.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="/admin/debt-settle-form.js"></script>
 </body>
+
 </html>

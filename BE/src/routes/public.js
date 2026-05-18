@@ -5,6 +5,7 @@
 
 const express = require('express');
 const db = require('../db');
+const { calcCustomerDebt } = require('../utils/debt');
 
 const router = express.Router();
 
@@ -236,7 +237,7 @@ router.get('/invoice/:code', async (req, res, next) => {
     );
 
     const [items] = await db.query(
-      `SELECT oi.line_id, oi.qty, oi.unit_price, oi.vat_percent,
+      `SELECT oi.id, oi.line_id, oi.qty, oi.unit_price, oi.vat_percent,
               p.id AS product_id, p.code AS product_code, p.name AS product_name,
               p.image_url AS product_image, p.thumbnail_url AS product_thumb,
               p.description AS product_description, p.warranty_months AS product_warranty_months
@@ -253,17 +254,28 @@ router.get('/invoice/:code', async (req, res, next) => {
       [order.id]
     );
     const [fieldValues] = await db.query(
-      `SELECT line_id, label, value FROM order_field_values
-        WHERE order_id = ? AND is_deleted = 0 ORDER BY seq, id`,
+      `SELECT item_id, label, value FROM order_field_values
+        WHERE order_id = ? AND is_deleted = 0 AND item_id IS NOT NULL ORDER BY seq, id`,
       [order.id]
     );
 
+    // Group field_values theo item_id
+    const itemFvMap = new Map();
+    for (const fv of fieldValues) {
+      if (!itemFvMap.has(fv.item_id)) itemFvMap.set(fv.item_id, []);
+      itemFvMap.get(fv.item_id).push({ label: fv.label, value: fv.value });
+    }
+
     // Group theo line
     const lineMap = new Map(
-      lines.map(l => [l.id, { ...l, items: [], charges: [], field_values: [] }])
+      lines.map(l => [l.id, { ...l, items: [], charges: [] }])
     );
-    for (const it of items) if (lineMap.has(it.line_id)) lineMap.get(it.line_id).items.push(it);
-    for (const fv of fieldValues) if (lineMap.has(fv.line_id)) lineMap.get(fv.line_id).field_values.push(fv);
+    for (const it of items) {
+      if (lineMap.has(it.line_id)) {
+        it.field_values = itemFvMap.get(it.id) || [];
+        lineMap.get(it.line_id).items.push(it);
+      }
+    }
     const orderCharges = [];
     for (const c of charges) {
       if (c.line_id == null) orderCharges.push(c);
@@ -282,6 +294,169 @@ router.get('/invoice/:code', async (req, res, next) => {
       ...order,
       lines: Array.from(lineMap.values()),
       order_charges: orderCharges,
+      settings,
+    });
+  } catch (err) { next(err); }
+});
+
+// ---- GET /api/public/debts/:customer_id/settle-preview ----
+router.get('/debts/:customer_id/settle-preview', async (req, res, next) => {
+  try {
+    const customerId = Number(req.params.customer_id);
+    if (!Number.isFinite(customerId) || customerId <= 0) {
+      return res.status(400).json({ error: 'customer_id khong hop le' });
+    }
+
+    const [custRows] = await db.query(
+      `SELECT id, code, full_name, phone, address, type, company_name, tax_code,
+              credit_term_days, debt_limit, opening_balance
+         FROM customers WHERE id = ? AND is_deleted = 0`,
+      [customerId]
+    );
+    if (!custRows.length) return res.status(404).json({ error: 'Khong tim thay khach hang' });
+
+    const dateFrom = req.query.date_from || null; // 'YYYY-MM-DD'
+    const dateTo   = req.query.date_to   || null;
+
+    const debt = await calcCustomerDebt(db, customerId);
+
+    // Loc don theo completed_at neu co date range
+    let filteredOrders = debt.pending_orders;
+    if (dateFrom || dateTo) {
+      filteredOrders = filteredOrders.filter(o => {
+        const d = o.completed_at ? String(o.completed_at).slice(0, 10) : null;
+        if (!d) return false;
+        if (dateFrom && d < dateFrom) return false;
+        if (dateTo   && d > dateTo)   return false;
+        return true;
+      });
+    }
+    const filteredOrderDebt = filteredOrders.reduce((s, o) => s + Number(o.remaining), 0);
+    const filteredTotalDebt = Number(debt.opening_balance) + filteredOrderDebt + Number(debt.request_debt);
+
+    const pendingIds = filteredOrders.map(o => o.id);
+
+    let ordersDetail = [];
+    if (pendingIds.length) {
+      const placeholders = pendingIds.map(() => '?').join(',');
+
+      // Don + KTV
+      const [orders] = await db.query(
+        `SELECT o.id, o.code, o.total_amount, o.paid_amount, o.status, o.payment_status,
+                o.confirmed_at, o.created_at, o.completed_at, o.due_at,
+                o.address, o.note, o.assigned_staff_id,
+                s.full_name AS assigned_staff_name,
+                s.phone     AS assigned_staff_phone,
+                s.username  AS assigned_staff_username
+           FROM orders o
+           LEFT JOIN staff s ON s.id = o.assigned_staff_id
+          WHERE o.id IN (${placeholders})`,
+        pendingIds
+      );
+
+      // Lines (cong viec)
+      const [lines] = await db.query(
+        `SELECT ol.id, ol.order_id, ol.template_id, ol.custom_name, ol.seq,
+                ol.subtotal, ol.note,
+                COALESCE(ol.custom_name, t.name) AS template_name
+           FROM order_lines ol
+           LEFT JOIN order_templates t ON t.id = ol.template_id
+          WHERE ol.order_id IN (${placeholders}) AND ol.is_deleted = 0
+          ORDER BY ol.order_id, ol.seq, ol.id`,
+        pendingIds
+      );
+
+      // Items (san pham)
+      const [items] = await db.query(
+        `SELECT oi.id, oi.order_id, oi.line_id, oi.product_id, oi.qty,
+                oi.unit_price, oi.vat_percent,
+                p.name AS product_name, p.code AS product_code
+           FROM order_items oi
+           LEFT JOIN products p ON p.id = oi.product_id
+          WHERE oi.order_id IN (${placeholders})`,
+        pendingIds
+      );
+
+      // Charges (chi phi line va chi phi cap don)
+      const [charges] = await db.query(
+        `SELECT id, order_id, line_id, kind, label, amount
+           FROM order_charges
+          WHERE order_id IN (${placeholders}) AND is_deleted = 0
+          ORDER BY id`,
+        pendingIds
+      );
+
+      // Field values (bien so xe, sim, tai khoan...)
+      const [fieldValues] = await db.query(
+        `SELECT id, order_id, line_id, template_field_id, label, value, seq
+           FROM order_field_values
+          WHERE order_id IN (${placeholders}) AND is_deleted = 0
+          ORDER BY seq, id`,
+        pendingIds
+      );
+
+      // Group theo order
+      const orderMap = new Map();
+      for (const o of orders) {
+        orderMap.set(o.id, { ...o, lines: [], order_charges: [] });
+      }
+      const lineMap = new Map();
+      for (const ln of lines) {
+        const node = { ...ln, items: [], charges: [], field_values: [] };
+        lineMap.set(ln.id, node);
+        const od = orderMap.get(ln.order_id);
+        if (od) od.lines.push(node);
+      }
+      for (const it of items) {
+        if (it.line_id && lineMap.has(it.line_id)) lineMap.get(it.line_id).items.push(it);
+      }
+      for (const c of charges) {
+        if (c.label === 'Công lắp') continue;  // an phi cong KTV
+        if (c.line_id == null) {
+          const od = orderMap.get(c.order_id);
+          if (od) od.order_charges.push(c);
+        } else if (lineMap.has(c.line_id)) {
+          lineMap.get(c.line_id).charges.push(c);
+        }
+      }
+      for (const fv of fieldValues) {
+        if (fv.line_id && lineMap.has(fv.line_id)) {
+          lineMap.get(fv.line_id).field_values.push(fv);
+        } else if (!fv.line_id) {
+          const od = orderMap.get(fv.order_id);
+          if (od) {
+            od.field_values = od.field_values || [];
+            od.field_values.push(fv);
+          }
+        }
+      }
+
+      // Merge voi pending_orders cua calcCustomerDebt de giu remaining chinh xac
+      const pendingMap = new Map(filteredOrders.map(p => [p.id, p]));
+      ordersDetail = pendingIds.map(id => {
+        const o = orderMap.get(id);
+        const p = pendingMap.get(id);
+        return o ? { ...o, remaining: p.remaining } : null;
+      }).filter(Boolean);
+    }
+
+    // Settings (qr + bank) cho FE render QR + thong tin chuyen khoan
+    const [settingsRows] = await db.query(
+      `SELECT \`key\`, \`value\` FROM app_settings`
+    );
+    const settings = {};
+    for (const s of settingsRows) settings[s.key] = s.value;
+
+    res.json({
+      customer: custRows[0],
+      opening_balance: debt.opening_balance,
+      order_debt: filteredOrderDebt,
+      request_debt: debt.request_debt,
+      total_debt: filteredTotalDebt,
+      pending_orders: ordersDetail,
+      pending_requests: debt.pending_requests,
+      date_from: dateFrom,
+      date_to: dateTo,
       settings,
     });
   } catch (err) { next(err); }

@@ -252,12 +252,13 @@ router.get('/orders/:id', async (req, res, next) => {
               c.type AS customer_type,
               ec.id AS end_customer_id, ec.full_name AS end_customer_name,
               ec.phone AS end_customer_phone, ec.code AS end_customer_code,
-              osc.amount AS commission_amount, osc.approved_at AS commission_approved_at
+              o.tech_commission_amount,
+              o.tech_commission_note,
+              o.tech_commission_approved_at,
+              o.tech_commission_requested_at
          FROM orders o
          LEFT JOIN customers c  ON c.id  = o.customer_id
          LEFT JOIN customers ec ON ec.id = o.end_customer_id
-         LEFT JOIN order_staff_commissions osc
-                ON osc.order_id = o.id AND osc.staff_id = o.assigned_staff_id AND osc.is_deleted = 0
         WHERE o.id = ? AND o.assigned_staff_id = ? AND o.is_deleted = 0`,
       [req.params.id, req.user.sub]
     );
@@ -272,19 +273,21 @@ router.get('/orders/:id', async (req, res, next) => {
         ORDER BY ol.seq, ol.id`, [req.params.id]
     );
     const [items] = await db.query(
-      `SELECT oi.*, p.code AS product_code, p.name AS product_name
+      `SELECT oi.id, oi.line_id, oi.product_id, oi.qty, oi.unit_price, oi.vat_percent,
+              p.code AS product_code, p.name AS product_name
          FROM order_items oi
          JOIN products p ON p.id = oi.product_id
         WHERE oi.order_id = ?`, [req.params.id]
     );
     const [charges] = await db.query(
       `SELECT id, line_id, kind, label, amount FROM order_charges
-        WHERE order_id = ? AND is_deleted = 0 AND label != 'Công lắp'
+        WHERE order_id = ? AND is_deleted = 0 AND label != 'Công lắp' AND line_id IS NOT NULL
         ORDER BY id`, [req.params.id]
     );
     const [fieldValues] = await db.query(
-      `SELECT id, line_id, label, value, seq FROM order_field_values
-        WHERE order_id = ? AND is_deleted = 0 ORDER BY seq, id`, [req.params.id]
+      `SELECT id, line_id, item_id, label, value, seq FROM order_field_values
+        WHERE order_id = ? AND is_deleted = 0 AND item_id IS NOT NULL
+        ORDER BY seq, id`, [req.params.id]
     );
     const [photos] = await db.query(
       `SELECT id, step_code, url, caption, uploaded_at
@@ -292,57 +295,21 @@ router.get('/orders/:id', async (req, res, next) => {
         ORDER BY uploaded_at, id`, [req.params.id]
     );
 
-    const lineMap = new Map(lines.map(l => [l.id, { ...l, items: [], charges: [], field_values: [] }]));
-    for (const it of items) if (lineMap.has(it.line_id)) lineMap.get(it.line_id).items.push(it);
-    
-    // Group cac template_id de fetch order_template_fields
-    const tplIds = [...new Set(lines.map(l => l.template_id).filter(Boolean))];
-    const tplFields = [];
-    if (tplIds.length > 0) {
-      const [tfs] = await db.query(
-        `SELECT template_id, label, seq FROM order_template_fields
-         WHERE template_id IN (?) AND is_deleted = 0 ORDER BY seq`, [tplIds]
-      );
-      tplFields.push(...tfs);
+    // Group: item map + field_values per item
+    const itemMap = new Map(items.map(it => [it.id, { ...it, field_values: [] }]));
+    for (const fv of fieldValues) {
+      if (itemMap.has(fv.item_id)) itemMap.get(fv.item_id).field_values.push(fv);
     }
 
-    // Merge fieldValues vs tplFields
-    for (const [lid, line] of lineMap.entries()) {
-      const savedFvs = fieldValues.filter(fv => fv.line_id === lid);
-      const expectedTfs = line.template_id ? tplFields.filter(tf => tf.template_id === line.template_id) : [];
-      
-      const merged = [];
-      const savedLabels = new Set();
-      // uutien add saved first hoac map theo label? 
-      // Neu ta map theo label cua tpl, giu nguyen thu tu tpl
-      for (const tf of expectedTfs) {
-        const match = savedFvs.find(f => f.label === tf.label);
-        if (match) {
-          merged.push(match);
-          savedLabels.add(match.label);
-        } else {
-          // Virtual field
-          merged.push({ id: null, line_id: lid, label: tf.label, value: '', seq: tf.seq });
-        }
-      }
-      // Add cac field da luu nhung khong nam trong template (field do user them tay)
-      for (const fv of savedFvs) {
-        if (!savedLabels.has(fv.label)) merged.push(fv);
-      }
-      line.field_values = merged;
-    }
-
-    const orderCharges = [];
-    for (const c of charges) {
-      if (c.line_id == null) orderCharges.push(c);
-      else if (lineMap.has(c.line_id)) lineMap.get(c.line_id).charges.push(c);
-    }
+    // Group: line map + items + charges per line
+    const lineMap = new Map(lines.map(l => [l.id, { ...l, items: [], charges: [] }]));
+    for (const it of itemMap.values()) if (lineMap.has(it.line_id)) lineMap.get(it.line_id).items.push(it);
+    for (const c of charges) if (lineMap.has(c.line_id)) lineMap.get(c.line_id).charges.push(c);
 
     const steps = await loadTemplateSteps(db);
     res.json({
       ...rows[0],
       lines: Array.from(lineMap.values()),
-      order_charges: orderCharges,
       step_photos: photos,
       workflow_steps: steps,
     });
@@ -544,7 +511,7 @@ router.get('/orders/customers/search', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PATCH /orders/:id/field-values — KTV cap nhat gia tri cac thong so chi tiet
+// PATCH /orders/:id/field-values — KTV cap nhat gia tri cac thong so chi tiet (per item)
 router.patch('/orders/:id/field-values', async (req, res, next) => {
   try {
     const orderId = Number(req.params.id);
@@ -564,14 +531,15 @@ router.patch('/orders/:id/field-values', async (req, res, next) => {
       const id  = Number(u.id);
       const val = u.value != null ? String(u.value) : '';
       if (!id) {
-        // Insert truong hop id = 0 (truong ao tu template)
+        // Insert moi — can co item_id va label
         const lbl = String(u.label || '').trim();
+        const itemId = Number(u.item_id);
         const lineId = Number(u.line_id);
-        if (lbl && lineId) {
+        if (lbl && itemId) {
           await db.query(
-            `INSERT INTO order_field_values (order_id, line_id, label, value, seq)
-             VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(seq),0)+1 FROM order_field_values fv2 WHERE fv2.line_id = ? AND fv2.is_deleted = 0))`,
-            [orderId, lineId, lbl, val, lineId]
+            `INSERT INTO order_field_values (order_id, line_id, item_id, label, value, seq, is_deleted)
+             VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(seq),0)+1 FROM order_field_values fv2 WHERE fv2.item_id = ? AND fv2.is_deleted = 0), 0)`,
+            [orderId, lineId || null, itemId, lbl, val, itemId]
           );
         }
         continue;
@@ -596,15 +564,16 @@ router.patch('/orders/:id/field-values', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /orders/:id/field-values — KTV them moi mot thong so cho line
+// POST /orders/:id/field-values — KTV them moi mot thong so cho item
 router.post('/orders/:id/field-values', async (req, res, next) => {
   try {
     const orderId = Number(req.params.id);
-    const lineId  = Number(req.body.line_id);
+    const itemId  = Number(req.body.item_id);
+    const lineId  = Number(req.body.line_id) || null;
     const label   = String(req.body.label || '').trim();
     const value   = req.body.value != null ? String(req.body.value) : '';
-    if (!lineId)   return res.status(400).json({ error: 'Thieu line_id' });
-    if (!label)    return res.status(400).json({ error: 'Thieu label' });
+    if (!itemId)  return res.status(400).json({ error: 'Thieu item_id' });
+    if (!label)   return res.status(400).json({ error: 'Thieu label' });
 
     const [t] = await db.query(
       `SELECT id, status FROM orders
@@ -615,15 +584,15 @@ router.post('/orders/:id/field-values', async (req, res, next) => {
     if (t[0].status === 'cancelled') return res.status(400).json({ error: 'Don da huy' });
 
     const [chk] = await db.query(
-      `SELECT id FROM order_lines WHERE id = ? AND order_id = ? AND is_deleted = 0`,
-      [lineId, orderId]
+      `SELECT id FROM order_items WHERE id = ? AND order_id = ?`,
+      [itemId, orderId]
     );
-    if (!chk.length) return res.status(404).json({ error: 'Khong tim thay line' });
+    if (!chk.length) return res.status(404).json({ error: 'Khong tim thay item' });
 
     const [ins] = await db.query(
-      `INSERT INTO order_field_values (order_id, line_id, label, value, seq)
-       VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(seq),0)+1 FROM order_field_values fv2 WHERE fv2.line_id = ? AND fv2.is_deleted = 0))`,
-      [orderId, lineId, label, value, lineId]
+      `INSERT INTO order_field_values (order_id, line_id, item_id, label, value, seq, is_deleted)
+       VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(seq),0)+1 FROM order_field_values fv2 WHERE fv2.item_id = ? AND fv2.is_deleted = 0), 0)`,
+      [orderId, lineId, itemId, label, value, itemId]
     );
     res.json({ ok: true, id: ins.insertId, label, value });
   } catch (err) { next(err); }
@@ -652,8 +621,8 @@ router.delete('/orders/:id/field-values/:fvId', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /orders/:id/photos — KTV upload anh tu do gan vao don.
-// Body: { url, caption? }
+// POST /orders/:id/photos — KTV upload anh gan voi mot buoc workflow.
+// Body: { step_code, url, caption? }
 router.post('/orders/:id/photos', async (req, res, next) => {
   try {
     const [t] = await db.query(
@@ -664,6 +633,7 @@ router.post('/orders/:id/photos', async (req, res, next) => {
     if (!t.length) return res.status(404).json({ error: 'Khong tim thay don' });
     if (t[0].status === 'cancelled') return res.status(400).json({ error: 'Don da huy' });
 
+    const stepCode = String(req.body.step_code || 'in_progress').trim();
     const url     = String(req.body.url || '').trim();
     const caption = req.body.caption ? String(req.body.caption) : null;
     if (url.length < 10 || url.length > 500) return res.status(400).json({ error: 'URL anh khong hop le' });
@@ -673,8 +643,8 @@ router.post('/orders/:id/photos', async (req, res, next) => {
 
     const [result] = await db.query(
       `INSERT INTO order_step_photos (order_id, step_code, url, caption, uploaded_by)
-       VALUES (?, '', ?, ?, ?)`,
-      [req.params.id, url, caption, req.user.sub]
+       VALUES (?, ?, ?, ?, ?)`,
+      [req.params.id, stepCode, url, caption, req.user.sub]
     );
     const [rows] = await db.query(`SELECT * FROM order_step_photos WHERE id = ?`, [result.insertId]);
 
@@ -1085,6 +1055,7 @@ router.get('/summary', async (req, res, next) => {
       `SELECT o.id, o.code, o.status,
               o.due_at, o.completed_at, o.created_at,
               o.total_amount, o.paid_amount, o.wage_amount,
+              CASE WHEN o.tech_commission_approved_at IS NOT NULL THEN COALESCE(o.tech_commission_amount,0) ELSE 0 END AS commission_amount,
               GREATEST(0, COALESCE(o.total_amount,0) - COALESCE(o.paid_amount,0)) AS debt_amount,
               c.full_name AS customer_name, c.phone AS customer_phone,
               COALESCE((SELECT SUM(amount) FROM collections
@@ -1105,7 +1076,8 @@ router.get('/summary', async (req, res, next) => {
          COALESCE(SUM(o.total_amount), 0)                              AS total_amount,
          COALESCE(SUM(o.paid_amount), 0)                               AS total_paid,
          COALESCE(SUM(GREATEST(0, o.total_amount - o.paid_amount)), 0) AS total_debt,
-         COALESCE(SUM(CASE WHEN o.status='done' THEN o.wage_amount ELSE 0 END), 0) AS total_wage
+         COALESCE(SUM(CASE WHEN o.status='done' THEN o.wage_amount ELSE 0 END), 0) AS total_wage,
+         COALESCE(SUM(CASE WHEN o.tech_commission_approved_at IS NOT NULL THEN o.tech_commission_amount ELSE 0 END), 0) AS total_commission
          FROM orders o
          LEFT JOIN customers c ON c.id = o.customer_id
          ${whereSql}`,
@@ -1473,6 +1445,73 @@ router.get('/collections', async (req, res, next) => {
       [req.user.sub]
     );
     res.json({ items: rows, summary: sumRow[0] });
+  } catch (err) { next(err); }
+});
+
+// ============================================================
+// HOA HONG KTV — tu nhan yeu cau, admin duyet rieng
+// ============================================================
+
+// POST /kithuat/orders/:id/commission-request
+// KTV tu nhap yeu cau hoa hong. Chi duoc neu chua duyet va don da giao cho minh.
+router.post('/orders/:id/commission-request', async (req, res, next) => {
+  try {
+    const orderId = Number(req.params.id);
+    const staffId = req.user.sub;
+    const amount  = Math.max(0, Math.round(Number(req.body.amount) || 0));
+    const note    = (req.body.note || '').trim().slice(0, 300);
+    if (!amount) return res.status(400).json({ error: 'So tien phai lon hon 0' });
+
+    const [[order]] = await db.query(
+      `SELECT id, assigned_staff_id, tech_commission_approved_at
+         FROM orders WHERE id = ? AND is_deleted = 0`,
+      [orderId]
+    );
+    if (!order) return res.status(404).json({ error: 'Khong tim thay don' });
+    if (order.assigned_staff_id !== staffId) return res.status(403).json({ error: 'Khong phai don cua ban' });
+    if (order.tech_commission_approved_at) return res.status(400).json({ error: 'Hoa hong da duoc duyet, khong the sua yeu cau' });
+
+    await db.query(
+      `UPDATE orders
+          SET tech_commission_amount       = ?,
+              tech_commission_note         = ?,
+              tech_commission_requested_by = ?,
+              tech_commission_requested_at = NOW(),
+              tech_commission_approved_at  = NULL,
+              tech_commission_approved_by  = NULL
+        WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
+      [amount, note || null, staffId, orderId, staffId]
+    );
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// DELETE /kithuat/orders/:id/commission-request
+// KTV rut lai yeu cau (chi duoc khi chua duyet).
+router.delete('/orders/:id/commission-request', async (req, res, next) => {
+  try {
+    const orderId = Number(req.params.id);
+    const staffId = req.user.sub;
+
+    const [[order]] = await db.query(
+      `SELECT id, assigned_staff_id, tech_commission_approved_at
+         FROM orders WHERE id = ? AND is_deleted = 0`,
+      [orderId]
+    );
+    if (!order) return res.status(404).json({ error: 'Khong tim thay don' });
+    if (order.assigned_staff_id !== staffId) return res.status(403).json({ error: 'Khong phai don cua ban' });
+    if (order.tech_commission_approved_at) return res.status(400).json({ error: 'Da duyet roi, lien he admin de huy' });
+
+    await db.query(
+      `UPDATE orders
+          SET tech_commission_amount       = 0,
+              tech_commission_note         = NULL,
+              tech_commission_requested_by = NULL,
+              tech_commission_requested_at = NULL
+        WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
+      [orderId, staffId]
+    );
+    res.json({ ok: true });
   } catch (err) { next(err); }
 });
 
@@ -2110,11 +2149,14 @@ router.post('/advances', async (req, res, next) => {
     const note   = String(req.body.note || '').trim().slice(0, 300);
     if (!amount) return res.status(400).json({ error: 'So tien ung phai lon hon 0' });
 
+    // Kiem tra hom nay co thuoc ky luong da chot khong (theo from_date/to_date)
     const [snap] = await db.query(
-      `SELECT id FROM staff_payroll_periods WHERE staff_id = ? AND period = ? AND is_deleted = 0 LIMIT 1`,
-      [staffId, period]
+      `SELECT id FROM staff_payroll_periods
+        WHERE staff_id = ? AND is_deleted = 0 AND from_date <= CURDATE() AND to_date >= CURDATE()
+        LIMIT 1`,
+      [staffId]
     );
-    if (snap.length) return res.status(409).json({ error: 'Ky luong da duoc chot, khong the gui yeu cau ung' });
+    if (snap.length) return res.status(409).json({ error: 'Ngay hom nay thuoc ky luong da chot, khong the gui yeu cau ung' });
 
     const [ins] = await db.query(
       `INSERT INTO staff_advances (staff_id, period, amount, note, created_by, status) VALUES (?,?,?,?,?,'pending')`,

@@ -118,14 +118,14 @@
     $('tbody-stock').innerHTML = items.map(p => `
       <tr>
         <td>${thumbCell(p)}</td>
-        <td><b>${escape(p.code)}</b></td>
-        <td>${escape(p.name)}</td>
-        <td>${escape(p.category_name || '—')}</td>
-        <td>${fmt.format(p.cost_price || 0)}đ</td>
-        <td>${stockBadge(Number(p.quantity))}</td>
-        <td>${p.held_qty > 0 ? `<span class="pill blue">${p.held_qty}</span>` : '0'}</td>
-        <td>${p.sold_30d > 0 ? `<b>${p.sold_30d}</b>` : '<span class="text-muted">0</span>'}</td>
-        <td>
+        <td data-label="Mã TB"><b>${escape(p.code)}</b></td>
+        <td data-label="Tên sản phẩm">${escape(p.name)}</td>
+        <td data-label="Danh mục">${escape(p.category_name || '—')}</td>
+        <td data-label="Giá gốc">${fmt.format(p.cost_price || 0)}đ</td>
+        <td data-label="Tồn">${stockBadge(Number(p.quantity))}</td>
+        <td data-label="KTV giữ">${p.held_qty > 0 ? `<span class="pill blue">${p.held_qty}</span>` : '0'}</td>
+        <td data-label="Bán 30d">${p.sold_30d > 0 ? `<b>${p.sold_30d}</b>` : '<span class="text-muted">0</span>'}</td>
+        <td data-label="Hành động">
           <button class="btn ghost sm" data-act="history" data-id="${p.product_id}" data-name="${escape(p.code + ' — ' + p.name)}" title="Lịch sử">📜</button>
           <button class="btn ghost sm" data-act="adjust" data-id="${p.product_id}" data-name="${escape(p.code + ' — ' + p.name)}" title="Cân kho">➕</button>
         </td>
@@ -181,13 +181,13 @@
                  + (r.line_count > 3 ? `, +${r.line_count - 3}…` : ''));
       return `
         <tr style="cursor:pointer" data-rid="${r.id}">
-          <td><b>${escape(r.code)}</b></td>
-          <td>${fmtDate(r.created_at)}</td>
-          <td>${reasonBadge(r.reason_code)}</td>
-          <td>${preview}</td>
-          <td>${escape(r.created_by_name || '—')}</td>
-          <td><b>${r.total_qty}</b></td>
-          <td>${r.is_voided
+          <td data-label="Mã phiếu"><b>${escape(r.code)}</b></td>
+          <td data-label="Ngày">${fmtDate(r.created_at)}</td>
+          <td data-label="Lý do">${reasonBadge(r.reason_code)}</td>
+          <td data-label="Items">${preview}</td>
+          <td data-label="Người tạo">${escape(r.created_by_name || '—')}</td>
+          <td data-label="SL"><b>${r.total_qty}</b></td>
+          <td data-label="Trạng thái">${r.is_voided
             ? '<span class="pill red">Đã hủy</span>'
             : '<span class="pill green">Hợp lệ</span>'}</td>
         </tr>`;
@@ -211,12 +211,12 @@
       const dayCls = h.days_held > 3 ? 'style="color:#dc2626;font-weight:600"' : '';
       return `
         <tr>
-          <td><b>${escape(h.staff_name)}</b></td>
-          <td>${escape(h.product_code)}</td>
-          <td>${escape(h.product_name)}</td>
-          <td><b>${h.qty}</b></td>
-          <td>${fmtDate(h.first_held_at)}</td>
-          <td ${dayCls}>${h.days_held} ngày</td>
+          <td data-label="KTV"><b>${escape(h.staff_name)}</b></td>
+          <td data-label="Mã TB">${escape(h.product_code)}</td>
+          <td data-label="Sản phẩm">${escape(h.product_name)}</td>
+          <td data-label="Số lượng"><b>${h.qty}</b></td>
+          <td data-label="Ngày nhận">${fmtDate(h.first_held_at)}</td>
+          <td data-label="Số ngày" ${dayCls}>${h.days_held} ngày</td>
         </tr>`;
     }).join('');
   }
@@ -344,8 +344,8 @@
       ${r.supplier_name ? `<div><div class="lbl">NCC</div><div class="val">${escape(r.supplier_name)}</div></div>` : ''}
       ${r.order_code ? `<div><div class="lbl">Đơn liên quan</div><div class="val">${
         r.ref_order_id
-          ? `<a href="/admin/orders.html#order-${r.ref_order_id}" target="_blank" style="color:#2563eb;text-decoration:underline">${escape(r.order_code)}</a>`
-          : escape(r.order_code)
+          ? `<a href="/admin/orders.html#order-${r.ref_order_id}" target="_blank" data-order-quick="${r.ref_order_id}" style="color:#2563eb;text-decoration:underline">${escape(r.order_code)}</a>${ui.copyCodeBtn(r.order_code)}`
+          : escape(r.order_code) + ui.copyCodeBtn(r.order_code)
       }</div></div>` : ''}
       ${r.ref_staff_name ? `<div><div class="lbl">KTV</div><div class="val">${escape(r.ref_staff_name)}</div></div>` : ''}
       ${r.stock_take_code ? `<div><div class="lbl">Phiên kiểm kê</div><div class="val"><b>${escape(r.stock_take_code)}</b></div></div>` : ''}
@@ -441,8 +441,8 @@
               <td>${it.kind === 'in' ? '+' : '−'}<b>${it.qty}</b></td>
               <td>
                 ${it.order_code ? `Đơn ${it.ref_order_id
-                  ? `<a href="/admin/orders.html#order-${it.ref_order_id}" target="_blank" style="color:#2563eb;text-decoration:underline"><b>${escape(it.order_code)}</b></a>`
-                  : `<b>${escape(it.order_code)}</b>`} ` : ''}
+                  ? `<a href="/admin/orders.html#order-${it.ref_order_id}" target="_blank" data-order-quick="${it.ref_order_id}" style="color:#2563eb;text-decoration:underline"><b>${escape(it.order_code)}</b></a>`
+                  : `<b>${escape(it.order_code)}</b>`}${ui.copyCodeBtn(it.order_code)} ` : ''}
                 ${it.supplier_name ? `NCC: ${escape(it.supplier_name)} ` : ''}
                 ${it.ref_staff_name ? `KTV: ${escape(it.ref_staff_name)}` : ''}
               </td>
@@ -495,14 +495,14 @@
     }
     tbody.innerHTML = items.map(t => `
       <tr style="cursor:pointer" data-tid="${t.id}">
-        <td><b>${escape(t.code)}</b></td>
-        <td>${fmtDate(t.started_at)}</td>
-        <td>${t.finished_at ? fmtDate(t.finished_at) : '<span class="text-muted">—</span>'}</td>
-        <td>${escape(t.by_staff_name || '—')}</td>
-        <td><b>${t.line_count}</b></td>
-        <td>${t.status === 'finished' ? `<b>${t.total_variance_abs}</b>` : '<span class="text-muted">—</span>'}</td>
-        <td>${stocktakeStatusPill(t.status)}</td>
-        <td><small class="text-muted">${escape(t.note || '')}</small></td>
+        <td data-label="Mã phiên"><b>${escape(t.code)}</b></td>
+        <td data-label="Bắt đầu">${fmtDate(t.started_at)}</td>
+        <td data-label="Kết thúc">${t.finished_at ? fmtDate(t.finished_at) : '<span class="text-muted">—</span>'}</td>
+        <td data-label="Người mở">${escape(t.by_staff_name || '—')}</td>
+        <td data-label="Số dòng"><b>${t.line_count}</b></td>
+        <td data-label="Chênh lệch">${t.status === 'finished' ? `<b>${t.total_variance_abs}</b>` : '<span class="text-muted">—</span>'}</td>
+        <td data-label="Trạng thái">${stocktakeStatusPill(t.status)}</td>
+        <td data-label="Ghi chú"><small class="text-muted">${escape(t.note || '')}</small></td>
       </tr>
     `).join('');
     tbody.querySelectorAll('tr[data-tid]').forEach(tr => {
@@ -878,11 +878,126 @@
     $('btnStSaveDraft').addEventListener('click', saveTakeDraft);
     $('btnStFinish').addEventListener('click', finishTake);
     $('btnStCancelTake').addEventListener('click', cancelTake);
+
+    // Supplier dialog
+    $('btnManageSuppliers').addEventListener('click', openSupplierDialog);
+    $('supplierModalClose').addEventListener('click', closeSupplierDialog);
+    $('supplierModalCloseBtn').addEventListener('click', closeSupplierDialog);
+    $('supplierModal').addEventListener('click', (e) => { if (e.target.id === 'supplierModal') closeSupplierDialog(); });
+    let supSearchTimer;
+    $('sup_search').addEventListener('input', () => {
+      clearTimeout(supSearchTimer);
+      supSearchTimer = setTimeout(() => loadSuppliersDialog(), 300);
+    });
+    $('btnAddSupplier').addEventListener('click', () => openSupplierForm(null));
+    $('supFormClose').addEventListener('click', closeSupplierForm);
+    $('supFormCancel').addEventListener('click', closeSupplierForm);
+    $('supplierFormModal').addEventListener('click', (e) => { if (e.target.id === 'supplierFormModal') closeSupplierForm(); });
+    $('supFrm').addEventListener('submit', handleSupplierSubmit);
+    $('tbody-suppliers').addEventListener('click', handleSupplierTableClick);
   }
 
   function debounce(fn, ms) {
     let t;
     return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+  }
+
+  // ==================== SUPPLIER DIALOG ====================
+  async function loadSuppliersDialog() {
+    const q = ($('sup_search') ? $('sup_search').value.trim() : '');
+    const p = new URLSearchParams();
+    if (q) p.set('q', q);
+    p.set('limit', 200);
+    const res = await api.get('/admin/suppliers?' + p.toString(), { silent: true }).catch(() => null);
+    if (!res) return;
+    const items = res.items || res || [];
+    const tb = $('tbody-suppliers');
+    if (!items.length) {
+      tb.innerHTML = `<tr><td colspan="6" class="text-center text-muted" style="padding:24px">Ch\u01b0a c\u00f3 nh\u00e0 cung c\u1ea5p n\u00e0o</td></tr>`;
+      return;
+    }
+    tb.innerHTML = items.map(s => `
+      <tr>
+        <td><span class="text-muted">#${s.id}</span></td>
+        <td><b>${escape(s.name)}</b></td>
+        <td>${escape(s.phone || '')}</td>
+        <td>${escape(s.address || '')}</td>
+        <td style="font-size:12.5px;color:#64748b">${escape(s.note || '')}</td>
+        <td>
+          <button class="btn ghost sm" data-act="sup-edit" data-id="${s.id}">S\u1eeda</button>
+          <button class="btn ghost sm" data-act="sup-del" data-id="${s.id}" style="color:#dc2626">X\u00f3a</button>
+        </td>
+      </tr>
+    `).join('');
+    // Also refresh the supplier dropdown cache
+    state.suppliers = items;
+  }
+
+  function openSupplierDialog() {
+    $('sup_search').value = '';
+    $('supplierModal').classList.add('open');
+    loadSuppliersDialog();
+  }
+  function closeSupplierDialog() {
+    $('supplierModal').classList.remove('open');
+  }
+
+  function openSupplierForm(s) {
+    $('supFormTitle').textContent = s ? 'S\u1eeda nh\u00e0 cung c\u1ea5p' : 'Th\u00eam nh\u00e0 cung c\u1ea5p';
+    $('sup_f_id').value      = s ? s.id : '';
+    $('sup_f_name').value    = s ? (s.name || '')    : '';
+    $('sup_f_phone').value   = s ? (s.phone || '')   : '';
+    $('sup_f_address').value = s ? (s.address || '') : '';
+    $('sup_f_note').value    = s ? (s.note || '')    : '';
+    $('supplierFormModal').classList.add('open');
+    setTimeout(() => $('sup_f_name').focus(), 50);
+  }
+  function closeSupplierForm() {
+    $('supplierFormModal').classList.remove('open');
+  }
+
+  async function handleSupplierSubmit(e) {
+    e.preventDefault();
+    const id = $('sup_f_id').value;
+    const data = {
+      name:    $('sup_f_name').value.trim(),
+      phone:   $('sup_f_phone').value.trim() || null,
+      address: $('sup_f_address').value.trim() || null,
+      note:    $('sup_f_note').value.trim() || null,
+    };
+    if (!data.name) return ui.toast('Thi\u1ebfu t\u00ean NCC', 'warning');
+    $('btnSaveSupplier').disabled = true;
+    const ok = await (id
+      ? api.put('/admin/suppliers/' + id, data, { successMessage: '\u0110\u00e3 c\u1eadp nh\u1eadt NCC', loading: true })
+      : api.post('/admin/suppliers',     data, { successMessage: '\u0110\u00e3 t\u1ea1o NCC',     loading: true })
+    ).catch(() => null);
+    $('btnSaveSupplier').disabled = false;
+    if (!ok) return;
+    closeSupplierForm();
+    loadSuppliersDialog();
+  }
+
+  async function handleSupplierTableClick(e) {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    const act = btn.dataset.act;
+    if (act === 'sup-edit') {
+      const s = await api.get('/admin/suppliers/' + id).catch(() => null);
+      if (s) openSupplierForm(s);
+    } else if (act === 'sup-del') {
+      const yes = await ui.confirm({
+        title: 'X\u00e1c nh\u1eadn xo\u00e1',
+        message: 'Xo\u00e1 nh\u00e0 cung c\u1ea5p n\u00e0y?',
+        type: 'warning',
+        okText: 'Xo\u00e1',
+      });
+      if (!yes) return;
+      const ok = await api.delete('/admin/suppliers/' + id, {
+        successMessage: '\u0110\u00e3 xo\u00e1 NCC',
+      }).catch(() => null);
+      if (ok) loadSuppliersDialog();
+    }
   }
 
   async function init() {

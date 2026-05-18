@@ -44,13 +44,15 @@
     const stClass = STATUS_CLASS[o.status] || 'pe';
     const stLabel = STATUS_LABEL[o.status] || o.status;
 
-    // Field values noi bat (bien so, IMEI, SIM, tai khoan...) gom tu tat ca lines
+    // Field values noi bat (bien so, IMEI, SIM, tai khoan...) gom tu tat ca items
     const allFields = [];
     const seen = new Set();
     for (const ln of (o.lines || [])) {
-      for (const fv of (ln.field_values || [])) {
-        const key = fv.label + '::' + fv.value;
-        if (fv.value && !seen.has(key)) { seen.add(key); allFields.push(fv); }
+      for (const it of (ln.items || [])) {
+        for (const fv of (it.field_values || [])) {
+          const key = fv.label + '::' + fv.value;
+          if (fv.value && !seen.has(key)) { seen.add(key); allFields.push(fv); }
+        }
       }
     }
 
@@ -78,35 +80,22 @@
            }).join('')}</tbody></table>`
         : '';
 
-      const lineFieldsHtml = (ln.field_values && ln.field_values.length)
-        ? `<div class="ln-fields">${ln.field_values.map(fv =>
-            `<span class="lf-item"><b>${escape(fv.label)}:</b> ${escape(fv.value||'—')}</span>`
-          ).join('')}</div>`
-        : '';
-
       return `<div class="line-block">
         <div class="ln-title">▸ ${escape(ln.template_name||'Công việc')}</div>
-        ${lineFieldsHtml}
         ${itemsHtml}
         ${ln.note ? `<div style="margin-top:6px;font-size:12.5px;color:#64748b"><b>Ghi chú:</b> ${escape(ln.note)}</div>` : ''}
         <div style="text-align:right;margin-top:6px;font-size:13px"><b>Cộng dòng:</b> ${fmtVnd(ln.subtotal)}</div>
       </div>`;
     }).join('');
 
-    const orderChargesHtml = (o.order_charges && o.order_charges.length)
-      ? `<table class="line-table" style="margin-top:8px">
-          <thead><tr><th>Chi phí cấp đơn</th><th style="width:120px" class="num">Số tiền</th></tr></thead>
-          <tbody>${o.order_charges.map(c => `<tr>
-            <td>${escape(c.label||c.kind||'—')}</td>
-            <td class="num">${fmtVnd(c.amount)}</td>
-          </tr>`).join('')}</tbody>
-        </table>`
-      : '';
-
+    const oid = Number(o.id) || 0;
+    const codeHtml = oid
+      ? `<a class="oc-code" href="/admin/orders.html#order-${oid}" target="_blank" data-order-quick="${oid}">${escape(o.code)}</a>${ui.copyCodeBtn(o.code)}`
+      : `<span class="oc-code">${escape(o.code)}</span>${ui.copyCodeBtn(o.code)}`;
     return `<div class="order-card">
       <div class="oc-head">
         <div>
-          <span class="oc-code">${escape(o.code)}</span>
+          ${codeHtml}
           <span class="oc-tag st-${stClass}" style="margin-left:6px">${escape(stLabel)}</span>
         </div>
         <div class="oc-amount">Còn nợ: ${fmtVnd(o.remaining)}</div>
@@ -122,7 +111,6 @@
       ${o.address ? `<div class="oc-meta"><span>📍 <b>Địa chỉ:</b> ${escape(o.address)}</span></div>` : ''}
       ${o.note    ? `<div class="oc-meta"><span>📝 <b>Ghi chú:</b> ${escape(o.note)}</span></div>` : ''}
       ${linesHtml || '<div class="empty" style="padding:12px">Đơn không có dòng công việc</div>'}
-      ${orderChargesHtml}
       <div class="order-totals">
         <div class="ot-item"><span>Tổng đơn:</span><span>${fmtVnd(o.total_amount)}</span></div>
         <div class="ot-item"><span>Đã trả:</span><span>${fmtVnd(o.paid_amount)}</span></div>
@@ -133,10 +121,10 @@
 
   // ---- Render bank block -----------------------------------------------
   function renderBankBlock(s) {
-    const accountNo   = s['bank.account_no']   || '';
-    const accountName = s['bank.account_name'] || '';
-    const bankName    = s['bank.bank_name']    || '';
     const slot = Number(s['bank.default_qr_slot']) || 1;
+    const accountNo   = s[`qr.slot${slot}.account_no`]   || s['bank.account_no']   || '';
+    const accountName = s[`qr.slot${slot}.account_name`] || s['bank.account_name'] || '';
+    const bankName    = s[`qr.slot${slot}.bank_name`]    || s['bank.bank_name']    || '';
     const qrUrl   = s[`qr.slot${slot}.image_url`] || '';
     const qrLabel = s[`qr.slot${slot}.label`]     || '';
     if (!accountNo && !accountName && !bankName && !qrUrl) {

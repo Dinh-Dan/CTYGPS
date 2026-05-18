@@ -19,7 +19,8 @@ router.get('/', async (req, res, next) => {
     const [rows] = await db.query(`
       SELECT
         (SELECT COUNT(*) FROM orders
-           WHERE seen_at IS NULL AND is_deleted = 0) AS orders,
+           WHERE seen_at IS NULL AND is_deleted = 0
+             AND status IN ('pending','confirmed','in_progress')) AS orders,
         (SELECT COUNT(*) FROM customers
            WHERE seen_at IS NULL AND is_deleted = 0) AS customers,
         (SELECT COUNT(DISTINCT customer_id) FROM (
@@ -31,7 +32,15 @@ router.get('/', async (req, res, next) => {
               AND debt_carried_at IS NULL
               AND status IN ('customer_owes','pending_admin_confirm','staff_owes','in_progress','done')
               AND DATEDIFF(NOW(), COALESCE(confirmed_at, NOW())) >= 7
-         ) t) AS debts
+         ) t) AS debts,
+        (SELECT COUNT(*) FROM orders
+           WHERE tech_commission_requested_at IS NOT NULL
+             AND tech_commission_approved_at  IS NULL
+             AND is_deleted = 0) +
+        (SELECT COUNT(*) FROM order_staff_commissions sc
+           JOIN orders o ON o.id = sc.order_id AND o.is_deleted = 0
+          WHERE sc.approved_at IS NULL AND sc.is_deleted = 0
+            AND sc.requested_at IS NOT NULL) AS commissions
     `);
     res.json(rows[0]);
   } catch (err) { next(err); }

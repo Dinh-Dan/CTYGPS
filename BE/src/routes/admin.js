@@ -28,6 +28,7 @@ router.use('/staff-stock', require('./admin/staff-stock'));
 router.use('/orders',      require('./admin/orders'));
 router.use('/order-templates', require('./admin/order-templates'));
 router.use('/debts',       require('./admin/debts'));
+router.use('/payment-requests', require('./admin/payment-requests'));
 router.use('/settings',    require('./admin/settings'));
 router.use('/reports',     require('./admin/reports'));
 router.use('/notifications', require('./admin/notifications'));

@@ -12,6 +12,7 @@
       .replaceAll('"', '&quot;');
   }
   function fmtDate(d) { return d ? new Date(d).toLocaleString('vi-VN') : '—'; }
+  const DEFAULT_ITEM_FIELDS = ['Biển số xe', 'IMEI', 'Tên tài khoản', 'Số SIM'];
 
   let state = { bucket: 'active', items: [], detail: null };
 
@@ -127,47 +128,57 @@
     const sCls = pillForStatus(o);
     const remain = Math.max(0, Number(o.total_amount) - Number(o.paid_amount));
 
-    // Render moi line: fields + items
+    // Render moi line: items co field_values rieng
     const linesHtml = lines.length ? lines.map((ln, idx) => {
-      const fvRows = (ln.field_values || []).map(f =>
-        `<div style="display:flex;gap:6px;padding:4px 0;font-size:13px;align-items:center">
-          <label style="flex:1;font-size:12.5px;color:#475569;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:80px;max-width:140px"
-                 title="${esc(f.label)}">${esc(f.label)}</label>
-          <input class="fv-input" data-fv-id="${f.id}" data-line-id="${ln.id}" value="${esc(f.value || '')}"
-            placeholder="Nhập giá trị…"
-            style="flex:2;border:1px solid #cbd5e1;border-radius:6px;padding:4px 8px;font-size:13px;background:#fff;min-width:0">
-          <button class="btn-del-fv" data-fv-id="${f.id}" data-order-id="${o.id}"
-            style="background:none;border:none;cursor:pointer;color:#dc2626;font-size:15px;padding:0 4px;line-height:1" title="Xoá">×</button>
-        </div>`).join('');
-      const fvs = `<div class="fv-list" data-line-id="${ln.id}">
-          ${fvRows || '<p style="color:#94a3b8;font-size:12.5px;margin:4px 0">Chưa có thông số nào</p>'}
-          <div style="display:flex;gap:6px;margin-top:6px;align-items:center;padding-top:6px;border-top:1px dashed #e2e8f0">
-            <input class="fv-new-label" data-line-id="${ln.id}" placeholder="Tên trường mới"
-              style="flex:1;border:1px solid #94a3b8;border-radius:6px;padding:4px 8px;font-size:13px;min-width:0">
-            <input class="fv-new-value" data-line-id="${ln.id}" placeholder="Giá trị"
-              style="flex:2;border:1px solid #94a3b8;border-radius:6px;padding:4px 8px;font-size:13px;min-width:0">
-            <button class="btn ghost sm btn-add-fv" data-line-id="${ln.id}" data-order-id="${o.id}"
-              style="white-space:nowrap">+ Thêm</button>
+      const itemsHtml = (ln.items || []).length ? (ln.items || []).map(i => {
+        const existingFvs = i.field_values || [];
+        // Luon hien du 4 truong mac dinh, ghep voi gia tri da co trong DB
+        const usedIds = new Set();
+        const defaultRows = DEFAULT_ITEM_FIELDS.map(lbl => {
+          const found = existingFvs.find(f => f.label === lbl);
+          if (found) usedIds.add(found.id);
+          return found || { id: 0, label: lbl, value: '' };
+        });
+        const extraRows = existingFvs.filter(f => !usedIds.has(f.id));
+        const effectiveFvs = [...defaultRows, ...extraRows];
+        const fvRows = effectiveFvs.map(f =>
+          `<div style="display:flex;gap:6px;padding:3px 0;font-size:13px;align-items:center">
+            <label style="flex:0 0 130px;font-size:12px;color:#475569;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+                   title="${esc(f.label)}">${esc(f.label)}</label>
+            <input class="fv-input" data-fv-id="${f.id || 0}" data-item-id="${i.id}" data-line-id="${ln.id}" value="${esc(f.value || '')}"
+              placeholder="Nhập giá trị…"
+              style="flex:1;border:1px solid #cbd5e1;border-radius:6px;padding:4px 8px;font-size:13px;background:#fff;min-width:0">
+            ${f.id ? `<button class="btn-del-fv" data-fv-id="${f.id}" data-order-id="${o.id}"
+              style="background:none;border:none;cursor:pointer;color:#dc2626;font-size:15px;padding:0 4px;line-height:1" title="Xoá">×</button>`
+            : `<span style="width:24px;display:inline-block"></span>`}
+          </div>`).join('');
+        return `<div class="item-fv-block" style="border:1px solid #e2e8f0;border-radius:7px;padding:8px 10px;margin-bottom:6px;background:#fff">
+          <div style="font-size:13px;font-weight:600;margin-bottom:6px">
+            📦 ${esc(i.product_name || ('SP #' + i.product_id))}
+            <small style="color:#94a3b8;font-weight:400"> x${i.qty}</small>
           </div>
-          <div style="text-align:right;margin-top:6px">
-            <button class="btn ghost sm btn-save-fv" data-line-id="${ln.id}">💾 Lưu thông số</button>
+          <div class="fv-list" data-item-id="${i.id}" data-line-id="${ln.id}">
+            ${fvRows}
+            <div style="display:flex;gap:6px;margin-top:6px;align-items:center;padding-top:6px;border-top:1px dashed #e2e8f0">
+              <input class="fv-new-label" data-item-id="${i.id}" placeholder="Tên trường"
+                style="flex:0 0 120px;border:1px solid #94a3b8;border-radius:6px;padding:4px 8px;font-size:12px;min-width:0">
+              <input class="fv-new-value" data-item-id="${i.id}" placeholder="Giá trị"
+                style="flex:1;border:1px solid #94a3b8;border-radius:6px;padding:4px 8px;font-size:12px;min-width:0">
+              <button class="btn ghost sm btn-add-fv" data-item-id="${i.id}" data-line-id="${ln.id}" data-order-id="${o.id}"
+                style="white-space:nowrap;font-size:11px">+ Thêm</button>
+            </div>
+            <div style="text-align:right;margin-top:4px">
+              <button class="btn ghost sm btn-save-fv" data-item-id="${i.id}" data-line-id="${ln.id}" style="font-size:11px">💾 Lưu</button>
+            </div>
           </div>
         </div>`;
-      const its = (ln.items || []).length
-        ? ln.items.map(i => `<div style="display:flex;gap:8px;padding:3px 0;font-size:13px">
-            <span style="flex:2">${esc(i.product_name || ('SP #' + i.product_id))}</span>
-            <span>x${i.qty}</span>
-          </div>`).join('') : '<p class="text-muted" style="font-size:12.5px">Không có SP</p>';
+      }).join('') : '<p class="text-muted" style="font-size:12.5px">Không có sản phẩm</p>';
       return `<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px;background:#fafbfd">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-weight:700;color:#1e3a8a">
           <span style="background:#3b82f6;color:#fff;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px">${idx + 1}</span>
           <span>${esc(ln.template_name || '(?)')}</span>
         </div>
-        ${fvs}
-        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9">
-          <div style="font-size:11.5px;font-weight:700;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px">Sản phẩm</div>
-          ${its}
-        </div>
+        ${itemsHtml}
       </div>`;
     }).join('') : '<p class="text-muted">Đơn không có dòng công việc</p>';
 
@@ -188,7 +199,6 @@
         ${o.note ? `<div><b>Ghi chú đơn:</b> ${esc(o.note)}</div>` : ''}
         ${o.ktv_note ? `<div><b>Ghi chú KTV:</b> ${esc(o.ktv_note)}</div>` : ''}
         ${o.wage_amount ? `<div><b>Tiền công:</b> ${fmt(o.wage_amount)}đ</div>` : ''}
-        ${o.commission_amount != null ? `<div><b>Hoa hồng:</b> ${fmt(o.commission_amount)}đ${o.commission_approved_at ? ` <span style="color:#16a34a;font-size:12px">(đã duyệt)</span>` : ` <span style="color:#f59e0b;font-size:12px">(chờ duyệt)</span>`}</div>` : ''}
         ${o.customer_type === 'dealer' ? `
         <div style="margin-top:10px;padding:10px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px">
           <div style="font-size:11.5px;font-weight:700;color:#0369a1;margin-bottom:4px">👤 Khách đầu cuối của đại lý</div>
@@ -234,6 +244,7 @@
         <div style="display:flex;justify-content:space-between"><span>Đã thu</span><span>${fmt(o.paid_amount)}đ</span></div>
         ${remain > 0 ? `<div style="display:flex;justify-content:space-between;color:#dc2626;font-weight:600"><span>Còn lại</span><span>${fmt(remain)}đ</span></div>` : ''}
       </div>
+
     `;
 
     // Wire transitions
@@ -256,18 +267,17 @@
     }
     document.querySelectorAll('.btn-save-fv').forEach(btn => {
       btn.addEventListener('click', async () => {
+        const itemId = Number(btn.dataset.itemId);
         const lineId = Number(btn.dataset.lineId);
-        const fvList = document.querySelector(`.fv-list[data-line-id="${lineId}"]`);
+        const fvList = document.querySelector(`.fv-list[data-item-id="${itemId}"]`);
         const valueInputs = fvList ? fvList.querySelectorAll('.fv-input') : [];
-        const updates = Array.from(valueInputs).map(inp => {
-          const lblEl = inp.previousElementSibling;
-          return {
-            id: Number(inp.dataset.fvId) || 0,
-            value: (inp.value || '').trim(),
-            label: lblEl ? lblEl.textContent : '',
-            line_id: lineId
-          };
-        });
+        const updates = Array.from(valueInputs).map(inp => ({
+          id: Number(inp.dataset.fvId) || 0,
+          value: (inp.value || '').trim(),
+          label: inp.previousElementSibling ? inp.previousElementSibling.textContent.trim() : '',
+          item_id: itemId,
+          line_id: lineId,
+        }));
         if (!updates.length) { ui.toast('Không có thông số nào', 'error'); return; }
         btn.disabled = true;
         const r = await api.patch(`/kithuat/orders/${o.id}/field-values`, { updates }, { onError: 'toast' });
@@ -278,15 +288,16 @@
 
     document.querySelectorAll('.btn-add-fv').forEach(btn => {
       btn.addEventListener('click', async () => {
+        const itemId = Number(btn.dataset.itemId);
         const lineId = Number(btn.dataset.lineId);
         const orderId = Number(btn.dataset.orderId);
-        const lblEl = document.querySelector(`.fv-new-label[data-line-id="${lineId}"]`);
-        const valEl = document.querySelector(`.fv-new-value[data-line-id="${lineId}"]`);
+        const lblEl = document.querySelector(`.fv-new-label[data-item-id="${itemId}"]`);
+        const valEl = document.querySelector(`.fv-new-value[data-item-id="${itemId}"]`);
         const label = (lblEl?.value || '').trim();
         if (!label) { ui.toast('Nhập tên trường trước', 'error'); lblEl?.focus(); return; }
         btn.disabled = true;
         const r = await api.post(`/kithuat/orders/${orderId}/field-values`,
-          { line_id: lineId, label, value: valEl?.value || '' }, { onError: 'toast' });
+          { item_id: itemId, line_id: lineId, label, value: valEl?.value || '' }, { onError: 'toast' });
         btn.disabled = false;
         if (r) { ui.toast('Đã thêm', 'success'); openDetail(orderId); }
       });
@@ -327,77 +338,157 @@
   async function openCompleteDialog(targetStep) {
     const o = state.detail;
     const remain = Math.max(0, Number(o.total_amount) - Number(o.paid_amount));
-    const html = `
-      <div style="padding:14px">
-        <div style="background:#f1f5f9;border-radius:8px;padding:10px 12px;margin-bottom:12px">
-          <div style="font-size:12px;color:#64748b">Tổng đơn còn phải thu</div>
-          <div style="font-size:20px;font-weight:700;color:#0f172a">${fmt(remain)}đ</div>
-        </div>
-        <p class="text-muted" style="font-size:12px;margin-bottom:10px">
-          Nhập số khách trả lần này (tiền mặt KTV cầm hoặc khách tự CK admin).
-          Phần chưa trả sẽ tự động ghi nợ.
-        </p>
+    const fmtI = v => v === 0 ? '' : String(v).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const parseI = s => Number(String(s).replace(/\./g, '')) || 0;
 
-        <div class="field"><label>Tiền mặt / CK KTV cầm về (đ)</label>
-          <input id="cToStaff" type="number" class="input" value="0" min="0" inputmode="numeric">
+    const html = `
+      <div style="padding:16px">
+        <div style="background:linear-gradient(135deg,#1e40af 0%,#2563eb 100%);border-radius:10px;padding:14px 16px;margin-bottom:16px;color:#fff">
+          <div style="font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.6px;margin-bottom:2px">Tổng còn phải thu</div>
+          <div style="font-size:26px;font-weight:700;letter-spacing:-.5px">${fmt(remain)}đ</div>
         </div>
-        <div class="field"><label>Hình thức KTV nhận</label>
-          <select id="cToStaffM" class="select">
+
+        <div class="field" style="margin-bottom:6px">
+          <label style="font-weight:600;color:#374151;font-size:13px">Số tiền thu hộ (đ)</label>
+          <input id="cCollected" type="text" inputmode="numeric" autocomplete="off" class="input"
+                 placeholder="0"
+                 value="${fmtI(remain)}"
+                 style="font-size:20px;font-weight:700;text-align:right;padding-right:10px;letter-spacing:.3px;color:#0f172a">
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:14px">
+          <button type="button" id="cBtnFull"
+                  style="flex:1;padding:5px 0;border-radius:6px;border:1.5px solid #2563eb;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:600;cursor:pointer">
+            Thu đủ
+          </button>
+          <button type="button" id="cBtnZero"
+                  style="flex:1;padding:5px 0;border-radius:6px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600;cursor:pointer">
+            Chưa thu
+          </button>
+        </div>
+
+        <div id="cDebtRow" style="border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:8px">
+          <span style="font-size:13px;color:#6b7280;flex:1">Khách còn nợ</span>
+          <b id="cDebtVal" style="font-size:17px"></b>
+        </div>
+
+        <div class="field" style="margin-bottom:0">
+          <label style="font-size:12px;color:#64748b">Hình thức nhận</label>
+          <select id="cToStaffM" class="select" style="font-size:13px">
             <option value="cash">Tiền mặt</option>
             <option value="transfer">Chuyển khoản qua KTV</option>
           </select>
         </div>
-        <div class="field"><label>Khách CK thẳng cho admin (đ)</label>
-          <input id="cToAdmin" type="number" class="input" value="0" min="0" inputmode="numeric">
-        </div>
-
-        <div class="field">
-          <label>Còn ghi nợ (đ) — tự tính</label>
-          <input id="cDebt" type="number" class="input" value="${remain}" readonly
-                 style="background:#f8fafc;color:#0f172a;font-weight:600">
-        </div>
 
         <input id="cExpect" type="hidden" value="${remain}">
-        <div id="cSumHint" style="font-size:12px;margin:-2px 0 10px;color:#64748b">
-          Khách trả lần này: <b id="cPaidVal" style="color:#0f172a">0đ</b>
-          &nbsp;·&nbsp; Còn nợ: <b id="cDebtVal" style="color:#dc2626">${fmt(remain)}đ</b>
+        <input id="cDebtHidden" type="hidden" value="${remain}">
+
+        <div class="field" style="margin-top:12px"><label>Ghi chú KTV (không bắt buộc)</label>
+          <textarea id="cNote" class="textarea" rows="2"></textarea>
         </div>
 
-        <div class="field"><label>Ghi chú KTV (không bắt buộc)</label>
-          <textarea id="cNote" class="textarea" rows="2"></textarea>
+        <div class="field" style="margin-top:12px">
+          <label style="font-weight:600;color:#374151;font-size:13px">Ảnh hoàn thành (không bắt buộc)</label>
+          <label id="cPhotoBtn" style="display:flex;align-items:center;gap:8px;padding:10px 14px;border:1.5px dashed #cbd5e1;border-radius:8px;cursor:pointer;background:#f8fafc;color:#475569;font-size:13px;margin-top:6px">
+            <span style="font-size:20px">📷</span>
+            <span id="cPhotoBtnTxt">Chụp hoặc chọn ảnh</span>
+            <input id="cPhotoInput" type="file" accept="image/*" multiple style="display:none">
+          </label>
+          <div id="cPhotoPreview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
         </div>
       </div>
     `;
     const modalPromise = openSimpleModal('Hoàn thành đơn', html, 'Hoàn thành');
 
-    // Ghi nợ = còn phải thu - (KTV thu + admin thu), luôn auto tính
-    const $E = document.getElementById('cExpect');
-    const $S = document.getElementById('cToStaff');
-    const $A = document.getElementById('cToAdmin');
-    const $D = document.getElementById('cDebt');
-    const $paid = document.getElementById('cPaidVal');
-    const $debtView = document.getElementById('cDebtVal');
-    function recalcDebt() {
-      const e = Number($E.value) || 0;
-      const s = Number($S.value) || 0;
-      const a = Number($A.value) || 0;
-      const debt = Math.max(0, e - s - a);
-      $D.value = debt;
-      $paid.textContent = fmt(s + a) + 'đ';
-      $debtView.textContent = fmt(debt) + 'đ';
-      $debtView.style.color = debt === 0 ? '#16a34a' : '#dc2626';
+    const $inp = document.getElementById('cCollected');
+    const $debtRow = document.getElementById('cDebtRow');
+    const $debtVal = document.getElementById('cDebtVal');
+    const $debtHidden = document.getElementById('cDebtHidden');
+    const $btnFull = document.getElementById('cBtnFull');
+    const $btnZero = document.getElementById('cBtnZero');
+
+    const photoFiles = [];
+    const $photoInput = document.getElementById('cPhotoInput');
+    const $photoPreview = document.getElementById('cPhotoPreview');
+    const $photoBtnTxt = document.getElementById('cPhotoBtnTxt');
+
+    function renderPhotoPreviews() {
+      $photoPreview.innerHTML = '';
+      photoFiles.forEach((f, idx) => {
+        const url = URL.createObjectURL(f);
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'position:relative;width:72px;height:72px';
+        wrap.innerHTML = `
+          <img src="${url}" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0">
+          <button type="button" data-idx="${idx}" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:#ef4444;color:#fff;font-size:11px;line-height:18px;text-align:center;cursor:pointer;padding:0">×</button>
+        `;
+        wrap.querySelector('button').addEventListener('click', () => {
+          URL.revokeObjectURL(url);
+          photoFiles.splice(idx, 1);
+          renderPhotoPreviews();
+          $photoBtnTxt.textContent = photoFiles.length ? `${photoFiles.length} ảnh đã chọn` : 'Chụp hoặc chọn ảnh';
+        });
+        $photoPreview.appendChild(wrap);
+      });
     }
-    [$S, $A].forEach(el => el.addEventListener('input', recalcDebt));
+
+    $photoInput.addEventListener('change', () => {
+      Array.from($photoInput.files).forEach(f => photoFiles.push(f));
+      $photoInput.value = '';
+      $photoBtnTxt.textContent = `${photoFiles.length} ảnh đã chọn`;
+      renderPhotoPreviews();
+    });
+
+    function applyDebtStyle(debt) {
+      if (debt <= 0) {
+        $debtRow.style.background = '#f0fdf4';
+        $debtVal.style.color = '#16a34a';
+        $debtVal.textContent = 'Thanh toán đủ ✓';
+      } else {
+        $debtRow.style.background = '#fef2f2';
+        $debtVal.style.color = '#dc2626';
+        $debtVal.textContent = fmt(debt) + 'đ';
+      }
+      $debtHidden.value = Math.max(0, debt);
+    }
+
+    function recalc() {
+      const collected = parseI($inp.value);
+      const debt = remain - collected;
+      applyDebtStyle(debt);
+      const isFull = collected >= remain;
+      $btnFull.style.background = isFull ? '#2563eb' : '#eff6ff';
+      $btnFull.style.color = isFull ? '#fff' : '#1d4ed8';
+      $btnZero.style.background = collected === 0 ? '#64748b' : '#f8fafc';
+      $btnZero.style.color = collected === 0 ? '#fff' : '#64748b';
+    }
+
+    $inp.addEventListener('input', () => {
+      const raw = $inp.value.replace(/\./g, '').replace(/\D/g, '');
+      const num = Number(raw) || 0;
+      const pos = $inp.selectionStart;
+      const oldLen = $inp.value.length;
+      $inp.value = fmtI(num) || '';
+      const newLen = $inp.value.length;
+      $inp.setSelectionRange(pos + newLen - oldLen, pos + newLen - oldLen);
+      recalc();
+    });
+
+    $btnFull.addEventListener('click', () => { $inp.value = fmtI(remain); recalc(); });
+    $btnZero.addEventListener('click', () => { $inp.value = ''; recalc(); });
+
+    recalc();
 
     const ok = await modalPromise;
     if (!ok) return;
+    const collected = parseI(document.getElementById('cCollected').value);
+    const pendingPhotos = [...photoFiles];
     const body = {
       target_step_code: targetStep,
       expected_amount: Number(document.getElementById('cExpect').value) || 0,
-      to_staff_amount: Number(document.getElementById('cToStaff').value) || 0,
+      to_staff_amount: collected,
       to_staff_method: document.getElementById('cToStaffM').value,
-      to_admin_amount: Number(document.getElementById('cToAdmin').value) || 0,
-      debt_amount: Number(document.getElementById('cDebt').value) || 0,
+      to_admin_amount: 0,
+      debt_amount: Number(document.getElementById('cDebtHidden').value) || 0,
       note: document.getElementById('cNote').value.trim() || null,
     };
     closeSimpleModal();
@@ -405,6 +496,20 @@
     if (r) {
       ui.toast('Đã hoàn thành', 'success');
       const snap = { ...state.detail };
+
+      if (pendingPhotos.length) {
+        ui.toast(`Đang tải ${pendingPhotos.length} ảnh lên...`, 'info');
+        let uploaded = 0;
+        for (const file of pendingPhotos) {
+          try {
+            const url = await imgbb.upload(file, { name: `order-${snap.id}-done` });
+            await api.post(`/kithuat/orders/${snap.id}/photos`, { step_code: 'done', url }, { onError: 'silent' });
+            uploaded++;
+          } catch (_) {}
+        }
+        if (uploaded) ui.toast(`Đã lưu ${uploaded} ảnh`, 'success');
+      }
+
       openDetail(snap.id);
       loadList();
       // Sau khi xong don -> mo dialog cap nhat thong tin (co section khach dau cuoi neu la dai ly)
@@ -433,7 +538,7 @@
       .normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
     const suggestions = { account: [], vehicle: [], sim: [] };
     if (state.detail && state.detail.lines) {
-      const allFV = state.detail.lines.flatMap(l => l.field_values || []);
+      const allFV = state.detail.lines.flatMap(l => (l.items || []).flatMap(i => i.field_values || []));
       for (const fv of allFV) {
         const lbl = normalize(fv.label);
         const val = (fv.value || '').trim();
@@ -697,34 +802,40 @@
     return true;
   }
 
-  async function uploadStepPhoto() {
+  function uploadStepPhoto() {
     const o = state.detail;
-    const html = `
-      <div style="padding:14px">
-        <div class="field"><label>Chọn ảnh từ máy</label>
-          <input type="file" id="upFile" accept="image/*">
-        </div>
-        <div class="field"><label>Mô tả (tuỳ chọn)</label>
-          <input id="upCap" type="text" class="input">
-        </div>
-      </div>
-    `;
-    const ok = await openSimpleModal('Thêm ảnh', html, 'Lưu');
-    if (!ok) return;
-    const file = document.getElementById('upFile').files[0];
-    const caption = document.getElementById('upCap').value.trim() || null;
-    if (!file) { ui.toast('Hãy chọn ảnh', 'warning'); closeSimpleModal(); return; }
-    closeSimpleModal();
-    ui.toast('Đang tải ảnh lên imgbb…');
-    let url;
-    try {
-      url = await imgbb.upload(file);
-    } catch (e) {
-      ui.toast('Upload ảnh thất bại', 'error');
-      return;
+    if (!o) return;
+    // Mo file picker truc tiep, khong can dialog trung gian
+    let inp = document.getElementById('_photoFilePicker');
+    if (!inp) {
+      inp = document.createElement('input');
+      inp.type = 'file';
+      inp.id = '_photoFilePicker';
+      inp.accept = 'image/*';
+      inp.style.display = 'none';
+      document.body.appendChild(inp);
     }
-    const r = await api.post(`/kithuat/orders/${o.id}/photos`, { url, caption }, { onError: 'toast' });
-    if (r) { ui.toast('Đã thêm ảnh', 'success'); openDetail(o.id); }
+    inp.value = '';
+    inp.onchange = async () => {
+      const file = inp.files[0];
+      if (!file) return;
+      ui.toast('Đang tải ảnh lên…');
+      let url;
+      try {
+        url = await imgbb.upload(file);
+      } catch (e) {
+        ui.toast('Upload ảnh thất bại', 'error');
+        return;
+      }
+      const stepCode = String(o.status || 'in_progress').trim();
+      const r = await api.post(
+        `/kithuat/orders/${o.id}/photos`,
+        { step_code: stepCode, url },
+        { onError: 'toast' }
+      );
+      if (r) { ui.toast('Đã thêm ảnh', 'success'); openDetail(o.id); }
+    };
+    inp.click();
   }
 
   // ---- SIMPLE MODAL OVERLAY -----------------------------------

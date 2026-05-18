@@ -103,24 +103,6 @@ async function genReceiptCode(conn, kind) {
   return `${prefix}-${datePart}-${String(next).padStart(3, '0')}`;
 }
 
-// Replace charges CAP DON (line_id = NULL). Khong dung cho charges cap line.
-async function replaceOrderCharges(conn, orderId, charges) {
-  await conn.query(
-    `DELETE FROM order_charges WHERE order_id = ? AND line_id IS NULL`, [orderId]
-  );
-  if (!Array.isArray(charges) || !charges.length) return;
-  for (const c of charges) {
-    const kind = CHARGE_KINDS.includes(c.kind) ? c.kind : 'fee';
-    const label = String(c.label || '').trim();
-    const amount = Number(c.amount) || 0;
-    if (!label) continue;
-    await conn.query(
-      `INSERT INTO order_charges (order_id, line_id, kind, label, amount)
-       VALUES (?, NULL, ?, ?, ?)`,
-      [orderId, kind, label, amount]
-    );
-  }
-}
 
 // Replace TOAN BO lines cua 1 don.
 // lines: [{
@@ -132,7 +114,10 @@ async function replaceOrderCharges(conn, orderId, charges) {
 //   field_values?: [{template_field_id?, label, value}]
 // }]
 async function replaceLines(conn, orderId, lines) {
-  // Xoa hoan toan lines cu (CASCADE keo theo items + charges line + field_values)
+  // Xoa sach du lieu cu (xu ly ca truong hop khong co CASCADE)
+  await conn.query(`DELETE FROM order_field_values WHERE order_id = ?`, [orderId]);
+  await conn.query(`DELETE FROM order_items WHERE order_id = ?`, [orderId]);
+  await conn.query(`DELETE FROM order_charges WHERE order_id = ? AND line_id IS NOT NULL`, [orderId]);
   await conn.query(`DELETE FROM order_lines WHERE order_id = ?`, [orderId]);
   if (!Array.isArray(lines) || !lines.length) return;
 
@@ -150,7 +135,7 @@ async function replaceLines(conn, orderId, lines) {
     );
     const lineId = r.insertId;
 
-    // Items
+    // Items + field_values gan vao tung item
     if (Array.isArray(ln.items)) {
       for (const it of ln.items) {
         const pid = Number(it.product_id);
@@ -158,15 +143,39 @@ async function replaceLines(conn, orderId, lines) {
         const qty = Math.max(1, Number(it.qty) || 1);
         const price = Number(it.unit_price) || 0;
         const vat = Math.max(0, Math.min(100, Number(it.vat_percent) || 0));
-        await conn.query(
+        const [iRes] = await conn.query(
           `INSERT INTO order_items (order_id, line_id, product_id, qty, unit_price, vat_percent)
            VALUES (?, ?, ?, ?, ?, ?)`,
           [orderId, lineId, pid, qty, price, vat]
         );
+        const itemId = iRes.insertId;
+
+        // Field values (hop thong tin) gan truc tiep vao item nay
+        if (Array.isArray(it.field_values)) {
+          let fvSeq = 0;
+          for (const fv of it.field_values) {
+            const label = String(fv.label || '').trim();
+            if (!label) continue;
+            if (label.length > 100 || /[<>"'`]/.test(label)) {
+              throw httpErr(400, 'Nhan thong tin (label) khong hop le');
+            }
+            let value = fv.value == null ? null : String(fv.value);
+            if (value != null) {
+              if (value.length > 500) throw httpErr(400, 'Gia tri thong tin qua dai (toi da 500)');
+              if (/[<>]/.test(value)) throw httpErr(400, 'Gia tri thong tin chua ky tu khong hop le');
+            }
+            fvSeq++;
+            await conn.query(
+              `INSERT INTO order_field_values (order_id, line_id, item_id, label, value, seq, is_deleted)
+               VALUES (?, ?, ?, ?, ?, ?, 0)`,
+              [orderId, lineId, itemId, label, value, fvSeq]
+            );
+          }
+        }
       }
     }
 
-    // Charges cap line
+    // Charges cap line (phi/giam gia trong nhiem vu)
     if (Array.isArray(ln.charges)) {
       for (const c of ln.charges) {
         const kind = CHARGE_KINDS.includes(c.kind) ? c.kind : 'fee';
@@ -177,30 +186,6 @@ async function replaceLines(conn, orderId, lines) {
           `INSERT INTO order_charges (order_id, line_id, kind, label, amount)
            VALUES (?, ?, ?, ?, ?)`,
           [orderId, lineId, kind, label, amount]
-        );
-      }
-    }
-
-    // Field values
-    if (Array.isArray(ln.field_values)) {
-      let seq = 0;
-      for (const fv of ln.field_values) {
-        const label = String(fv.label || '').trim();
-        if (!label) continue;
-        if (label.length > 100 || /[<>"'`]/.test(label)) {
-          throw httpErr(400, 'Nhan thong tin (label) khong hop le');
-        }
-        let value = fv.value == null ? null : String(fv.value);
-        if (value != null) {
-          if (value.length > 500) throw httpErr(400, 'Gia tri thong tin qua dai (toi da 500)');
-          if (/[<>]/.test(value)) throw httpErr(400, 'Gia tri thong tin chua ky tu khong hop le');
-        }
-        const tfId = fv.template_field_id ? Number(fv.template_field_id) : null;
-        seq++;
-        await conn.query(
-          `INSERT INTO order_field_values (order_id, line_id, template_field_id, label, value, seq)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [orderId, lineId, tfId, label, value, seq]
         );
       }
     }
@@ -224,16 +209,18 @@ async function loadOrderDetail(conn, id) {
     `SELECT o.*, c.full_name AS customer_name, c.phone AS customer_phone,
             c.type AS customer_type,
             s.full_name AS staff_name,
-            ap.full_name AS tech_commission_approved_by_name,
+            ap.full_name  AS tech_commission_approved_by_name,
+            req.full_name AS tech_commission_requested_by_name,
             ec.id AS end_customer_id,
             ec.full_name AS end_customer_name,
             ec.phone AS end_customer_phone,
             ec.code AS end_customer_code
        FROM orders o
-       LEFT JOIN customers c  ON c.id  = o.customer_id
-       LEFT JOIN customers ec ON ec.id = o.end_customer_id
-       LEFT JOIN staff     s  ON s.id  = o.assigned_staff_id
-       LEFT JOIN staff     ap ON ap.id = o.tech_commission_approved_by
+       LEFT JOIN customers c   ON c.id   = o.customer_id
+       LEFT JOIN customers ec  ON ec.id  = o.end_customer_id
+       LEFT JOIN staff     s   ON s.id   = o.assigned_staff_id
+       LEFT JOIN staff     ap  ON ap.id  = o.tech_commission_approved_by
+       LEFT JOIN staff     req ON req.id = o.tech_commission_requested_by
       WHERE o.id = ? AND o.is_deleted = 0`,
     [id]
   );
@@ -264,21 +251,24 @@ async function loadOrderDetail(conn, id) {
       ORDER BY id`, [id]
   );
   const [fieldValues] = await conn.query(
-    `SELECT id, line_id, template_field_id, label, value, seq
-       FROM order_field_values WHERE order_id = ? AND is_deleted = 0
+    `SELECT id, line_id, item_id, label, value, seq
+       FROM order_field_values WHERE order_id = ? AND is_deleted = 0 AND item_id IS NOT NULL
       ORDER BY seq, id`, [id]
   );
 
-  // Group items/charges/fields theo line
-  const lineMap = new Map(lines.map(l => [l.id, { ...l, items: [], charges: [], field_values: [] }]));
-  for (const it of items) if (lineMap.has(it.line_id)) lineMap.get(it.line_id).items.push(it);
-  for (const fv of fieldValues) if (lineMap.has(fv.line_id)) lineMap.get(fv.line_id).field_values.push(fv);
-  // line_id NULL = phi cap don. Loc "Công lắp" — luu de tinh cong KTV, khong hien thi.
-  const orderCharges = [];
+  // Group: item map (field_values gan vao tung item)
+  const itemMap = new Map(items.map(it => [it.id, { ...it, field_values: [] }]));
+  for (const fv of fieldValues) {
+    if (itemMap.has(fv.item_id)) itemMap.get(fv.item_id).field_values.push(fv);
+  }
+
+  // Group: line map (items + charges gan vao tung line)
+  const lineMap = new Map(lines.map(l => [l.id, { ...l, items: [], charges: [] }]));
+  for (const it of itemMap.values()) if (lineMap.has(it.line_id)) lineMap.get(it.line_id).items.push(it);
+  // Loc "Công lắp" — luu de tinh cong KTV, khong hien thi ra ngoai
   for (const c of charges) {
     if (c.label === 'Công lắp') continue;
-    if (c.line_id == null) orderCharges.push(c);
-    else if (lineMap.has(c.line_id)) lineMap.get(c.line_id).charges.push(c);
+    if (c.line_id != null && lineMap.has(c.line_id)) lineMap.get(c.line_id).charges.push(c);
   }
   const linesOut = Array.from(lineMap.values());
 
@@ -310,7 +300,9 @@ async function loadOrderDetail(conn, id) {
 
   // Hoa hong nhan vien (role=staff) — nhieu dong/don
   const [staffCommissions] = await conn.query(
-    `SELECT sc.id, sc.staff_id, sc.amount, sc.note, sc.approved_at, sc.approved_by,
+    `SELECT sc.id, sc.staff_id, sc.amount, sc.note,
+            sc.approved_at, sc.approved_by,
+            sc.requested_at, sc.requested_by,
             s.full_name AS staff_name, s.role AS staff_role,
             ap.full_name AS approved_by_name
        FROM order_staff_commissions sc
@@ -323,7 +315,6 @@ async function loadOrderDetail(conn, id) {
   return {
     ...o,
     lines: linesOut,
-    order_charges: orderCharges,
     step_photos: photos,
     workflow_steps: steps,
     customer_update_requests: ktvRequests,
@@ -442,50 +433,51 @@ router.get('/statement', async (req, res, next) => {
         ORDER BY ol.order_id, ol.seq, ol.id`, [orderIds]
     );
 
-    const [fieldValues] = await db.query(
-      `SELECT order_id, line_id, label, value
-         FROM order_field_values
-        WHERE order_id IN (?) AND is_deleted = 0
-        ORDER BY seq, id`, [orderIds]
-    );
-
     const [items] = await db.query(
-      `SELECT oi.order_id, oi.line_id, oi.qty, oi.unit_price,
+      `SELECT oi.id, oi.order_id, oi.line_id, oi.qty, oi.unit_price,
               p.name AS product_name, p.code AS product_code
          FROM order_items oi
          LEFT JOIN products p ON p.id = oi.product_id
         WHERE oi.order_id IN (?)`, [orderIds]
     );
 
+    const [fieldValues] = await db.query(
+      `SELECT order_id, line_id, item_id, label, value
+         FROM order_field_values
+        WHERE order_id IN (?) AND is_deleted = 0 AND item_id IS NOT NULL
+        ORDER BY seq, id`, [orderIds]
+    );
+
     const [charges] = await db.query(
       `SELECT order_id, line_id, kind, label, amount
          FROM order_charges
-        WHERE order_id IN (?) AND is_deleted = 0 AND label != 'Công lắp'
+        WHERE order_id IN (?) AND is_deleted = 0 AND label != 'Công lắp' AND line_id IS NOT NULL
         ORDER BY id`, [orderIds]
     );
 
+    // Group: item map + field_values per item
+    const itemMap = new Map();
+    for (const it of items) itemMap.set(it.id, { ...it, field_values: [] });
+    for (const fv of fieldValues) {
+      if (itemMap.has(fv.item_id)) itemMap.get(fv.item_id).field_values.push(fv);
+    }
+
+    // Group: line map + items + charges per line
     const lineMap = new Map();
-    for (const ln of lines) lineMap.set(ln.id, { ...ln, items: [], field_values: [] });
-    for (const it of items) if (lineMap.has(it.line_id)) lineMap.get(it.line_id).items.push(it);
-    for (const fv of fieldValues) if (lineMap.has(fv.line_id)) lineMap.get(fv.line_id).field_values.push(fv);
+    for (const ln of lines) lineMap.set(ln.id, { ...ln, items: [], charges: [] });
+    for (const it of itemMap.values()) if (lineMap.has(it.line_id)) lineMap.get(it.line_id).items.push(it);
+    for (const c of charges) if (lineMap.has(c.line_id)) lineMap.get(c.line_id).charges.push(c);
 
     const orderLineMap = new Map();
     for (const ln of lineMap.values()) {
       if (!orderLineMap.has(ln.order_id)) orderLineMap.set(ln.order_id, []);
       orderLineMap.get(ln.order_id).push(ln);
     }
-    const orderChargeMap = new Map();
-    for (const c of charges) {
-      if (c.line_id != null) continue;
-      if (!orderChargeMap.has(c.order_id)) orderChargeMap.set(c.order_id, []);
-      orderChargeMap.get(c.order_id).push(c);
-    }
 
     const enriched = orders.map(o => ({
       ...o,
       remaining: Math.max(0, Number(o.total_amount) - Number(o.paid_amount)),
       lines: orderLineMap.get(o.id) || [],
-      order_charges: orderChargeMap.get(o.id) || [],
     }));
 
     const summary = {
@@ -583,7 +575,7 @@ router.get('/', async (req, res, next) => {
       `SELECT o.id, o.code, o.status, o.payment_status, o.customer_id,
               o.assigned_staff_id, o.address, o.note,
               o.subtotal, o.total_amount, o.paid_amount, o.wage_amount,
-              o.due_at, o.completed_at, o.created_at,
+              o.due_at, o.completed_at, o.created_at, o.debt_carried_at,
               c.full_name AS customer_name, c.phone AS customer_phone,
               s.full_name AS staff_name,
               (SELECT GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ')
@@ -627,14 +619,124 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// Lay danh sach nhan vien role=staff de FE build dropdown chon hoa hong.
+// Lay danh sach nhan vien + KTV de FE build dropdown chon hoa hong.
+// Staff truoc, KTV sau; them phone va role de FE hien thi card.
 // Phai dat TRUOC /:id de Express khong nham path nay la id.
-router.get('/staff-list-for-commission', adminOnly, async (req, res, next) => {
+router.get('/staff-list-for-commission', async (req, res, next) => {
   try {
     const [rows] = await db.query(
-      `SELECT id, full_name FROM staff WHERE role = 'staff' AND is_deleted = 0 ORDER BY full_name`
+      `SELECT id, full_name, role, phone
+       FROM staff
+       WHERE role IN ('staff','kithuat') AND is_deleted = 0
+       ORDER BY FIELD(role,'staff','kithuat'), full_name`
     );
     res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// GET /my-staff-commission-requests — nhan vien (role=staff) xem yeu cau cua chinh minh.
+// Phai dat TRUOC /:id.
+router.get('/my-staff-commission-requests', async (req, res, next) => {
+  try {
+    const meId  = req.user?.sub;
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 50);
+    const offset = (page - 1) * limit;
+
+    const [rows] = await db.query(
+      `SELECT sc.id, sc.order_id, sc.amount, sc.note,
+              sc.approved_at, sc.requested_at,
+              o.code AS order_code,
+              ap.full_name AS approved_by_name,
+              c.full_name  AS customer_name
+         FROM order_staff_commissions sc
+         JOIN orders o ON o.id = sc.order_id AND o.is_deleted = 0
+         LEFT JOIN customers c ON c.id = o.customer_id
+         LEFT JOIN staff ap ON ap.id = sc.approved_by
+        WHERE sc.staff_id = ? AND sc.is_deleted = 0
+        ORDER BY sc.requested_at DESC, sc.id DESC
+        LIMIT ? OFFSET ?`,
+      [meId, limit, offset]
+    );
+    const [[{ total }]] = await db.query(
+      `SELECT COUNT(*) AS total FROM order_staff_commissions sc
+         JOIN orders o ON o.id = sc.order_id AND o.is_deleted = 0
+        WHERE sc.staff_id = ? AND sc.is_deleted = 0`,
+      [meId]
+    );
+    res.json({ items: rows, total, page, limit });
+  } catch (err) { next(err); }
+});
+
+// GET /staff-commission-requests — admin xem yeu cau hoa hong nhan vien dang cho duyet.
+// Phai dat TRUOC /:id.
+router.get('/staff-commission-requests', adminOnly, async (req, res, next) => {
+  try {
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 50);
+    const offset = (page - 1) * limit;
+
+    const [rows] = await db.query(
+      `SELECT sc.id, sc.order_id, sc.amount, sc.note,
+              sc.requested_at,
+              o.code       AS order_code,
+              s.full_name  AS staff_name,
+              s.role       AS staff_role,
+              c.full_name  AS customer_name,
+              c.phone      AS customer_phone
+         FROM order_staff_commissions sc
+         JOIN orders o ON o.id = sc.order_id AND o.is_deleted = 0
+         LEFT JOIN staff     s ON s.id = sc.staff_id
+         LEFT JOIN customers c ON c.id = o.customer_id
+        WHERE sc.approved_at IS NULL AND sc.is_deleted = 0
+          AND sc.requested_at IS NOT NULL
+        ORDER BY sc.requested_at ASC
+        LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+    const [[{ total }]] = await db.query(
+      `SELECT COUNT(*) AS total FROM order_staff_commissions sc
+         JOIN orders o ON o.id = sc.order_id AND o.is_deleted = 0
+        WHERE sc.approved_at IS NULL AND sc.is_deleted = 0
+          AND sc.requested_at IS NOT NULL`
+    );
+    res.json({ items: rows, total, page, limit });
+  } catch (err) { next(err); }
+});
+
+// GET /commission-requests — danh sach yeu cau hoa hong KTV dang cho duyet.
+// Phai dat TRUOC /:id de Express khong nham 'commission-requests' la id.
+router.get('/commission-requests', adminOnly, async (req, res, next) => {
+  try {
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 50);
+    const offset = (page - 1) * limit;
+
+    const [rows] = await db.query(
+      `SELECT o.id, o.code, o.created_at, o.completed_at,
+              o.tech_commission_amount,
+              o.tech_commission_note,
+              o.tech_commission_requested_at,
+              s.full_name  AS staff_name,
+              c.full_name  AS customer_name,
+              c.phone      AS customer_phone
+         FROM orders o
+         LEFT JOIN staff     s ON s.id = o.assigned_staff_id
+         LEFT JOIN customers c ON c.id = o.customer_id
+        WHERE o.tech_commission_requested_at IS NOT NULL
+          AND o.tech_commission_approved_at  IS NULL
+          AND o.is_deleted = 0
+        ORDER BY o.tech_commission_requested_at ASC
+        LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+    const [[{ total }]] = await db.query(
+      `SELECT COUNT(*) AS total FROM orders
+        WHERE tech_commission_requested_at IS NOT NULL
+          AND tech_commission_approved_at  IS NULL
+          AND is_deleted = 0`
+    );
+    res.json({ items: rows, total, page, limit });
   } catch (err) { next(err); }
 });
 
@@ -709,10 +811,10 @@ router.post('/', async (req, res, next) => {
     if (req.body.assigned_staff_id) {
       assignedStaffId = Number(req.body.assigned_staff_id);
       const [sRows] = await conn.query(
-        `SELECT id FROM staff WHERE id = ? AND is_deleted = 0 AND role = 'kithuat'`,
+        `SELECT id FROM staff WHERE id = ? AND is_deleted = 0`,
         [assignedStaffId]
       );
-      if (!sRows.length) throw httpErr(400, 'KTV khong hop le');
+      if (!sRows.length) throw httpErr(400, 'Nhan vien khong hop le');
     }
 
     await conn.beginTransaction();
@@ -735,9 +837,6 @@ router.post('/', async (req, res, next) => {
     const orderId = result[0].insertId;
 
     await replaceLines(conn, orderId, lines);
-    if (Array.isArray(req.body.order_charges)) {
-      await replaceOrderCharges(conn, orderId, req.body.order_charges);
-    }
 
     // Check kho ca nhan KTV neu gan san luc tao don. force=true -> bo qua.
     if (assignedStaffId && req.body.force !== true) {
@@ -962,39 +1061,6 @@ router.put('/:id/lines', async (req, res, next) => {
   }
 });
 
-// ============================================================
-// REPLACE CHARGES CAP DON (line_id NULL) — phi ship/discount tong
-// ============================================================
-// Body: { charges: [{kind, label, amount}] }
-router.patch('/:id/order-charges', async (req, res, next) => {
-  const conn = await db.getConnection();
-  try {
-    const id = Number(req.params.id);
-    const [oRows] = await conn.query(
-      `SELECT wage_amount, status FROM orders WHERE id = ? AND is_deleted = 0`, [id]
-    );
-    if (!oRows.length) throw httpErr(404, 'Khong tim thay don');
-    if (oRows[0].status === 'done' || oRows[0].status === 'cancelled') {
-      throw httpErr(409, 'Don da hoan thanh / huy — khong sua duoc');
-    }
-
-    await conn.beginTransaction();
-    const charges = Array.isArray(req.body.charges) ? req.body.charges : [];
-    // Filter "Cong lap" — duoc sync rieng tu wage_amount
-    const cleaned = charges.filter(c => String(c.label || '').trim() !== 'Công lắp');
-    await replaceOrderCharges(conn, id, cleaned);
-    if (oRows[0].wage_amount > 0) await syncLaborCharge(conn, id, oRows[0].wage_amount);
-    await recalcOrderTotal(conn, id);
-    await recalcPaymentStatus(conn, id);
-    await conn.commit();
-    res.json({ ok: true });
-  } catch (err) {
-    try { await conn.rollback(); } catch (_) {}
-    next(err);
-  } finally {
-    conn.release();
-  }
-});
 
 // ============================================================
 // APPROVE (pending -> first step)
@@ -1101,43 +1167,65 @@ router.patch('/:id/progress-note', async (req, res, next) => {
 });
 
 // ============================================================
-// TECH COMMISSION (hoa hong KTV) — admin duyet
+// TECH COMMISSION (hoa hong KTV) — admin duyet yeu cau tu KTV
 // ============================================================
+// Luong moi:
+//   KTV tu nhap yeu cau qua /kithuat/orders/:id/commission-request
+//   Admin duyet tai day hoac tai trang /admin/commissions.html
+//   Admin cung co the tu nhap thu cong (nhap amount) neu KTV chua gui yeu cau.
+//
 // PATCH /:id/tech-commission
-// Body: { amount, note? }
-// Admin set so tien va duyet luon (admin route da chan role).
+// Body: { amount? (neu admin muon override), note? }
+// Neu khong truyen amount => giu nguyen so tien KTV da nhap.
 router.patch('/:id/tech-commission', adminOnly, async (req, res, next) => {
   try {
-    const id = Number(req.params.id);
-    const amount = Math.max(0, Math.round(Number(req.body.amount) || 0));
-    const note = req.body.note != null
-      ? String(req.body.note).slice(0, 300) : null;
+    const id       = Number(req.params.id);
     const approver = req.user && req.user.sub ? req.user.sub : null;
+
+    const [[order]] = await db.query(
+      `SELECT id, tech_commission_amount, tech_commission_note FROM orders
+        WHERE id = ? AND is_deleted = 0`,
+      [id]
+    );
+    if (!order) return res.status(404).json({ error: 'Khong tim thay don' });
+
+    const rawAmt = req.body.amount != null ? req.body.amount : null;
+    const amount = rawAmt !== null
+      ? Math.max(0, Math.round(Number(rawAmt) || 0))
+      : Math.max(0, Number(order.tech_commission_amount) || 0);
+
+    const note = req.body.note != null
+      ? String(req.body.note).slice(0, 300)
+      : order.tech_commission_note;
+
+    if (!amount) return res.status(400).json({ error: 'So tien hoa hong phai lon hon 0' });
 
     const [r] = await db.query(
       `UPDATE orders
-          SET tech_commission_amount      = ?,
-              tech_commission_approved_at = NOW(),
-              tech_commission_approved_by = ?,
-              tech_commission_note        = ?
+          SET tech_commission_amount       = ?,
+              tech_commission_note         = ?,
+              tech_commission_approved_at  = NOW(),
+              tech_commission_approved_by  = ?
         WHERE id = ? AND is_deleted = 0`,
-      [amount, approver, note, id]
+      [amount, note, approver, id]
     );
     if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay don' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
 
-// DELETE /:id/tech-commission — huy duyet, reset ve 0
+// DELETE /:id/tech-commission — tu choi yeu cau hoac huy duyet, reset toan bo ve 0
 router.delete('/:id/tech-commission', adminOnly, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const [r] = await db.query(
       `UPDATE orders
-          SET tech_commission_amount      = 0,
-              tech_commission_approved_at = NULL,
-              tech_commission_approved_by = NULL,
-              tech_commission_note        = NULL
+          SET tech_commission_amount       = 0,
+              tech_commission_approved_at  = NULL,
+              tech_commission_approved_by  = NULL,
+              tech_commission_note         = NULL,
+              tech_commission_requested_by = NULL,
+              tech_commission_requested_at = NULL
         WHERE id = ? AND is_deleted = 0`,
       [id]
     );
@@ -1169,11 +1257,11 @@ router.post('/:id/staff-commissions', adminOnly, async (req, res, next) => {
     );
     if (!oRows.length) throw httpErr(404, 'Khong tim thay don');
 
-    // Kiem tra nhan vien ton tai va co role staff
+    // Kiem tra nhan vien ton tai (ca staff lan KTV deu co the nhan hoa hong)
     const [sRows] = await db.query(
-      `SELECT id FROM staff WHERE id = ? AND is_deleted = 0 AND role = 'staff'`, [staffId]
+      `SELECT id FROM staff WHERE id = ? AND is_deleted = 0 AND role IN ('staff','kithuat')`, [staffId]
     );
-    if (!sRows.length) throw httpErr(400, 'Nhan vien khong hop le (phai co role staff)');
+    if (!sRows.length) throw httpErr(400, 'Nhan vien khong hop le');
 
     const approver = req.user && req.user.sub ? req.user.sub : null;
     const [ins] = await db.query(
@@ -1190,16 +1278,34 @@ router.patch('/:id/staff-commissions/:cid', adminOnly, async (req, res, next) =>
   try {
     const orderId = Number(req.params.id);
     const cid     = Number(req.params.cid);
-    const amount  = Math.max(0, Math.round(Number(req.body.amount) || 0));
-    const note    = req.body.note != null ? String(req.body.note).slice(0, 300) : null;
 
-    if (!amount) throw httpErr(400, 'So tien phai lon hon 0');
+    // Neu body.amount khong truyen hoac = 0 => giu nguyen so tien cu (approve khong override)
+    const rawAmt = req.body.amount != null ? req.body.amount : null;
+    let amount;
+    if (rawAmt !== null && rawAmt !== '') {
+      amount = Math.max(0, Math.round(Number(rawAmt) || 0));
+      if (!amount) throw httpErr(400, 'So tien phai lon hon 0');
+    } else {
+      const [[cur]] = await db.query(
+        `SELECT amount FROM order_staff_commissions WHERE id = ? AND order_id = ? AND is_deleted = 0`,
+        [cid, orderId]
+      );
+      if (!cur) throw httpErr(404, 'Khong tim thay dong hoa hong');
+      amount = Number(cur.amount) || 0;
+      if (!amount) throw httpErr(400, 'So tien hoa hong la 0, can nhap so tien moi');
+    }
+    const note = req.body.note != null ? String(req.body.note).slice(0, 300) : undefined;
+
+    const setNote = note !== undefined ? ', note = ?' : '';
+    const params  = note !== undefined
+      ? [amount, req.user?.sub || null, note, cid, orderId]
+      : [amount, req.user?.sub || null, cid, orderId];
 
     const [r] = await db.query(
       `UPDATE order_staff_commissions
-          SET amount = ?, note = ?, approved_at = NOW(), approved_by = ?
+          SET amount = ?, approved_at = NOW(), approved_by = ?${setNote}
         WHERE id = ? AND order_id = ? AND is_deleted = 0`,
-      [amount, note, req.user?.sub || null, cid, orderId]
+      params
     );
     if (!r.affectedRows) throw httpErr(404, 'Khong tim thay dong hoa hong');
     res.json({ ok: true });
@@ -1220,6 +1326,63 @@ router.delete('/:id/staff-commissions/:cid', adminOnly, async (req, res, next) =
   } catch (err) { next(err); }
 });
 
+// POST /:id/my-staff-commission-request — nhan vien gui yeu cau hoa hong (cho minh hoac nhan vien khac)
+router.post('/:id/my-staff-commission-request', async (req, res, next) => {
+  try {
+    const orderId  = Number(req.params.id);
+    const meId     = req.user?.sub;
+    const staffId  = req.body.staff_id ? Number(req.body.staff_id) : meId;
+    const amount   = Math.max(0, Math.round(Number(req.body.amount) || 0));
+    const note     = req.body.note != null ? String(req.body.note).slice(0, 300) : null;
+
+    if (!amount) throw httpErr(400, 'So tien phai lon hon 0');
+
+    // Validate requester phai la staff hoac KTV (khong phai admin)
+    const [[me]] = await db.query(
+      `SELECT id, role FROM staff WHERE id = ? AND is_deleted = 0`, [meId]
+    );
+    if (!me || !['staff','kithuat'].includes(me.role)) throw httpErr(403, 'Chi nhan vien / KTV moi su dung API nay');
+
+    // Validate nguoi nhan cung phai la staff hoac KTV
+    if (staffId !== meId) {
+      const [[target]] = await db.query(
+        `SELECT id, role FROM staff WHERE id = ? AND is_deleted = 0`, [staffId]
+      );
+      if (!target || !['staff','kithuat'].includes(target.role)) throw httpErr(400, 'Nguoi nhan hoa hong phai la nhan vien hoac KTV');
+    }
+
+    const [[order]] = await db.query(
+      `SELECT id FROM orders WHERE id = ? AND is_deleted = 0`, [orderId]
+    );
+    if (!order) throw httpErr(404, 'Khong tim thay don');
+
+    const [ins] = await db.query(
+      `INSERT INTO order_staff_commissions
+         (order_id, staff_id, amount, note, requested_by, requested_at)
+       VALUES (?, ?, ?, ?, ?, NOW())`,
+      [orderId, staffId, amount, note, meId]
+    );
+    res.status(201).json({ id: ins.insertId });
+  } catch (err) { next(err); }
+});
+
+// DELETE /:id/my-staff-commission-request/:cid — nhan vien rut yeu cau cua chinh minh
+router.delete('/:id/my-staff-commission-request/:cid', async (req, res, next) => {
+  try {
+    const orderId = Number(req.params.id);
+    const cid     = Number(req.params.cid);
+    const meId    = req.user?.sub;
+    const [r] = await db.query(
+      `UPDATE order_staff_commissions SET is_deleted = 1
+        WHERE id = ? AND order_id = ? AND staff_id = ?
+          AND approved_at IS NULL AND is_deleted = 0`,
+      [cid, orderId, meId]
+    );
+    if (!r.affectedRows) throw httpErr(404, 'Khong tim thay yeu cau hoac yeu cau da duyet');
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 // Lay danh sach nhan vien role=staff de FE build dropdown
 // ============================================================
 // ASSIGN STAFF — check staff_holdings du san pham trong don
@@ -1231,8 +1394,7 @@ async function _assignStaff(conn, orderId, staffId, wage, force) {
   const [staffRow] = await conn.query(
     `SELECT id, role FROM staff WHERE id = ? AND is_deleted = 0`, [staffId]
   );
-  if (!staffRow.length) throw httpErr(400, 'KTV khong hop le');
-  if (staffRow[0].role !== 'kithuat') throw httpErr(400, 'Chi co the gan nhan vien co role kithuat');
+  if (!staffRow.length) throw httpErr(400, 'Nhan vien khong hop le');
 
   const [orderRow] = await conn.query(
     `SELECT id, status, wage_amount FROM orders WHERE id = ? AND is_deleted = 0`, [orderId]
@@ -1280,7 +1442,7 @@ router.get('/:id/suggested-staff', async (req, res, next) => {
               AND is_deleted = 0
             GROUP BY assigned_staff_id
          ) t ON t.assigned_staff_id = s.id
-        WHERE s.is_deleted = 0 AND s.role = 'kithuat'
+         WHERE s.is_deleted = 0
         ORDER BY active_count ASC, s.full_name ASC`
     );
     res.json({ items: rows });

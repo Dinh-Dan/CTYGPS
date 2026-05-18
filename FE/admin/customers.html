@@ -47,10 +47,10 @@
               <th style="width:110px">Loại</th>
               <th>Họ tên / Công ty</th>
               <th style="width:120px">SĐT</th>
-              <th>Email</th>
+              <th style="width:80px;text-align:right">Tổng đơn</th>
+              <th style="width:140px;text-align:right">Tổng tiền</th>
               <th style="width:120px">Hạn mức nợ</th>
-              <th style="width:90px">Hạn nợ</th>
-              <th style="width:200px">Hành động</th>
+              <th style="width:180px">Hành động</th>
             </tr>
             <tr class="filter-row">
               <th></th>
@@ -62,9 +62,9 @@
                   <option value="dealer">Đại lý</option>
                 </select>
               </th>
-              <th><input data-filter="name"  placeholder="Lọc tên / công ty"></th>
+              <th><input data-filter="name"  placeholder="Tên / công ty / tài sản / khách con"></th>
               <th><input data-filter="phone" placeholder="Lọc SĐT"></th>
-              <th><input data-filter="email" placeholder="Lọc email"></th>
+              <th></th>
               <th></th>
               <th></th>
               <th></th>
@@ -93,6 +93,7 @@
     <form id="frm" style="display:contents">
       <div class="modal-body">
         <input type="hidden" id="f_id">
+        <input type="hidden" id="f_parent_id">
 
         <div class="grid cols-2">
           <div class="field">
@@ -233,6 +234,23 @@
     </div>
     <div class="modal-foot">
       <button type="button" class="btn ghost" id="rq_done">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal xem chi tiet khach hang -->
+<div id="detailModal" class="modal-bg">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-head">
+      <h3 id="dt_title">Chi tiết khách hàng</h3>
+      <button type="button" class="modal-close" id="dt_close" aria-label="Đóng">×</button>
+    </div>
+    <div class="modal-body" id="dt_body" style="max-height:72vh;overflow-y:auto">
+      <p class="text-muted" style="padding:24px;text-align:center">Đang tải…</p>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="dt_close2">Đóng</button>
+      <button type="button" class="btn" id="dt_edit">✏️ Sửa thông tin</button>
     </div>
   </div>
 </div>

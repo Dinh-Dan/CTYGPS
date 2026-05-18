@@ -2283,37 +2283,14 @@ ALTER TABLE customers
   ADD COLUMN opening_balance BIGINT NOT NULL DEFAULT 0 AFTER credit_term_days;
 
 -- ----------------------------------------------------------
--- 2. orders: 2 cot moi danh dau don da duoc "ket" vao phieu tat toan
+-- 2. orders: cot danh dau don da duoc "ket" vao phieu yeu cau thanh toan
 -- ----------------------------------------------------------
 ALTER TABLE orders
-  ADD COLUMN debt_carried_at    DATETIME NULL AFTER paid_amount,
-  ADD COLUMN debt_settlement_id INT      NULL AFTER debt_carried_at,
+  ADD COLUMN debt_carried_at DATETIME NULL AFTER paid_amount,
   ADD INDEX idx_orders_debt_carried (customer_id, debt_carried_at);
 
 -- ----------------------------------------------------------
--- 3. debt_settlements — moi phieu tat toan cong no
--- ----------------------------------------------------------
-CREATE TABLE IF NOT EXISTS debt_settlements (
-  id            INT          AUTO_INCREMENT PRIMARY KEY,
-  code          VARCHAR(30)  NOT NULL UNIQUE,                   -- TT-DDMM-NNN
-  customer_id   INT          NOT NULL,
-  total_debt    BIGINT       NOT NULL,                          -- snapshot tong no luc tat toan
-  amount_paid   BIGINT       NOT NULL,                          -- khach tra dot nay
-  remaining     BIGINT       NOT NULL,                          -- = total_debt - amount_paid
-  qr_slot       TINYINT      NULL,                              -- 1..5 (QR da dung in tren bill)
-  pay_method    ENUM('cash','transfer','mixed') NOT NULL DEFAULT 'cash',
-  receipt_url   VARCHAR(500) NULL,                              -- anh bien lai (imgbb, optional)
-  note          TEXT         NULL,
-  created_by    INT          NOT NULL,                          -- staff id (nguoi lap phieu)
-  paid_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP, -- thoi diem thu tien
-  is_deleted    TINYINT(1)   NOT NULL DEFAULT 0,
-  CONSTRAINT fk_settlement_customer FOREIGN KEY (customer_id) REFERENCES customers(id),
-  INDEX idx_settlement_customer (customer_id, is_deleted),
-  INDEX idx_settlement_paid_at  (paid_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ----------------------------------------------------------
--- 4. app_settings — bang key-value cau hinh chung
+-- 3. app_settings — bang key-value cau hinh chung
 -- ----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS app_settings (
   `key`        VARCHAR(60) PRIMARY KEY,
@@ -2343,8 +2320,7 @@ INSERT IGNORE INTO app_settings (`key`, `value`) VALUES
 -- DONE.
 -- Kiem tra:
 --   DESC customers;            -- thay opening_balance
---   DESC orders;               -- thay debt_carried_at, debt_settlement_id
---   DESC debt_settlements;
+--   DESC orders;               -- thay debt_carried_at
 --   SELECT * FROM app_settings;
 -- ==========================================================
 
@@ -2426,7 +2402,7 @@ ALTER TABLE order_items
 -- Muc dich:
 --   - Thay the warranty_requests cu (claim_type warranty/paid_repair, status
 --     diagnosing/repairing/replaced) bang warranty_orders flow gon hon.
---   - Tich hop voi cong no Rolling Balance (debt_carried_at + debt_settlement_id)
+--   - Tich hop voi cong no Rolling Balance (debt_carried_at)
 --     giong don orders. Tinh chi phi qua cot cost_amount nhap tay.
 --   - Cho phep gan 1 phieu xuat kho (stock_receipts) lay thiet bi tu kho khi can
 --     thay the qua cot moi ref_warranty_order_id tren stock_receipts.
@@ -2475,8 +2451,7 @@ CREATE TABLE warranty_orders (
   paid_amount          BIGINT       NOT NULL DEFAULT 0,        -- da thu
 
   -- Cong no Rolling Balance (giong orders)
-  debt_carried_at      DATETIME     NULL,                      -- da ket vao phieu tat toan
-  debt_settlement_id   INT          NULL,                      -- FK debt_settlements (phieu da ket)
+  debt_carried_at      DATETIME     NULL,                      -- da ket vao phieu yeu cau thanh toan
 
   -- Trang thai
   status ENUM(
@@ -2502,7 +2477,6 @@ CREATE TABLE warranty_orders (
   INDEX idx_wo_request       (request_date),
   INDEX idx_wo_deleted       (is_deleted),
   INDEX idx_wo_debt_carried  (debt_carried_at),
-  INDEX idx_wo_settlement    (debt_settlement_id),
   INDEX idx_wo_plate         (license_plate),
   INDEX idx_wo_imei          (imei_search)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -2514,12 +2488,6 @@ ALTER TABLE warranty_orders
 
 ALTER TABLE warranty_orders
   ADD CONSTRAINT fk_wo_staff FOREIGN KEY (assigned_staff_id) REFERENCES staff(id)
-    ON DELETE SET NULL ON UPDATE CASCADE;
-
--- FK toi debt_settlements: chi them neu bang da ton tai (migration 025 da chay).
--- Neu chua co, bo qua — code van chay binh thuong, chi mat referential check.
-ALTER TABLE warranty_orders
-  ADD CONSTRAINT fk_wo_settlement FOREIGN KEY (debt_settlement_id) REFERENCES debt_settlements(id)
     ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- 4) Them ref_warranty_order_id vao stock_receipts (de track phieu xuat cho BH)
@@ -2643,7 +2611,7 @@ VALUES ('RENEW', 'Phí gia hạn dịch vụ GPS', 0, 0, 0);
 --   - Soft delete is_deleted, KHONG dung created_at/updated_at (trung quy uoc DB).
 --   - Code: SC-DDMM-NNN (sinh trong utils/repairState.js).
 --   - request_date DATE giong warranty_orders.
---   - Cong no Rolling Balance qua debt_carried_at + debt_settlement_id.
+--   - Cong no Rolling Balance qua debt_carried_at.
 --
 -- Status flow:
 --   pending           (khach/admin tao)
@@ -2704,7 +2672,6 @@ CREATE TABLE repair_orders (
 
   -- Cong no Rolling Balance (giong warranty_orders + orders)
   debt_carried_at      DATETIME     NULL,
-  debt_settlement_id   INT          NULL,
 
   -- Trang thai
   status ENUM(
@@ -2734,7 +2701,6 @@ CREATE TABLE repair_orders (
   INDEX idx_ro_request       (request_date),
   INDEX idx_ro_deleted       (is_deleted),
   INDEX idx_ro_debt_carried  (debt_carried_at),
-  INDEX idx_ro_settlement    (debt_settlement_id),
   INDEX idx_ro_plate         (license_plate),
   INDEX idx_ro_imei          (imei_search)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -2746,11 +2712,6 @@ ALTER TABLE repair_orders
 ALTER TABLE repair_orders
   ADD CONSTRAINT fk_ro_staff FOREIGN KEY (assigned_staff_id) REFERENCES staff(id)
     ON DELETE SET NULL ON UPDATE CASCADE;
-
-ALTER TABLE repair_orders
-  ADD CONSTRAINT fk_ro_settlement FOREIGN KEY (debt_settlement_id) REFERENCES debt_settlements(id)
-    ON DELETE SET NULL ON UPDATE CASCADE;
-
 
 -- 2) Bang vat tu thay (tuong tu order_items, tach rieng vi quan ly khac)
 CREATE TABLE repair_items (
@@ -3217,6 +3178,62 @@ ALTER TABLE collections
 
 
 -- ==========================================================
+-- FILE: migration_069_payment_requests.sql
+-- ==========================================================
+
+USE gpsviet;
+
+CREATE TABLE IF NOT EXISTS payment_requests (
+  id            INT          AUTO_INCREMENT PRIMARY KEY,
+  code          VARCHAR(30)  NOT NULL UNIQUE,
+  customer_id   INT          NOT NULL,
+  total_amount  BIGINT       NOT NULL DEFAULT 0,
+  paid_amount   BIGINT       NOT NULL DEFAULT 0,
+  remaining     BIGINT       NOT NULL DEFAULT 0,
+  status        ENUM('pending','partially_paid','paid','expired','cancelled') NOT NULL DEFAULT 'pending',
+  qr_slot       TINYINT      NULL,
+  pay_method    ENUM('cash','transfer','mixed') NULL,
+  note          TEXT         NULL,
+  receipt_url   VARCHAR(500) NULL,
+  created_by    INT          NOT NULL,
+  created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at    DATETIME     NULL DEFAULT NULL,
+  paid_at       DATETIME     NULL,
+  is_deleted    TINYINT(1)   NOT NULL DEFAULT 0,
+  CONSTRAINT fk_pr_customer FOREIGN KEY (customer_id) REFERENCES customers(id),
+  INDEX idx_pr_customer (customer_id, is_deleted),
+  INDEX idx_pr_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS payment_request_items (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  request_id    INT NOT NULL,
+  target_type   ENUM('order','opening_balance','payment_request') NOT NULL,
+  target_id     INT NULL,
+  amount        BIGINT NOT NULL,
+  CONSTRAINT fk_pri_request FOREIGN KEY (request_id) REFERENCES payment_requests(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ==========================================================
+-- FILE: migration_070_payment_receipts.sql
+-- ==========================================================
+
+CREATE TABLE IF NOT EXISTS payment_receipts (
+  id          INT          AUTO_INCREMENT PRIMARY KEY,
+  code        VARCHAR(30)  NOT NULL UNIQUE,
+  request_id  INT          NOT NULL,
+  amount      BIGINT       NOT NULL,
+  pay_method  ENUM('cash','transfer','mixed') NOT NULL DEFAULT 'cash',
+  receipt_url VARCHAR(500) NULL,
+  note        TEXT         NULL,
+  created_by  INT          NOT NULL,
+  created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  is_deleted  TINYINT(1)   NOT NULL DEFAULT 0,
+  CONSTRAINT fk_receipt_request FOREIGN KEY (request_id) REFERENCES payment_requests(id),
+  INDEX idx_receipt_request (request_id, is_deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ==========================================================
 -- FILE: seed.sql
 -- ==========================================================
 
@@ -3269,6 +3286,34 @@ VALUES
   ('DL002', 'dealer', 'Pham Thi Dung', '0904444444', 'dung@gpsdanang.vn', 'Da Nang',
    'GPS Mien Trung',          '0107654321', 'Pham Thi Dung', 30000000, 15, 3.00, 'Dai ly cap 2');
 
+
+-- ==========================================================
+-- Migration 077: Phieu ung luong + payslip_id tren don hang
+-- ==========================================================
+
+CREATE TABLE IF NOT EXISTS staff_salary_advances (
+  id          INT          AUTO_INCREMENT PRIMARY KEY,
+  staff_id    INT          NOT NULL,
+  amount      BIGINT       NOT NULL DEFAULT 0,
+  note        VARCHAR(300),
+  payslip_id  INT          NULL DEFAULT NULL,
+  carried_at  DATETIME     NULL DEFAULT NULL,
+  created_by  INT          NULL,
+  created_at  DATETIME     NOT NULL DEFAULT NOW(),
+  is_deleted  TINYINT      NOT NULL DEFAULT 0,
+  INDEX idx_adv_staff  (staff_id),
+  INDEX idx_adv_slip   (payslip_id)
+);
+
+ALTER TABLE orders
+  ADD COLUMN IF NOT EXISTS payslip_id INT NULL DEFAULT NULL;
+
+ALTER TABLE order_staff_commissions
+  ADD COLUMN IF NOT EXISTS payslip_id INT NULL DEFAULT NULL;
+
+ALTER TABLE staff_payslips
+  ADD COLUMN IF NOT EXISTS total_advances BIGINT   NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS advances_json  LONGTEXT          DEFAULT NULL;
 
 SET FOREIGN_KEY_CHECKS=1;
 -- DONE

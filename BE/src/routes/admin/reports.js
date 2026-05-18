@@ -2,6 +2,7 @@
 // Tat ca route deu yeu cau role admin (da check o admin.js cha)
 //
 // Endpoints:
+//   GET /overview-kpis         -> KPI tong hop cho dashboard (1 call thay nhieu call)
 //   GET /customer-debts        -> khach con no    (orders co total > paid + unremitted + admin_pending)
 //   GET /staff-debts           -> KTV con giu     (collections.remitted = 0)
 //   GET /admin-pending-debts   -> admin can xac nhan (order_payments source='admin_pending', confirmed=0)
@@ -15,9 +16,131 @@ const db = require('../../db');
 
 const router = express.Router();
 
-// Sau mig 045/046: workflow status do template quy dinh, "da xong KTV" = completed_at IS NOT NULL.
-// "Co the no" = status NOT IN ('pending','cancelled') AND payment_status != 'paid'.
 const COMPLETED_COND = 'o.completed_at IS NOT NULL';
+
+// ---- GET /api/admin/reports/overview-kpis ---------------------
+// Tong hop KPI cho dashboard: 1 call thay vi nhieu call FE rieng le.
+// Query 1: doanh thu thuc (filter by paid_at)
+// Query 2: so don + no tam tinh (filter by confirmed_at)
+// Query 3: tong cong no khach hien tai (no date filter)
+// Query 4: tong tien KTV chua nop hien tai (no date filter)
+// Query 5: so khoans thu admin_pending chua confirm
+// INDEX goi y: orders(confirmed_at, is_deleted), order_payments(paid_at, confirmed, is_deleted)
+router.get('/overview-kpis', async (req, res, next) => {
+  try {
+    const from = req.query.from || null;
+    const to   = req.query.to   || null;
+
+    // -- Revenue query (filter by paid_at) --
+    const payArgs = [];
+    const payWhere = ['p.is_deleted = 0', 'p.confirmed = 1'];
+    if (from) { payWhere.push('DATE(p.paid_at) >= ?'); payArgs.push(from); }
+    if (to)   { payWhere.push('DATE(p.paid_at) <= ?'); payArgs.push(to); }
+
+    // -- Orders query (filter by confirmed_at) --
+    const ordArgs = [];
+    const ordWhere = ['o.is_deleted = 0'];
+    if (from) { ordWhere.push('DATE(o.confirmed_at) >= ?'); ordArgs.push(from); }
+    if (to)   { ordWhere.push('DATE(o.confirmed_at) <= ?'); ordArgs.push(to); }
+
+    const [
+      [revRows],
+      [ordRows],
+      [custDebtRows],
+      [staffRows],
+      [pendRows],
+    ] = await Promise.all([
+      // 1. Tong tien da thu / hoan trong ky
+      db.query(
+        `SELECT
+           COALESCE(SUM(CASE WHEN p.source != 'refund' THEN p.amount ELSE 0 END), 0) AS paid_amount,
+           COALESCE(SUM(CASE WHEN p.source = 'refund'  THEN p.amount ELSE 0 END), 0) AS refund_amount
+         FROM order_payments p
+         WHERE ${payWhere.join(' AND ')}`,
+        payArgs
+      ),
+      // 2. So don + con no (tinh gop, khong tru unremitted/admin_pending de don gian KPI)
+      db.query(
+        `SELECT
+           COUNT(*) AS total_orders,
+           SUM(CASE WHEN o.status IN ('pending','confirmed') THEN 1 ELSE 0 END)  AS new_orders,
+           SUM(CASE WHEN o.status = 'in_progress' THEN 1 ELSE 0 END)             AS in_progress_orders,
+           COALESCE(SUM(GREATEST(o.total_amount - o.paid_amount, 0)), 0)          AS period_remaining
+         FROM orders o
+         WHERE ${ordWhere.join(' AND ')}`,
+        ordArgs
+      ),
+      // 3. Tong cong no khach (hien tai, khong loc ngay)
+      db.query(
+        `SELECT
+           COALESCE(SUM(c.opening_balance), 0) AS opening_total,
+           COUNT(CASE WHEN c.opening_balance > 0 THEN 1 END) AS opening_count
+         FROM customers c WHERE c.is_deleted = 0`
+      ),
+      // 4. Tong tien KTV chua nop (hien tai)
+      db.query(
+        `SELECT COALESCE(SUM(col.amount), 0) AS staff_unremitted,
+                COUNT(DISTINCT col.staff_id) AS staff_count
+         FROM collections col
+         WHERE col.remitted = 0 AND col.is_deleted = 0`
+      ),
+      // 5. So khoans admin_pending chua confirm
+      db.query(
+        `SELECT COUNT(*) AS pending_count,
+                COALESCE(SUM(p.amount), 0) AS pending_amount
+         FROM order_payments p
+         WHERE p.source = 'admin_pending' AND p.confirmed = 0 AND p.is_deleted = 0`
+      ),
+    ]);
+
+    // Tong cong no don hien tai (query rieng vi correlated subquery nang hon)
+    const [[orderDebtRow]] = await db.query(
+      `SELECT COALESCE(SUM(GREATEST(
+         o.total_amount - o.paid_amount
+         - COALESCE((SELECT SUM(c2.amount) FROM collections c2
+                      WHERE c2.order_id = o.id AND c2.remitted = 0 AND c2.is_deleted = 0), 0)
+         - COALESCE((SELECT SUM(p2.amount) FROM order_payments p2
+                      WHERE p2.order_id = o.id AND p2.source = 'admin_pending'
+                            AND p2.confirmed = 0 AND p2.is_deleted = 0), 0)
+       , 0)), 0) AS order_debt
+       FROM orders o
+       WHERE o.is_deleted = 0 AND o.debt_carried_at IS NULL
+         AND o.status NOT IN ('pending','cancelled')
+         AND o.payment_status != 'paid'`
+    );
+
+    const rev  = revRows[0]      || {};
+    const ord  = ordRows[0]      || {};
+    const cust = custDebtRows[0] || {};
+    const staf = staffRows[0]    || {};
+    const pend = pendRows[0]     || {};
+
+    const paid_amount   = Number(rev.paid_amount   || 0);
+    const refund_amount = Number(rev.refund_amount || 0);
+    const net_amount    = paid_amount - refund_amount;
+    const total_customer_debt = Number(cust.opening_total || 0) + Number(orderDebtRow.order_debt || 0);
+
+    res.json({
+      // Doanh thu ky nay (theo paid_at)
+      net_amount,
+      paid_amount,
+      refund_amount,
+      // Cong no hien tai (current state)
+      total_customer_debt,
+      staff_unremitted: Number(staf.staff_unremitted || 0),
+      staff_count:      Number(staf.staff_count      || 0),
+      // So don trong ky (theo confirmed_at)
+      total_orders:        Number(ord.total_orders        || 0),
+      new_orders:          Number(ord.new_orders          || 0),
+      in_progress_orders:  Number(ord.in_progress_orders  || 0),
+      period_remaining:    Number(ord.period_remaining    || 0),
+      // Admin pending
+      admin_pending_count:  Number(pend.pending_count  || 0),
+      admin_pending_amount: Number(pend.pending_amount || 0),
+      from, to,
+    });
+  } catch (err) { next(err); }
+});
 
 // ---- GET /api/admin/reports/customer-debts --------------------
 // Tinh dong: customers.opening_balance + SUM don chua ket (debt_carried_at IS NULL)
@@ -187,7 +310,8 @@ router.get('/revenue', async (req, res, next) => {
       args
     );
     for (const r of rows) {
-      r.net_amount = (Number(r.paid_amount) || 0) - (Number(r.refund_amount) || 0);
+      r.net_amount   = (Number(r.paid_amount) || 0) - (Number(r.refund_amount) || 0);
+      r.debt_amount  = r.net_amount; // alias de khong break FE cu
     }
 
     const summary = rows.reduce((s, r) => ({

@@ -1,6 +1,5 @@
 // Logic trang admin/debts — Cong no (Rolling Balance)
-// 2 tab: Khach/Dai ly no | KTV giu tien
-// Click khach -> modal chi tiet -> Tat toan -> redirect debt-settle.html
+// 3 tab: Khach/Dai ly no | Phieu YC- | KTV giu tien
 
 (function () {
   const $ = (id) => document.getElementById(id);
@@ -8,7 +7,7 @@
   const fmt = new Intl.NumberFormat('vi-VN');
   const fmtVnd = (n) => fmt.format(Number(n) || 0) + 'đ';
   const escape = (s) => String(s == null ? '' : s)
-    .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+    .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
   const fmtDate = (d) => d ? String(d).replace('T', ' ').slice(0, 10) : '—';
 
   const TYPE_PILL = {
@@ -33,10 +32,10 @@
   async function loadSummary() {
     const r = await api.get('/admin/debts/summary', { silent: true }).catch(() => null);
     if (!r) return;
-    $('stTotal').textContent   = fmtVnd(r.total_receivable);
+    $('stTotal').textContent = fmtVnd(r.total_receivable);
     $('stOverdue').textContent = `${r.overdue_customer_count} đối tượng`;
-    $('stStaff').textContent   = fmtVnd(r.staff_holding);
-    $('stMonth').textContent   = fmtVnd(r.collected_this_month);
+    $('stStaff').textContent = fmtVnd(r.staff_holding);
+    $('stMonth').textContent = fmtVnd(r.collected_this_month);
   }
 
   // ==== TAB: KHACH/DAI LY ======================================
@@ -50,31 +49,33 @@
     renderCustomers();
   }
   function renderCustomers() {
+    const debtFilter = $('fDebtType') ? $('fDebtType').value : 'all';
+    let items = state.items;
+    if (debtFilter === 'order')   items = items.filter(it => Number(it.order_debt) > 0);
+    if (debtFilter === 'pr')      items = items.filter(it => Number(it.pr_debt) > 0);
+    if (debtFilter === 'overdue') items = items.filter(it => it.is_overdue);
+
     const tb = $('tbCust');
-    if (!state.items.length) {
-      tb.innerHTML = '<tr><td colspan="8" class="text-center text-muted" style="padding:24px">Chưa có khách nợ</td></tr>';
+    if (!items.length) {
+      tb.innerHTML = '<tr><td colspan="6" class="text-center text-muted" style="padding:24px">Chưa có khách nợ</td></tr>';
       return;
     }
-    tb.innerHTML = state.items.map(it => {
-      const overdue = it.is_overdue && it.days_overdue > 0
-        ? `<span class="pill overdue">${it.days_overdue} ngày</span>`
-        : (it.days_overdue > 0 ? `${it.days_overdue} ngày` : '—');
-      const opening = it.opening_balance > 0
-        ? `<span class="opening-balance">${fmtVnd(it.opening_balance)}</span>`
-        : '<span class="text-muted">—</span>';
+    tb.innerHTML = items.map(it => {
       const name = it.type === 'dealer' && it.company_name
         ? `<b>${escape(it.company_name)}</b><br><small class="text-muted">${escape(it.name)} · ${escape(it.phone || '')}</small>`
         : `<b>${escape(it.name)}</b><br><small class="text-muted">${escape(it.phone || '')}</small>`;
+      const orderDebtAmt = Number(it.order_debt) || 0;
+      const orderDebt = orderDebtAmt > 0
+        ? `<b style="color:#dc2626">${fmtVnd(orderDebtAmt)}</b>`
+        : '<span class="text-muted">—</span>';
       return `
         <tr data-cid="${it.customer_id}">
-          <td>${name}</td>
-          <td>${TYPE_PILL[it.type] || it.type}</td>
-          <td>${it.order_count} đơn</td>
-          <td>${fmtDate(it.oldest_unpaid_at)}</td>
-          <td>${overdue}</td>
-          <td>${opening}</td>
-          <td><b style="color:#dc2626">${fmtVnd(it.total_debt)}</b></td>
-          <td>
+          <td data-label="Khách">${name}</td>
+          <td data-label="Loại">${TYPE_PILL[it.type] || it.type}</td>
+          <td data-label="Số đơn">${it.order_count} đơn</td>
+          <td data-label="Nợ từ đơn">${orderDebt}</td>
+          <td data-label="Tổng nợ"><b style="color:#dc2626">${fmtVnd(it.total_debt)}</b></td>
+          <td data-label="Hành động">
             <div class="row" style="gap:4px;flex-wrap:wrap">
               <button class="btn ghost sm" data-act="orders" data-cid="${it.customer_id}" title="Xem nhanh các đơn đang nợ">Xem các đơn</button>
               <button class="btn ghost sm" data-act="detail" data-cid="${it.customer_id}">Xem &amp; tất toán</button>
@@ -88,6 +89,8 @@
   async function loadStaff() {
     const p = new URLSearchParams();
     if (state.qStaff) p.set('q', state.qStaff);
+    const area = ($('fStaffArea') ? $('fStaffArea').value : '').trim();
+    if (area) p.set('area', area);
     const [r, pend] = await Promise.all([
       api.get('/admin/debts/staff?' + p.toString(), { silent: true }).catch(() => null),
       api.get('/admin/remittances?status=pending&limit=100', { silent: true }).catch(() => null),
@@ -99,12 +102,14 @@
     $('pendingRemitBox').style.display = pendCount > 0 ? 'flex' : 'none';
   }
   function renderStaff() {
+    const minDays = $('fStaffDays') ? Number($('fStaffDays').value) || 0 : 0;
+    const items = minDays > 0 ? state.staffItems.filter(it => it.days_holding >= minDays) : state.staffItems;
     const tb = $('tbStaff');
-    if (!state.staffItems.length) {
+    if (!items.length) {
       tb.innerHTML = '<tr><td colspan="7" class="text-center text-muted" style="padding:24px">KTV không giữ tiền nào</td></tr>';
       return;
     }
-    tb.innerHTML = state.staffItems.map(it => {
+    tb.innerHTML = items.map(it => {
       const days = it.days_holding >= 7
         ? `<span class="pill overdue">${it.days_holding} ngày</span>`
         : (it.days_holding > 0 ? `${it.days_holding} ngày` : '—');
@@ -114,13 +119,13 @@
         : (opening < 0 ? `<br><small style="color:#0a7a1f">Dư kỳ trước: ${fmtVnd(-opening)}</small>` : '');
       return `
         <tr>
-          <td><b>${escape(it.name)}</b><br><small class="text-muted">${escape(it.username)} · ${escape(it.phone || '')}</small>${openingHtml}</td>
-          <td>${escape(it.area || '—')}</td>
-          <td>${it.collection_count}</td>
-          <td>${fmtDate(it.oldest_at)}</td>
-          <td>${days}</td>
-          <td><b>${fmtVnd(it.total_amount)}</b></td>
-          <td>
+          <td data-label="KTV"><b>${escape(it.name)}</b><br><small class="text-muted">${escape(it.username)} · ${escape(it.phone || '')}</small>${openingHtml}</td>
+          <td data-label="Khu vực">${escape(it.area || '—')}</td>
+          <td data-label="Số khoản">${it.collection_count}</td>
+          <td data-label="Sớm nhất">${fmtDate(it.oldest_at)}</td>
+          <td data-label="Số ngày giữ">${days}</td>
+          <td data-label="Tổng tiền"><b>${fmtVnd(it.total_amount)}</b></td>
+          <td data-label="Hành động">
             ${IS_ADMIN ? `<button class="btn ghost sm" data-act="settle-staff"
               data-tid="${it.staff_id}" data-name="${escape(it.name)}">Duyệt nộp</button>` : ''}
             <a class="btn ghost sm" href="/admin/payroll.html?staff=${it.staff_id}" title="Xem bảng lương">💵 Lương</a>
@@ -135,10 +140,201 @@
     document.querySelectorAll('.tabs button').forEach(b =>
       b.classList.toggle('active', b.dataset.tab === t));
     $('tab-customers').style.display = (t === 'customers') ? '' : 'none';
+    $('tab-requests').style.display  = (t === 'requests')  ? '' : 'none';
     $('tab-staff').style.display     = (t === 'staff')     ? '' : 'none';
+    
     if (t === 'staff') loadStaff();
+    else if (t === 'requests') loadRequests();
     else loadCustomers();
   }
+
+  // ==== TAB: PHIEU YEU CAU =====================================
+  async function loadRequests() {
+    const status = $('fReqStatus').value;
+    const q = ($('fReqQ') ? $('fReqQ').value.trim() : '');
+    const from = $('fReqFrom') ? $('fReqFrom').value : '';
+    const to   = $('fReqTo')   ? $('fReqTo').value   : '';
+    const hasRemain = $('fReqHasRemain') && $('fReqHasRemain').checked;
+    const p = new URLSearchParams({ status });
+    if (q)         p.set('q', q);
+    if (from)      p.set('date_from', from);
+    if (to)        p.set('date_to', to);
+    if (hasRemain) p.set('has_remaining', '1');
+    const r = await api.get('/admin/payment-requests?' + p.toString(), { silent: true }).catch(() => null);
+    if (!r) return;
+    state.requests = r.items || [];
+    renderRequests();
+  }
+  
+  function renderRequests() {
+    const tb = $('tbRequests');
+    if (!state.requests.length) {
+      tb.innerHTML = '<tr><td colspan="8" class="text-center text-muted" style="padding:24px">Không có phiếu yêu cầu nào</td></tr>';
+      return;
+    }
+    tb.innerHTML = state.requests.map(it => {
+      const phone = it.customer_phone ? `<br><small class="text-muted">${escape(it.customer_phone)}</small>` : '';
+      const name = it.customer_name
+        ? `<b>${escape(it.customer_name)}</b><br><small class="text-muted">${escape(it.customer_code || '')}</small>${phone}`
+        : '—';
+      const stPill = it.status === 'pending'
+        ? '<span class="pill overdue">Chờ thanh toán</span>'
+        : it.status === 'partially_paid'
+        ? '<span class="pill" style="background:#fed7aa;color:#c2410c">Đang thu</span>'
+        : it.status === 'paid'
+        ? '<span class="pill tech" style="background:#dcfce7;color:#166534">Đã thanh toán</span>'
+        : '<span class="pill" style="background:#e2e8f0;color:#475569">Đã huỷ</span>';
+
+      const isActive = it.status === 'pending' || it.status === 'partially_paid';
+      let actionHtml = `<button class="btn ghost sm" onclick="copyPayLink(${it.id})" title="Copy link thanh toán">Copy</button>`;
+      if (isActive && IS_ADMIN) {
+        actionHtml += `<button class="btn sm" data-act="pay-request" data-rid="${it.id}">Nhận tiền</button>`;
+      }
+      if (isActive && IS_ADMIN) {
+        actionHtml += `<button class="btn sm ghost" style="color:#dc2626; border-color:#fecaca" data-act="cancel-request" data-rid="${it.id}" title="Huỷ phiếu">Huỷ</button>`;
+      }
+      
+      return `
+        <tr style="cursor: pointer" class="hover-row" onclick="if(!event.target.closest('button') && !event.target.closest('a')) window.open('/admin/payment-request-detail.html?id=${it.id}', '_blank')">
+          <td data-label="Mã phiếu"><a href="/admin/payment-request-detail.html?id=${it.id}" target="_blank" style="color:#2563eb; font-weight: bold; text-decoration: none;" title="Xem chi tiết thanh toán">${escape(it.code)}</a><br><small class="text-muted" style="font-size: 12px;">${it.order_count || 0} đơn</small></td>
+          <td data-label="Khách hàng">${name}</td>
+          <td data-label="Ngày lập">${fmtDate(it.created_at)}</td>
+          <td data-label="Tổng tiền"><b>${fmtVnd(it.total_amount)}</b></td>
+          <td data-label="Đã thu" style="color:#166534">${fmtVnd(it.paid_amount)}</td>
+          <td data-label="Còn nợ" style="color:#dc2626">${fmtVnd(it.remaining)}</td>
+          <td data-label="Trạng thái">${stPill}</td>
+          <td data-label="Hành động"><div style="display:flex; flex-wrap:wrap; gap:6px">${actionHtml}</div></td>
+        </tr>`;
+    }).join('');
+  }
+  
+  if ($('fReqStatus')) $('fReqStatus').onchange = loadRequests;
+
+  // ==== THU TIEN PHIEU YEU CAU =================================
+  function openPayRequestModal(btn) {
+    const rid = Number(btn.dataset.rid);
+    const pr = state.requests.find(x => x.id === rid);
+    if (!pr) return;
+    state.selectedRequest = pr;
+    
+    $('prqmCode').textContent = pr.code;
+    $('prqmTotal').textContent = fmtVnd(pr.total_amount);
+
+    const paidAmt = Number(pr.paid_amount) || 0;
+    const remainAmt = Number(pr.remaining) ?? (pr.total_amount - paidAmt);
+    if (paidAmt > 0) {
+      $('prqmPaid').textContent = fmtVnd(paidAmt);
+      $('prqmRemain').textContent = fmtVnd(remainAmt);
+      $('prqmPaidRow').style.display = '';
+      $('prqmRemainRow').style.display = '';
+    } else {
+      $('prqmPaidRow').style.display = 'none';
+      $('prqmRemainRow').style.display = 'none';
+    }
+
+    Money.set($('prqmAmount'), remainAmt);
+    $('prqmAmount').readOnly = true;
+    $('prqmAmountHelp').textContent = 'Tự động bằng số tiền còn lại';
+    document.querySelector('input[name="prqPayMode"][value="full"]').checked = true;
+    $('prqmMethod').value = 'cash';
+    $('prqmNote').value = '';
+    
+    $('payRequestModal').classList.add('open');
+  }
+  
+  if ($('prqmClose')) {
+    $('prqmClose').onclick = () => $('payRequestModal').classList.remove('open');
+    $('prqmCancel').onclick = () => $('payRequestModal').classList.remove('open');
+    
+    document.querySelectorAll('input[name="prqPayMode"]').forEach(r => {
+      r.onchange = () => {
+        const isFull = document.querySelector('input[name="prqPayMode"]:checked').value === 'full';
+        const pr = state.selectedRequest;
+        const remain = pr ? (Number(pr.remaining) || Number(pr.total_amount) || 0) : 0;
+        if (isFull) {
+          $('prqmAmount').readOnly = true;
+          Money.set($('prqmAmount'), remain);
+          $('prqmAmountHelp').textContent = 'Tự động bằng số tiền còn lại';
+        } else {
+          $('prqmAmount').readOnly = false;
+          Money.set($('prqmAmount'), 0);
+          $('prqmAmountHelp').textContent = 'Phần thiếu sẽ lưu thành nợ của phiếu này';
+          $('prqmAmount').focus();
+        }
+      };
+    });
+    
+    $('prqmSubmit').onclick = async () => {
+      const pr = state.selectedRequest;
+      if (!pr) return;
+      const amount = Money.get($('prqmAmount'));
+      if (!amount || amount <= 0) return ui.toast('Nhập số tiền > 0', 'warning');
+      const remain = Number(pr.remaining) || Number(pr.total_amount) || 0;
+      if (amount > remain * 1.1) {
+        const ok = await ui.confirm({ title: 'Xác nhận số tiền', type: 'warning', message: `Khách trả ${fmtVnd(amount)} nhưng còn lại chỉ ${fmtVnd(remain)}. Bạn có chắc?` });
+        if (!ok) return;
+      }
+
+      $('prqmSubmit').disabled = true;
+      try {
+        const body = {
+          amount_paid: amount,
+          pay_method: $('prqmMethod').value,
+          note: $('prqmNote').value.trim()
+        };
+        const res = await api.post(`/admin/payment-requests/${pr.id}/pay`, body, {
+          loading: true
+        }).catch(() => null);
+        if (!res) return;
+
+        $('payRequestModal').classList.remove('open');
+        loadRequests();
+        loadSummary();
+        loadCustomers();
+
+        // Hiện link xem & in Hóa Đơn
+        if (res.receipt_id) {
+          const receiptUrl = `/admin/payment-receipt.html?id=${res.receipt_id}`;
+          ui.toast(
+            `Thu tiền thành công! Mã hóa đơn: <b>${escape(res.receipt_code || '')}</b> — <a href="${receiptUrl}" target="_blank" style="color:#1d4ed8;font-weight:600">Xem & In HD →</a>`,
+            'success',
+            8000
+          );
+        } else {
+          ui.toast('Thu tiền thành công!', 'success');
+        }
+      } finally {
+        $('prqmSubmit').disabled = false;
+      }
+    };
+  }
+
+  async function cancelPaymentRequest(id) {
+    const ok = await ui.confirm({
+      title: 'Xác nhận huỷ phiếu',
+      type: 'danger',
+      message: 'Bạn có chắc chắn muốn huỷ phiếu yêu cầu thanh toán này không? Phiếu đã huỷ sẽ biến mất khỏi danh sách mặc định.'
+    });
+    if (!ok) return;
+
+    const res = await api.post(`/admin/payment-requests/${id}/cancel`, {}, {
+      loading: true, successMessage: 'Đã huỷ phiếu thành công!'
+    }).catch(() => null);
+    
+    if (res) {
+      loadRequests();
+    }
+  }
+
+  // ==== HELPER: COPY LINK =====================================
+  window.copyPayLink = (id) => {
+    const url = window.location.origin + '/admin/payment-request-detail.html?id=' + id;
+    navigator.clipboard.writeText(url).then(() => {
+      ui.toast('Đã copy link thanh toán', 'success');
+    }).catch(() => {
+      ui.toast('Không copy được link', 'error');
+    });
+  };
 
   // ==== HELPER: render don no (chi rows, caller tu wrap .order-list) ====
   function daysBetween(dateStr) {
@@ -148,32 +344,32 @@
     return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000));
   }
   const STATUS_LABEL = {
-    new:         { txt: 'Mới',        cls: 'st-new' },
-    pending:     { txt: 'Chờ xác nhận', cls: 'st-new' },
-    confirmed:   { txt: 'Đã xác nhận', cls: 'st-cf'  },
-    assigned:    { txt: 'Đã giao KTV', cls: 'st-cf'  },
-    in_progress: { txt: 'Đang xử lý',  cls: 'st-ip'  },
-    done:        { txt: 'Hoàn tất',    cls: 'st-dn'  },
-    cancelled:   { txt: 'Đã huỷ',      cls: 'st-cn'  },
+    new: { txt: 'Mới', cls: 'st-new' },
+    pending: { txt: 'Chờ xác nhận', cls: 'st-new' },
+    confirmed: { txt: 'Đã xác nhận', cls: 'st-cf' },
+    assigned: { txt: 'Đã giao KTV', cls: 'st-cf' },
+    in_progress: { txt: 'Đang xử lý', cls: 'st-ip' },
+    done: { txt: 'Hoàn tất', cls: 'st-dn' },
+    cancelled: { txt: 'Đã huỷ', cls: 'st-cn' },
   };
   function renderPendingOrderRows(orders) {
     return orders.map(o => {
-      const total   = Number(o.total_amount) || 0;
-      const paid    = Number(o.paid_amount) || 0;
-      const hold    = Number(o.unremitted) || 0;
-      const pend    = Number(o.admin_pending) || 0;
+      const total = Number(o.total_amount) || 0;
+      const paid = Number(o.paid_amount) || 0;
+      const hold = Number(o.unremitted) || 0;
+      const pend = Number(o.admin_pending) || 0;
       const pctPaid = total ? Math.min(100, paid / total * 100) : 0;
       const pctHold = total ? Math.min(100 - pctPaid, hold / total * 100) : 0;
       const pctPend = total ? Math.min(100 - pctPaid - pctHold, pend / total * 100) : 0;
       const refDate = o.confirmed_at || o.created_at;
-      const days    = daysBetween(refDate);
+      const days = daysBetween(refDate);
       const dateLbl = o.confirmed_at ? 'XN' : 'Tạo';
       const dateTxt = refDate ? `${dateLbl} ${fmtDate(refDate)}` : '—';
-      const ageTxt  = days > 0 ? ` · ${days} ngày` : '';
+      const ageTxt = days > 0 ? ` · ${days} ngày` : '';
       const overdue = days >= 7;
-      const st      = STATUS_LABEL[o.status] || { txt: o.status || '—', cls: 'st-new' };
-      const ktv     = o.assigned_staff_names ? escape(o.assigned_staff_names) : 'Chưa gán';
-      const addr    = o.address ? escape(o.address) : '';
+      const st = STATUS_LABEL[o.status] || { txt: o.status || '—', cls: 'st-new' };
+      const ktv = o.assigned_staff_names ? escape(o.assigned_staff_names) : 'Chưa gán';
+      const addr = o.address ? escape(o.address) : '';
       const doneTxt = o.completed_at ? fmtDate(o.completed_at) : '';
       const tags = [
         paid > 0 ? `<span class="o-tag paid">✓ Đã trả ${fmtVnd(paid)}</span>` : '',
@@ -182,7 +378,8 @@
       ].filter(Boolean).join('');
       return `
         <a class="order-row" href="/admin/orders.html#order-${o.id}" target="_blank"
-           title="Mở chi tiết đơn (tab mới)">
+           data-order-quick="${o.id}"
+           title="Xem nhanh đơn — Ctrl+click mở tab đầy đủ">
           <div class="o-head">
             <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
               <span class="o-code">${escape(o.code)} <span style="opacity:.5;font-weight:400">↗</span></span>
@@ -215,6 +412,17 @@
     const op = Number(r.opening_balance) || 0;
     const total = Number(r.total_debt) || 0;
     const totalLabel = total < 0 ? '🔻 Công ty đang nợ ngược' : '💰 Tổng nợ hiện tại';
+
+    // Tinh tong KTV dang giu va admin pending tu pending_orders
+    const ktvHolding = (r.pending_orders || []).reduce((s, o) => s + (Number(o.unremitted) || 0), 0);
+    const adminPending = (r.pending_orders || []).reduce((s, o) => s + (Number(o.admin_pending) || 0), 0);
+    const subLines = [];
+    if (ktvHolding > 0)   subLines.push(`🔧 KTV đang giữ: <b>${fmtVnd(ktvHolding)}</b>`);
+    if (adminPending > 0) subLines.push(`⏳ Chờ xác nhận: <b>${fmtVnd(adminPending)}</b>`);
+    const ktvHoldingHtml = subLines.length
+      ? `<div style="font-size:12px;color:#b45309;margin-top:4px;line-height:1.7">${subLines.join('<br>')}</div>`
+      : '';
+
     const cards = [
       `<div class="ds-card">
         <div class="ds-label">📋 Số đơn đang nợ</div>
@@ -223,6 +431,7 @@
       `<div class="ds-card warn">
         <div class="ds-label">📉 Nợ phát sinh từ đơn</div>
         <div class="ds-value">${fmtVnd(r.order_debt)}</div>
+        ${ktvHoldingHtml}
       </div>`,
     ];
     if (opts.showOpening || op !== 0) {
@@ -307,29 +516,15 @@
         ${r.history.length > PREVIEW ? `<button type="button" class="btn sm ghost" data-act="settle-history" data-cid="${c.id}">Xem tất cả →</button>` : ''}
       </div>`;
       for (const h of r.history.slice(0, PREVIEW)) {
-        html += `<div class="history-row" data-act="settle-detail" data-sid="${h.id}" title="Bấm để xem chi tiết phiếu">
+        html += `<div class="history-row" onclick="window.open('/admin/payment-request-detail.html?id=${h.id}', '_blank')" title="Bấm để xem chi tiết phiếu YC-">
           <span><b>${escape(h.code)}</b> · ${fmtDate(h.paid_at)}</span>
           <span>Trả <b>${fmtVnd(h.amount_paid)}</b> / Nợ ${fmtVnd(h.total_debt)}${h.remaining > 0 ? ` · còn ${fmtVnd(h.remaining)}` : ''}</span>
         </div>`;
       }
     }
 
-    // Khu vuc chon ky bang ke (luon hien, admin moi dung duoc)
-    const today = new Date().toISOString().slice(0, 10);
-    const firstOfMonth = today.slice(0, 8) + '01';
-    html += `<div style="margin-top:16px;padding:12px 14px;background:#f8fafc;border:1px solid var(--border);border-radius:10px">
-      <div style="font-size:13px;font-weight:600;color:#334155;margin-bottom:8px">Tạo bảng kê theo kỳ</div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <label style="font-size:13px;color:#475569">Từ</label>
-        <input type="date" id="cmDateFrom" class="input" style="width:148px" value="${firstOfMonth}" />
-        <label style="font-size:13px;color:#475569">đến</label>
-        <input type="date" id="cmDateTo"   class="input" style="width:148px" value="${today}" />
-        <button type="button" class="btn sm" id="cmOpenStatement" data-cid="${c.id}">Mở bảng kê →</button>
-      </div>
-    </div>`;
-
     $('cmBody').innerHTML = html;
-    if (!IS_ADMIN) { $('cmSettle').style.display = 'none'; $('cmOpenStatement') && ($('cmOpenStatement').style.display = 'none'); }
+    if (!IS_ADMIN) $('cmSettle').style.display = 'none';
     else $('cmSettle').disabled = r.total_debt <= 0;
   }
 
@@ -352,7 +547,7 @@
     let html = '';
     for (const h of list) {
       const methodLabel = { cash: 'Tiền mặt', transfer: 'Chuyển khoản', mixed: 'Hỗn hợp' }[h.pay_method] || h.pay_method || '';
-      html += `<div class="history-row" data-act="settle-detail" data-sid="${h.id}" title="Bấm để xem chi tiết">
+      html += `<div class="history-row" onclick="window.open('/admin/payment-request-detail.html?id=${h.id}', '_blank')" title="Bấm để xem chi tiết phiếu YC-">
         <div style="display:flex;flex-direction:column;gap:2px">
           <b>${escape(h.code)}</b>
           <span class="text-muted" style="font-size:12px">${fmtDate(h.paid_at)}${methodLabel ? ' · ' + methodLabel : ''}</span>
@@ -364,56 +559,6 @@
       </div>`;
     }
     $('slBody').innerHTML = html;
-  }
-
-  // ==== MODAL: chi tiet 1 phieu tat toan =========================
-  async function openSettlementDetail(id) {
-    $('sdTitle').textContent = 'Đang tải...';
-    $('sdBody').innerHTML = '<div class="text-center text-muted" style="padding:40px">Đang tải...</div>';
-    $('settlementDetailModal').classList.add('open');
-    $('sdPrint').dataset.sid = id;
-
-    const r = await api.get('/admin/debts/settlement/' + id).catch(() => null);
-    if (!r) { $('settlementDetailModal').classList.remove('open'); return; }
-
-    const s = r.settlement;
-    const methodLabel = { cash: 'Tiền mặt', transfer: 'Chuyển khoản', mixed: 'Hỗn hợp' }[s.pay_method] || '';
-    $('sdTitle').textContent = `Phiếu tất toán ${escape(s.code)}`;
-
-    let html = `
-      <div class="summary-box" style="margin-top:0">
-        <div class="row"><span>Ngày tất toán:</span><span>${fmtDate(s.paid_at)}</span></div>
-        <div class="row"><span>Tổng nợ lúc chốt:</span><span>${fmtVnd(s.total_debt)}</span></div>
-        <div class="row"><span>Khách đã trả:</span><span><b>${fmtVnd(s.amount_paid)}</b>${methodLabel ? ' (' + methodLabel + ')' : ''}</span></div>
-        ${s.remaining > 0 ? `<div class="row"><span>Chuyển nợ kỳ sau:</span><span style="color:#dc2626"><b>${fmtVnd(s.remaining)}</b></span></div>` : ''}
-        ${s.note ? `<div class="row"><span>Ghi chú:</span><span>${escape(s.note)}</span></div>` : ''}
-        ${s.created_by_name ? `<div class="row"><span>Người tạo:</span><span>${escape(s.created_by_name)}</span></div>` : ''}
-      </div>`;
-
-    if (r.carried_orders && r.carried_orders.length) {
-      html += `<h4 style="margin:14px 0 8px;font-size:14px;color:#475569">Đơn đã kết vào phiếu (${r.carried_orders.length})</h4>
-        <div class="order-list">`;
-      for (const o of r.carried_orders) {
-        const remaining = o.total_amount - o.paid_amount;
-        html += `<a class="order-row" href="/admin/orders.html?id=${o.id}" target="_blank" rel="noopener">
-          <div class="o-head">
-            <span class="o-code">${escape(o.code)}</span>
-            <span class="o-amount">${fmtVnd(o.total_amount)}</span>
-          </div>
-          <div class="o-meta">
-            ${o.template_name ? `<span>${escape(o.template_name)}</span>` : ''}
-            ${o.vehicle_plate ? `<span class="o-tag plate">${escape(o.vehicle_plate)}</span>` : ''}
-            <span class="o-tag date">${fmtDate(o.confirmed_at)}</span>
-            ${remaining > 0 ? `<span class="o-tag pend">Còn nợ ${fmtVnd(remaining)}</span>` : '<span class="o-tag paid">Đã đủ</span>'}
-          </div>
-        </a>`;
-      }
-      html += '</div>';
-    } else {
-      html += '<p class="text-muted" style="margin-top:12px;font-size:13px">Không có đơn hàng nào kết vào phiếu này.</p>';
-    }
-
-    $('sdBody').innerHTML = html;
   }
 
   // Tat toan: mo tab moi sang trang form chi tiet (replace cho modal cu).
@@ -437,21 +582,37 @@
 
     const opening = Number(r.opening_balance) || 0;
     const holding = Number(r.holding_amount) || 0;
-    const total   = Number(r.total_to_collect) || 0;
+    const total = Number(r.total_to_collect) || 0;
 
     const openingRow = opening !== 0
       ? `<div class="row"><span>${opening > 0 ? 'Nợ kỳ trước:' : 'Dư kỳ trước:'}</span>
            <span class="${opening > 0 ? 'opening-balance' : ''}" ${opening < 0 ? 'style="color:#0a7a1f"' : ''}>${fmtVnd(Math.abs(opening))}</span></div>`
       : '';
 
-    const colsHtml = r.collections.length ? r.collections.map(c => `
+    const colsHtml = r.collections.length ? r.collections.map(c => {
+      const itemsHtml = (c.items || []).map(it => {
+        const info = [it.vehicle_plate, it.imei].filter(Boolean).join(' · ');
+        return `<div class="col-item-row">
+          <div class="col-item-name">
+            <span>${escape(it.product_name || '—')}</span>${it.qty > 1 ? `<span class="col-item-qty">×${it.qty}</span>` : ''}
+            ${info ? `<div class="col-item-info">${escape(info)}</div>` : ''}
+          </div>
+          <div class="col-item-price">${fmtVnd(it.unit_price * it.qty)}</div>
+        </div>`;
+      }).join('');
+      return `
       <div class="order-row">
-        <div class="o-info">
-          <div><b>${escape(c.order_code || '—')}</b> · <span class="text-muted">${fmtDate(c.collected_at)}</span></div>
-          <small class="text-muted">${c.method === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'}</small>
+        <div class="o-header">
+          <div class="o-meta">
+            <b>${escape(c.order_code || '—')}</b>${c.order_code ? ui.copyCodeBtn(c.order_code) : ''}
+            <span class="text-muted">${fmtDate(c.collected_at)}</span>
+            <span class="o-method-badge">${c.method === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'}</span>
+          </div>
+          <div class="o-amount" style="color:#1f6feb">${fmtVnd(c.amount)}</div>
         </div>
-        <div class="o-amount" style="color:#1f6feb">${fmtVnd(c.amount)}</div>
-      </div>`).join('') : '<div class="text-center text-muted" style="padding:20px">Không có khoản đang giữ</div>';
+        ${itemsHtml ? `<div class="col-items-list">${itemsHtml}</div>` : ''}
+      </div>`;
+    }).join('') : '<div class="text-center text-muted" style="padding:20px">Không có khoản đang giữ</div>';
 
     $('ssBody').innerHTML = `
       <p style="margin:0 0 10px">KTV: <b>${escape(name)}</b></p>
@@ -492,8 +653,10 @@
     const amount = Number($('ssAmount').value);
     if (!amount || amount <= 0) return ui.toast('Nhập số tiền > 0', 'warning');
     if (amount > total * 1.1) {
-      const ok = await ui.confirm({ title: 'Số tiền lớn hơn tổng phải nộp', type: 'warning',
-        message: `KTV nộp ${fmtVnd(amount)} nhưng tổng chỉ ${fmtVnd(total)}. Vẫn tiếp tục?` });
+      const ok = await ui.confirm({
+        title: 'Số tiền lớn hơn tổng phải nộp', type: 'warning',
+        message: `KTV nộp ${fmtVnd(amount)} nhưng tổng chỉ ${fmtVnd(total)}. Vẫn tiếp tục?`
+      });
       if (!ok) return;
     }
     const method = $('ssMethod').value;
@@ -577,6 +740,35 @@
     qsTimer = setTimeout(() => { state.qStaff = $('fQStaff').value.trim(); loadStaff(); }, 300);
   };
 
+  if ($('fDebtType')) $('fDebtType').onchange = renderCustomers;
+
+  let reqQTimer = null;
+  if ($('fReqQ')) $('fReqQ').oninput = () => { clearTimeout(reqQTimer); reqQTimer = setTimeout(loadRequests, 300); };
+  if ($('fReqFrom')) $('fReqFrom').onchange = loadRequests;
+  if ($('fReqTo'))   $('fReqTo').onchange   = loadRequests;
+  if ($('fReqHasRemain')) $('fReqHasRemain').onchange = loadRequests;
+  if ($('btnReqReset')) $('btnReqReset').onclick = () => {
+    if ($('fReqQ'))         $('fReqQ').value = '';
+    if ($('fReqFrom'))      $('fReqFrom').value = '';
+    if ($('fReqTo'))        $('fReqTo').value = '';
+    if ($('fReqHasRemain')) $('fReqHasRemain').checked = false;
+    if ($('fReqStatus'))    $('fReqStatus').value = 'active';
+    loadRequests();
+  };
+
+  let staffAreaTimer = null;
+  if ($('fStaffArea')) $('fStaffArea').oninput = () => {
+    clearTimeout(staffAreaTimer);
+    staffAreaTimer = setTimeout(loadStaff, 300);
+  };
+  if ($('fStaffDays')) $('fStaffDays').onchange = renderStaff;
+  if ($('btnStaffReset')) $('btnStaffReset').onclick = () => {
+    if ($('fQStaff'))    { $('fQStaff').value = ''; state.qStaff = ''; }
+    if ($('fStaffArea')) $('fStaffArea').value = '';
+    if ($('fStaffDays')) $('fStaffDays').value = '';
+    loadStaff();
+  };
+
   document.body.addEventListener('click', (e) => {
     const orders = e.target.closest('button[data-act="orders"]');
     if (orders) return openOrdersListModal(orders.dataset.cid);
@@ -587,30 +779,17 @@
       const hist = state.selectedCustomer && state.selectedCustomer.history || [];
       return openSettlementList(settleHistory.dataset.cid, hist);
     }
-    const settleDetail = e.target.closest('[data-act="settle-detail"]');
-    if (settleDetail) return openSettlementDetail(Number(settleDetail.dataset.sid));
-
-    // Nut "Mo bang ke theo ky"
-    const openStmt = e.target.closest('#cmOpenStatement');
-    if (openStmt) {
-      const cid = openStmt.dataset.cid;
-      const from = $('cmDateFrom') && $('cmDateFrom').value;
-      const to   = $('cmDateTo')   && $('cmDateTo').value;
-      if (!from || !to) return ui.toast('Chọn đủ ngày từ và đến', 'warning');
-      if (from > to)    return ui.toast('Ngày từ phải trước ngày đến', 'warning');
-      const qs = new URLSearchParams({ cid });
-      if (from) qs.set('date_from', from);
-      if (to)   qs.set('date_to',   to);
-      window.open(`/admin/debt-settle-form.html?${qs}`, '_blank', 'noopener');
-      return;
-    }
+    const payReqBtn = e.target.closest('button[data-act="pay-request"]');
+    if (payReqBtn) return openPayRequestModal(payReqBtn);
+    const cancelReqBtn = e.target.closest('button[data-act="cancel-request"]');
+    if (cancelReqBtn) return cancelPaymentRequest(Number(cancelReqBtn.dataset.rid));
     const settleStaff = e.target.closest('button[data-act="settle-staff"]');
     if (settleStaff) return openStaffSettleModal(settleStaff);
     const pact = e.target.closest('button[data-pact]');
     if (pact) {
       const id = Number(pact.dataset.rid);
       if (pact.dataset.pact === 'approve') return approveRemit(id);
-      if (pact.dataset.pact === 'reject')  return rejectRemit(id);
+      if (pact.dataset.pact === 'reject') return rejectRemit(id);
     }
     // Toggle help-box: tim trong cung modal voi data-help-for=<key>
     const helpBtn = e.target.closest('.modal-help-btn');
@@ -627,79 +806,100 @@
     }
   });
 
-  $('cmClose').onclick    = () => $('custModal').classList.remove('open');
+  $('cmClose').onclick = () => $('custModal').classList.remove('open');
   $('cmCloseBtn').onclick = () => $('custModal').classList.remove('open');
-  $('cmSettle').onclick   = () => { $('custModal').classList.remove('open'); openSettleModal(); };
+  $('cmSettle').onclick = () => { $('custModal').classList.remove('open'); openSettleModal(); };
 
-  $('olClose').onclick    = () => $('ordersListModal').classList.remove('open');
+  $('olClose').onclick = () => $('ordersListModal').classList.remove('open');
   $('olCloseBtn').onclick = () => $('ordersListModal').classList.remove('open');
-  $('olSettle').onclick   = () => { $('ordersListModal').classList.remove('open'); openSettleModal(); };
+  $('olSettle').onclick = () => { $('ordersListModal').classList.remove('open'); openSettleModal(); };
 
-  $('ssClose').onclick  = () => $('staffSettleModal').classList.remove('open');
+  $('ssClose').onclick = () => $('staffSettleModal').classList.remove('open');
   $('ssCancel').onclick = () => $('staffSettleModal').classList.remove('open');
   $('ssSubmit').onclick = submitStaffSettle;
 
   $('btnViewPending').onclick = openPendingRemitModal;
-  $('prClose').onclick    = () => $('pendingRemitModal').classList.remove('open');
+  $('prClose').onclick = () => $('pendingRemitModal').classList.remove('open');
   $('prCloseBtn').onclick = () => $('pendingRemitModal').classList.remove('open');
 
-  $('slClose').onclick    = () => $('settlementListModal').classList.remove('open');
+  $('slClose').onclick = () => $('settlementListModal').classList.remove('open');
   $('slCloseBtn').onclick = () => $('settlementListModal').classList.remove('open');
   $('slFilter').onclick = () => {
     const from = $('slFrom').value;
-    const to   = $('slTo').value;
+    const to = $('slTo').value;
     const list = (state._slHistory || []).filter(h => {
       const d = h.paid_at ? h.paid_at.slice(0, 10) : '';
       if (from && d < from) return false;
-      if (to   && d > to)   return false;
+      if (to && d > to) return false;
       return true;
     });
     renderSettlementList(list);
   };
   $('slClear').onclick = () => {
     $('slFrom').value = '';
-    $('slTo').value   = '';
+    $('slTo').value = '';
     renderSettlementList(state._slHistory || []);
   };
 
-  $('sdClose').onclick    = () => $('settlementDetailModal').classList.remove('open');
-  $('sdCloseBtn').onclick = () => $('settlementDetailModal').classList.remove('open');
-  $('sdPrint').onclick    = () => {
-    const sid = $('sdPrint').dataset.sid;
-    if (sid) window.open('/admin/debt-settle.html?id=' + sid, '_blank', 'noopener');
-  };
-
   // ==== MODAL: GHI NO CU =======================================
+  function renderOldDebtCustomerOptions(filterStr = '') {
+    const term = filterStr.toLowerCase();
+    const list = (state.allCustomersForDebt || []).filter(c => {
+      if (!term) return true;
+      const name = c.full_name || '';
+      const code = c.code || '';
+      const phone = c.phone || '';
+      const comp = c.company_name || '';
+      return name.toLowerCase().includes(term) ||
+        code.toLowerCase().includes(term) ||
+        phone.toLowerCase().includes(term) ||
+        comp.toLowerCase().includes(term);
+    });
+
+    if (!list.length) {
+      $('od_customer_list').innerHTML = '<div style="padding:8px 12px; color:#64748b;">Không tìm thấy khách hàng</div>';
+      return;
+    }
+
+    $('od_customer_list').innerHTML = list.map(c => {
+      const name = c.type === 'dealer' && c.company_name ? `${c.company_name} (${c.full_name})` : c.full_name;
+      return `<div class="od-cust-item" data-id="${c.id}" data-name="${escape(name)}" style="padding:8px 12px; cursor:pointer; border-bottom:1px solid #f1f5f9;">
+        <b>${escape(c.code)}</b> - ${escape(name)}
+      </div>`;
+    }).join('');
+  }
+
   async function openOldDebtModal() {
-    $('od_customer_id').innerHTML = '<option value="">-- Đang tải danh sách --</option>';
+    $('od_customer_id').value = '';
+    $('od_customer_search').value = '';
     $('od_amount').value = '';
     $('od_date').value = new Date().toISOString().slice(0, 10);
     $('od_note').value = '';
+    $('od_customer_list').style.display = 'none';
+    $('od_customer_list').innerHTML = '<div style="padding:8px 12px; color:#64748b;">Đang tải danh sách...</div>';
     $('oldDebtModal').classList.add('open');
 
     const r = await api.get('/admin/customers?limit=1000', { silent: true }).catch(() => null);
     if (!r || !r.items) {
-      $('od_customer_id').innerHTML = '<option value="">Lỗi tải danh sách</option>';
+      $('od_customer_list').innerHTML = '<div style="padding:8px 12px; color:#dc2626;">Lỗi tải danh sách</div>';
       return;
     }
-    $('od_customer_id').innerHTML = '<option value="">-- Chọn khách hàng --</option>' + r.items.map(c => {
-      const name = c.type === 'dealer' && c.company_name ? `${c.company_name} (${c.full_name})` : c.full_name;
-      return `<option value="${c.id}">${escape(c.code)} - ${escape(name)}</option>`;
-    }).join('');
+    state.allCustomersForDebt = r.items;
+    renderOldDebtCustomerOptions('');
   }
 
   async function submitOldDebt(e) {
     e.preventDefault();
     const cid = $('od_customer_id').value;
     if (!cid) return ui.toast('Vui lòng chọn khách hàng', 'warning');
-    const amount = Number($('od_amount').value.replace(/\\D/g, '')) || 0;
+    const amount = Money.get($('od_amount'));
     if (!amount) return ui.toast('Vui lòng nhập số tiền hợp lệ', 'warning');
     const data = {
       amount,
       debt_date: $('od_date').value,
       note: $('od_note').value.trim()
     };
-    
+
     const btn = $('oldDebtModal').querySelector('button[type="submit"]');
     btn.disabled = true;
     try {
@@ -721,8 +921,38 @@
   $('odCancel') && ($('odCancel').onclick = () => $('oldDebtModal').classList.remove('open'));
   $('odForm') && ($('odForm').onsubmit = submitOldDebt);
 
+  if ($('od_customer_search')) {
+    $('od_customer_search').onfocus = () => {
+      $('od_customer_list').style.display = 'block';
+      renderOldDebtCustomerOptions($('od_customer_search').value);
+    };
+    $('od_customer_search').oninput = (e) => {
+      $('od_customer_id').value = '';
+      $('od_customer_list').style.display = 'block';
+      renderOldDebtCustomerOptions(e.target.value);
+    };
+  }
+
+  if ($('od_customer_list')) {
+    $('od_customer_list').onclick = (e) => {
+      const item = e.target.closest('.od-cust-item');
+      if (!item) return;
+      $('od_customer_id').value = item.dataset.id;
+      $('od_customer_search').value = item.dataset.name;
+      $('od_customer_list').style.display = 'none';
+    };
+  }
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#od_customer_wrap') && $('od_customer_list')) {
+      $('od_customer_list').style.display = 'none';
+    }
+  });
+
   // ==== INIT ===================================================
   adminShell.init('debts');
   loadSummary();
   loadCustomers();
 })();
+
+// Removed duplicate init

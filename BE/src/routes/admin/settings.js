@@ -2,11 +2,11 @@
 // Tat ca route deu yeu cau role admin (da check o admin.js cha)
 //
 // Hien tai dung cho:
-//   qr.slot{1..5}.image_url   — URL anh QR (imgbb)
+//   qr.slot{1..5}.image_url    — URL anh QR (imgbb)
 //   qr.slot{1..5}.label        — nhan slot
-//   bank.account_no            — so tai khoan
-//   bank.account_name          — chu tai khoan
-//   bank.bank_name             — ten ngan hang
+//   qr.slot{1..5}.bank_name    — ten ngan hang cua slot nay
+//   qr.slot{1..5}.account_no   — so tai khoan cua slot nay
+//   qr.slot{1..5}.account_name — chu tai khoan cua slot nay
 //   bank.default_qr_slot       — '1'..'5' (slot mac dinh dung khi tao bill)
 //
 // Endpoints:

@@ -42,6 +42,7 @@ function pickPayload(body, { isUpdate = false } = {}) {
   if (body.address !== undefined)        set('address', body.address || null);
   if (body.avatar_url !== undefined)     set('avatar_url', body.avatar_url || null);
   if (body.note !== undefined)           set('note', body.note || null);
+  if (body.parent_id !== undefined)      set('parent_id', body.parent_id ? Number(body.parent_id) : null);
 
   if (body.company_name !== undefined)   set('company_name', body.company_name || null);
   if (body.tax_code !== undefined)       set('tax_code', body.tax_code || null);
@@ -91,6 +92,7 @@ function strip(row) {
 //   ?type=retail|dealer       loc theo loai
 //   ?q=keyword                tim chung (search box top)
 //   ?code, ?name, ?phone, ?email   loc rieng theo tung cot (filter row)
+//   ?name con tim theo tai san (account_name/plate/sim) + khach con cua dai ly
 //   ?page=1, ?limit=20
 router.get('/', async (req, res, next) => {
   try {
@@ -104,37 +106,63 @@ router.get('/', async (req, res, next) => {
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
     const offset = (page - 1) * limit;
 
-    const where = ['is_deleted = 0'];
+    const where = ['c.is_deleted = 0'];
     const args = [];
 
     if (type && TYPES.includes(type)) {
-      where.push('type = ?');
+      where.push('c.type = ?');
       args.push(type);
     }
     if (q) {
-      where.push('(full_name LIKE ? OR code LIKE ? OR phone LIKE ? OR company_name LIKE ?)');
+      where.push('(c.full_name LIKE ? OR c.code LIKE ? OR c.phone LIKE ? OR c.company_name LIKE ?)');
       const like = `%${q}%`;
       args.push(like, like, like, like);
     }
-    if (code)  { where.push('code  LIKE ?'); args.push(`%${code}%`); }
-    if (name)  { where.push('(full_name LIKE ? OR company_name LIKE ?)'); args.push(`%${name}%`, `%${name}%`); }
-    if (phone) { where.push('phone LIKE ?'); args.push(`%${phone}%`); }
-    if (email) { where.push('email LIKE ?'); args.push(`%${email}%`); }
+    if (code)  { where.push('c.code LIKE ?'); args.push(`%${code}%`); }
+    if (name) {
+      const like = `%${name}%`;
+      where.push(`(c.full_name LIKE ? OR c.company_name LIKE ?
+        OR EXISTS (SELECT 1 FROM customer_accounts ca WHERE ca.customer_id = c.id AND ca.account_name LIKE ? AND ca.is_deleted = 0)
+        OR EXISTS (SELECT 1 FROM customer_vehicles cv WHERE cv.customer_id = c.id AND cv.plate LIKE ? AND cv.is_deleted = 0)
+        OR EXISTS (SELECT 1 FROM customer_sims cs WHERE cs.customer_id = c.id AND cs.sim_number LIKE ? AND cs.is_deleted = 0)
+        OR EXISTS (
+          SELECT 1 FROM customers child
+          WHERE child.parent_id = c.id AND child.is_deleted = 0 AND (
+            child.full_name LIKE ?
+            OR EXISTS (SELECT 1 FROM customer_accounts WHERE customer_id = child.id AND account_name LIKE ? AND is_deleted = 0)
+            OR EXISTS (SELECT 1 FROM customer_vehicles WHERE customer_id = child.id AND plate LIKE ? AND is_deleted = 0)
+            OR EXISTS (SELECT 1 FROM customer_sims WHERE customer_id = child.id AND sim_number LIKE ? AND is_deleted = 0)
+          )
+        ))`);
+      args.push(like, like, like, like, like, like, like, like, like);
+    }
+    if (phone) { where.push('c.phone LIKE ?'); args.push(`%${phone}%`); }
+    if (email) { where.push('c.email LIKE ?'); args.push(`%${email}%`); }
 
     const whereSql = 'WHERE ' + where.join(' AND ');
 
     const [countRows] = await db.query(
-      `SELECT COUNT(*) AS total FROM customers ${whereSql}`, args
+      `SELECT COUNT(*) AS total FROM customers c ${whereSql}`, args
     );
     const total = countRows[0].total;
 
     const [rows] = await db.query(
-      `SELECT id, code, type, full_name, phone, email, address, avatar_url, note,
-              company_name, tax_code, contact_person, debt_limit, credit_term_days, discount_rate,
-              created_at, updated_at
-         FROM customers
+      `SELECT c.id, c.code, c.type, c.parent_id, c.full_name, c.phone, c.email, c.address,
+              c.avatar_url, c.note, c.company_name, c.tax_code, c.contact_person,
+              c.debt_limit, c.credit_term_days, c.discount_rate, c.created_at, c.updated_at,
+              COALESCE(os.order_count, 0) AS order_count,
+              COALESCE(os.total_revenue, 0) AS total_revenue
+         FROM customers c
+         LEFT JOIN (
+           SELECT customer_id,
+                  COUNT(*) AS order_count,
+                  SUM(total_amount) AS total_revenue
+           FROM orders
+           WHERE is_deleted = 0 AND status != 'cancelled'
+           GROUP BY customer_id
+         ) os ON os.customer_id = c.id
          ${whereSql}
-         ORDER BY id DESC
+         ORDER BY c.id DESC
          LIMIT ? OFFSET ?`,
       [...args, limit, offset]
     );
@@ -325,18 +353,19 @@ router.get('/:id/end-customers', async (req, res, next) => {
     if (chk[0].type !== 'dealer') return res.status(400).json({ error: 'Khach nay khong phai dai ly' });
 
     // Lay distinct khach dau cuoi + thong tin don gan nhat
+    // gom khach duoc tao voi parent_id = dealerId HOAC khach co don hang (end_customer_id)
     const [rows] = await db.query(
       `SELECT
          ec.id, ec.code, ec.full_name, ec.phone, ec.address, ec.note,
          COUNT(o.id)             AS order_count,
          MAX(o.created_at)       AS last_order_at,
          MAX(o.completed_at)     AS last_completed_at
-       FROM orders o
-       JOIN customers ec ON ec.id = o.end_customer_id
-       WHERE o.customer_id = ? AND o.is_deleted = 0 AND ec.is_deleted = 0
+       FROM customers ec
+       LEFT JOIN orders o ON o.end_customer_id = ec.id AND o.customer_id = ? AND o.is_deleted = 0
+       WHERE ec.is_deleted = 0 AND (ec.parent_id = ? OR o.id IS NOT NULL)
        GROUP BY ec.id, ec.code, ec.full_name, ec.phone, ec.address, ec.note
-       ORDER BY MAX(o.created_at) DESC`,
-      [dealerId]
+       ORDER BY MAX(o.created_at) DESC, ec.id DESC`,
+      [dealerId, dealerId]
     );
     res.json({ items: rows });
   } catch (err) { next(err); }

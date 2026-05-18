@@ -431,8 +431,8 @@ router.post('/orders', async (req, res, next) => {
           }
           seq++;
           await conn.query(
-            `INSERT INTO order_field_values (order_id, line_id, template_field_id, label, value, seq)
-             VALUES (?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO order_field_values (order_id, line_id, template_field_id, label, value, seq, is_deleted)
+             VALUES (?, ?, ?, ?, ?, ?, 0)`,
             [orderId, lineId, fv.template_field_id ? Number(fv.template_field_id) : null,
              label, rawVal, seq]
           );

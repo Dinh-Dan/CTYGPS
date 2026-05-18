@@ -214,7 +214,7 @@
   function orderBadgeHtml(m) {
     if (!m.order_id) return '';
     const code = m.order_code || ('Đơn #' + m.order_id);
-    return `<a class="pill order-tag" href="/admin/orders.html#order-${m.order_id}"
+    return `<a class="pill order-tag" href="/admin/orders.html#order-${m.order_id}" data-order-quick="${m.order_id}"
               style="margin-bottom:3px">📦 ${escape(code)}</a><br>`;
   }
 

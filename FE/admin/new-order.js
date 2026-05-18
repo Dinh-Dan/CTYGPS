@@ -23,22 +23,29 @@
     return new Intl.NumberFormat('vi-VN').format(v);
   }
 
+  // Truong mac dinh trong hop thong tin moi san pham
+  const DEFAULT_ITEM_FIELDS = ['Biển số xe', 'IMEI', 'Tên tài khoản', 'Số SIM'];
+
   const state = {
-    templates: [],         // [{id, name, fields: [...]}]
+    templates: [],         // [{id, name}]
     templateById: {},      // {id: tplFullDetail}
     customer: null,
     custResults: [],
     custFilter: { q: '', name: '', phone: '', type: '' },
     custPanelOpen: false,
     products: [],
-    lines: [],             // [{lid, template_id, customFields:[{label,value}], items:[{product_id,qty,unit_price}], charges:[{kind,label,amount}]}]
-    orderCharges: [],      // [{kind, label, amount}] — phi cap don (line_id NULL)
+    staffList: [],         // All employees
+    lines: [],             // [{lid, template_id, custom_name, items:[{product_id,qty,unit_price,field_values:[{label,value}]}], charges:[{kind,label,amount}]}]
+    photos: [],            // [{url, caption}]
+    staffCommissions: [],  // [{staff_id, amount, note}]
   };
 
   function esc(s) {
-    return String(s == null ? '' : s)
-      .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;');
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
   function fmt(n) { return new Intl.NumberFormat('vi-VN').format(Number(n) || 0); }
   function fmtVnd(n) { return fmt(n) + 'đ'; }
@@ -275,30 +282,27 @@
     renderLines();
   }
 
+  function newItem() {
+    return {
+      product_id: 0, qty: 1, unit_price: 0,
+      _infoOpen: false,
+      field_values: DEFAULT_ITEM_FIELDS.map(l => ({ label: l, value: '' })),
+    };
+  }
+
   // ---- LINES --------------------------------------------------
   async function addLine(templateId) {
     const tplId = templateId || (state.templates[0] && state.templates[0].id);
-    if (!tplId) { ui.toast('Chưa có loại đơn nào', 'warning'); return; }
     const line = {
       lid: newLineId(),
-      template_id: tplId,
-      customFields: [],
-      items: [],
+      template_id: tplId || null,
+      custom_name: tplId ? null : 'Công việc mới',
+      items: [newItem()],
       charges: [],
     };
     state.lines.push(line);
-    await loadTemplateDetail(tplId);
-    seedFieldsFromTemplate(line);
+    if (tplId) await loadTemplateDetail(tplId);
     renderLines();
-  }
-
-  // Prefill customFields tu template fields (chi label, value rong).
-  // Khong ghi de neu line da co customFields (truong hop user da chinh tay).
-  function seedFieldsFromTemplate(ln) {
-    if (ln.customFields && ln.customFields.length) return;
-    const tpl = state.templateById[ln.template_id];
-    const fs = (tpl && tpl.fields) || [];
-    ln.customFields = fs.map(f => ({ label: f.label || '', value: '' }));
   }
 
   function removeLine(lid) {
@@ -313,9 +317,7 @@
     if (!ln) return;
     ln.template_id = newTplId;
     ln.custom_name = null;
-    ln.customFields = [];
-    await loadTemplateDetail(newTplId);
-    seedFieldsFromTemplate(ln);
+    if (newTplId) await loadTemplateDetail(newTplId);
     renderLines();
   }
 
@@ -331,15 +333,29 @@
     if (matched) {
       ln.template_id = matched.id;
       ln.custom_name = null;
-      ln.customFields = [];
       await loadTemplateDetail(matched.id);
-      seedFieldsFromTemplate(ln);
     } else {
       ln.template_id = null;
       ln.custom_name = name || null;
-      ln.customFields = ln.customFields || [];
     }
     renderLines();
+  }
+
+  function getLineProductOptions(ln) {
+    const opts = [];
+    for (const it of ln.items) {
+      if (it.product_id) {
+        const p = state.products.find(x => x.id === it.product_id);
+        if (p) opts.push({ id: p.id, name: p.name });
+      }
+    }
+    return opts;
+  }
+
+  function calcVatAmountByRef(ln, productId, pct) {
+    const it = ln.items.find(x => x.product_id === productId);
+    if (!it) return 0;
+    return Math.round((Number(it.qty) || 0) * (Number(it.unit_price) || 0) * (Number(pct) || 0) / 100);
   }
 
   function lineSubtotal(ln) {
@@ -360,65 +376,116 @@
     updateBill();
   }
 
+  function renderItemInfoBox(it, ii, lid) {
+    const fvs = it.field_values || [];
+    const isOpen = it._infoOpen === true;
+    const filled = fvs.filter(f => (f.value || '').trim());
+    const summary = filled.length ? filled.map(f => `${f.label}: ${f.value}`).join(' · ') : 'Chưa nhập';
+    return `
+      <div class="item-info-box ${isOpen ? 'open' : ''}" data-lid="${lid}" data-ii="${ii}">
+        <div class="info-toggle" data-act="toggle-info">
+          <span class="chev">${isOpen ? '▼' : '▶'}</span>
+          <span>Hộp thông tin</span>
+          <span class="info-summary">${esc(summary)}</span>
+        </div>
+        <div class="info-body" style="${isOpen ? '' : 'display:none'}">
+          ${fvs.map((f, fi) => `
+            <div class="fv-row" data-fi="${fi}" style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+              <input type="text" class="input fv-label" placeholder="Tên trường" value="${esc(f.label||'')}"
+                     style="flex:1;font-size:12px" ${DEFAULT_ITEM_FIELDS.includes(f.label) ? 'readonly' : ''}>
+              <input type="text" class="input fv-value" placeholder="Giá trị" value="${esc(f.value||'')}"
+                     style="flex:2;font-size:12px">
+              <button type="button" class="btn-x" data-act="del-fv" title="Xoá">×</button>
+            </div>`).join('')}
+          <div style="display:flex;gap:6px;margin-top:4px">
+            <input type="text" class="input fv-new-label" placeholder="Tên trường mới" style="flex:1;font-size:12px">
+            <input type="text" class="input fv-new-value" placeholder="Giá trị" style="flex:2;font-size:12px">
+            <button type="button" class="add" data-act="add-fv" style="white-space:nowrap">+ Thêm</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
   function renderLineCard(ln, seq) {
     const tpl = state.templateById[ln.template_id];
     const lineName = ln.custom_name || (tpl ? tpl.name : '');
-    if (!ln.customFields) ln.customFields = [];
-
-    // Tom tat fields da nhap (de hien khi collapse)
-    const filled = ln.customFields.filter(f => (f.label || '').trim() && (f.value || '').trim());
-    const summary = filled.length
-      ? filled.map(f => `${f.label}: ${f.value}`).join(' · ')
-      : 'Chưa nhập';
-    const isOpen = ln._fieldsOpen === true;
-    const fieldsHtml = `
-      <div class="line-section">
-        <div class="fields-toggle ${isOpen ? 'on' : ''}" data-act="toggle-fields">
-          <span class="chev">▶</span>
-          <span>Thông tin</span>
-          <span class="summary">${esc(summary)}</span>
-        </div>
-        <div class="fields-body ${isOpen ? 'on' : ''}">
-          ${ln.customFields.map((f, fi) => renderCustomField(ln, f, fi)).join('')}
-          <div style="margin-top:6px"><button type="button" class="add" data-act="add-field">+ Thêm thông tin</button></div>
-        </div>
-      </div>`;
 
     const itemsHtml = ln.items.length ? ln.items.map((it, ii) => {
       const lineTotal = (Number(it.qty) || 0) * (Number(it.unit_price) || 0);
       const pCur = state.products.find(p => p.id === it.product_id);
       const pName = pCur ? pCur.name : '';
       return `
-        <div class="ic-row items-grid" data-lid="${ln.lid}" data-ii="${ii}">
-          <div class="cell">
-            <div class="prod-combo ${pName ? 'has-val' : ''}">
-              <input type="text" class="ic-input product-pick"
-                     placeholder="Tìm sản phẩm..." value="${esc(pName)}" autocomplete="off">
-              <button type="button" class="clear" tabindex="-1" title="Xoá">×</button>
-              <div class="prod-dd"></div>
+        <div class="item-block" data-lid="${ln.lid}" data-ii="${ii}">
+          <div class="ic-row items-grid">
+            <div class="cell">
+              <div class="prod-combo ${pName ? 'has-val' : ''}">
+                <input type="text" class="ic-input product-pick"
+                       placeholder="Tìm sản phẩm..." value="${esc(pName)}" autocomplete="off">
+                <button type="button" class="clear" tabindex="-1" title="Xoá">×</button>
+                <div class="prod-dd"></div>
+              </div>
             </div>
+            <div class="cell"><input type="text" inputmode="numeric" class="ic-input num qty" value="${fmtNum(it.qty || 1)}"></div>
+            <div class="cell"><input type="text" inputmode="numeric" class="ic-input num price" value="${fmtNum(it.unit_price || 0)}"></div>
+            <div class="cell line-total">${fmtVnd(lineTotal)}</div>
+            <div class="cell"><button type="button" class="btn-x" data-act="del-item">×</button></div>
           </div>
-          <div class="cell"><input type="text" inputmode="numeric" class="ic-input num qty" value="${fmtNum(it.qty || 1)}"></div>
-          <div class="cell"><input type="text" inputmode="numeric" class="ic-input num price" value="${fmtNum(it.unit_price || 0)}"></div>
-          <div class="cell line-total">${fmtVnd(lineTotal)}</div>
-          <div class="cell"><button type="button" class="btn-x" data-act="del-item">×</button></div>
+          ${renderItemInfoBox(it, ii, ln.lid)}
         </div>`;
     }).join('') : '<div class="ic-empty">Chưa có sản phẩm</div>';
 
-    const chargesHtml = ln.charges.length ? ln.charges.map((c, ci) => `
+    const chargesHtml = ln.charges.length ? ln.charges.map((c, ci) => {
+      if (c.kind === 'vat') {
+        const vatPct = c.vat_percent != null ? c.vat_percent : 10;
+        const pOpts = getLineProductOptions(ln);
+        const lblVal = c.label || '';
+        return `
+      <div class="ic-row charges-grid vat-row" data-lid="${ln.lid}" data-ci="${ci}">
+        <div class="cell">
+          <select class="ic-select kind">
+            <option value="fee">Phí</option>
+            <option value="shipping">Ship</option>
+            <option value="discount">Giảm</option>
+            <option value="vat" selected>VAT</option>
+          </select>
+        </div>
+        <div class="cell" style="display:flex; gap:6px; align-items:center;">
+          <div class="vat-lbl-combo" style="flex:1; position:relative;">
+            <input type="text" class="ic-input lbl vat-lbl-inp" autocomplete="off"
+                   placeholder="Mô tả / chọn sản phẩm..."
+                   value="${esc(lblVal)}"
+                   data-pid="${c.vat_product_id || ''}"
+                   style="width:100%">
+            <div class="vat-lbl-dd"></div>
+          </div>
+          <div style="position:relative; width:70px;" title="Nhập hoặc chọn % VAT">
+            <input type="text" list="dl-vat-${ln.lid}-${ci}" inputmode="numeric" class="ic-input num vat-percent-custom" style="width:100%; padding-right:18px; text-align:right" value="${vatPct}">
+            <datalist id="dl-vat-${ln.lid}-${ci}">
+              <option value="8">8%</option>
+              <option value="10">10%</option>
+            </datalist>
+            <span style="position:absolute; right:6px; top:50%; transform:translateY(-50%); color:#888; font-size:12px; pointer-events:none;">%</span>
+          </div>
+        </div>
+        <div class="cell"><input type="text" inputmode="numeric" class="ic-input num amt" value="${fmtNum(c.amount)}" placeholder="0"></div>
+        <div class="cell"><button type="button" class="btn-x" data-act="del-charge">×</button></div>
+      </div>`;
+      }
+      return `
       <div class="ic-row charges-grid" data-lid="${ln.lid}" data-ci="${ci}">
         <div class="cell">
           <select class="ic-select kind">
             <option value="fee"      ${c.kind === 'fee'      ? 'selected' : ''}>Phí</option>
             <option value="shipping" ${c.kind === 'shipping' ? 'selected' : ''}>Ship</option>
             <option value="discount" ${c.kind === 'discount' ? 'selected' : ''}>Giảm</option>
+            <option value="vat"      ${c.kind === 'vat'      ? 'selected' : ''}>VAT</option>
           </select>
         </div>
         <div class="cell"><input type="text" class="ic-input lbl" value="${esc(c.label)}" placeholder="Mô tả..."></div>
         <div class="cell"><input type="text" inputmode="numeric" class="ic-input num amt" value="${fmtNum(c.amount)}" placeholder="0"></div>
         <div class="cell"><button type="button" class="btn-x" data-act="del-charge">×</button></div>
       </div>
-    `).join('') : '<div class="ic-empty">Chưa có chi phí</div>';
+    `}).join('') : '<div class="ic-empty">Chưa có chi phí</div>';
 
     return `
       <div class="line-card" data-lid="${ln.lid}">
@@ -426,7 +493,7 @@
           <div class="seq">${seq}</div>
           <div class="tpl-combo">
             <input type="text" class="tpl-input" value="${esc(lineName)}"
-                   placeholder="Loại / tên công việc..." autocomplete="off">
+                   placeholder="Loại nhiệm vụ..." autocomplete="off">
             <button type="button" class="tpl-caret" tabindex="-1">▾</button>
             <div class="tpl-pop" hidden></div>
           </div>
@@ -434,8 +501,6 @@
           <button type="button" class="x-btn" data-act="del-line">Xoá dòng</button>
         </div>
         <div class="line-body">
-          ${fieldsHtml}
-
           <div class="line-section">
             <div class="sh">Sản phẩm <button type="button" class="add" data-act="add-item">+ Thêm SP</button></div>
             <div class="ic-table">
@@ -451,7 +516,7 @@
           </div>
 
           <div class="line-section">
-            <div class="sh">Chi phí của dòng <button type="button" class="add" data-act="add-charge">+ Thêm phí</button></div>
+            <div class="sh">Phụ phí / Giảm giá <button type="button" class="add" data-act="add-charge">+ Thêm phí</button></div>
             <div class="ic-table">
               <div class="ic-thead charges-grid">
                 <div class="cell">Loại</div>
@@ -463,15 +528,6 @@
             </div>
           </div>
         </div>
-      </div>`;
-  }
-
-  function renderCustomField(ln, f, fi) {
-    return `
-      <div class="cf-row" data-fi="${fi}" style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
-        <input type="text" class="input cf-label" placeholder="Nhãn (vd: Biển số)" value="${esc(f.label || '')}" style="flex:1">
-        <input type="text" class="input cf-value" placeholder="Giá trị" value="${esc(f.value || '')}" style="flex:2">
-        <button type="button" class="btn-x" data-act="del-field" title="Xoá">×</button>
       </div>`;
   }
 
@@ -671,68 +727,81 @@
       });
       card.querySelector('[data-act=del-line]').addEventListener('click', () => removeLine(lid));
       card.querySelector('[data-act=add-item]').addEventListener('click', () => {
-        ln.items.push({ product_id: 0, qty: 1, unit_price: 0 });
+        ln.items.push(newItem());
         renderLines();
       });
       card.querySelector('[data-act=add-charge]').addEventListener('click', () => {
-        ln.charges.push({ kind: 'fee', label: '', amount: 0 });
+        ln.charges.push({ kind: 'fee', label: '', amount: 0, vat_percent: 10, vat_product_id: null });
         renderLines();
       });
 
-      // Toggle "Thong tin"
-      const toggle = card.querySelector('[data-act=toggle-fields]');
-      if (toggle) {
-        toggle.addEventListener('click', () => {
-          ln._fieldsOpen = !ln._fieldsOpen;
-          renderLines();
-        });
-      }
+      // item-block: hop thong tin + product combo
+      card.querySelectorAll('.item-block').forEach(block => {
+        const ii = Number(block.dataset.ii);
+        const it = ln.items[ii];
+        if (!it) return;
 
-      // custom field rows: chi update state, khong re-render (giu focus)
-      card.querySelectorAll('.cf-row').forEach(row => {
-        const fi = Number(row.dataset.fi);
-        row.querySelector('.cf-label').addEventListener('input', (e) => {
-          if (ln.customFields[fi]) ln.customFields[fi].label = e.target.value;
-        });
-        row.querySelector('.cf-value').addEventListener('input', (e) => {
-          if (ln.customFields[fi]) ln.customFields[fi].value = e.target.value;
-        });
-        row.querySelector('[data-act=del-field]').addEventListener('click', () => {
-          ln.customFields.splice(fi, 1);
-          renderLines();
-        });
-      });
-      const addFieldBtn = card.querySelector('[data-act=add-field]');
-      if (addFieldBtn) {
-        addFieldBtn.addEventListener('click', () => {
-          ln.customFields.push({ label: '', value: '' });
-          ln._fieldsOpen = true;
-          renderLines();
-        });
-      }
+        // Toggle hop thong tin
+        const infoToggle = block.querySelector('[data-act=toggle-info]');
+        if (infoToggle) {
+          infoToggle.addEventListener('click', () => {
+            it._infoOpen = !it._infoOpen;
+            const body = block.querySelector('.info-body');
+            const chev = block.querySelector('.chev');
+            if (body) body.style.display = it._infoOpen ? '' : 'none';
+            if (chev) chev.textContent = it._infoOpen ? '▼' : '▶';
+          });
+        }
 
-      // items
-      card.querySelectorAll('.line-items .ic-row').forEach(row => {
-        const ii = Number(row.dataset.ii);
-        bindProductCombo(row, ln, ii);
-        // qty: parse + format on blur (giu focus khong re-render)
-        const qtyEl = row.querySelector('.qty');
+        // Field value rows (chi update state, khong re-render)
+        block.querySelectorAll('.fv-row').forEach(row => {
+          const fi = Number(row.dataset.fi);
+          const fv = it.field_values && it.field_values[fi];
+          if (!fv) return;
+          row.querySelector('.fv-label').addEventListener('input', (e) => { fv.label = e.target.value; });
+          row.querySelector('.fv-value').addEventListener('input', (e) => { fv.value = e.target.value; });
+          row.querySelector('[data-act=del-fv]').addEventListener('click', () => {
+            it.field_values.splice(fi, 1);
+            renderLines();
+          });
+        });
+
+        // Them field moi
+        const addFvBtn = block.querySelector('[data-act=add-fv]');
+        if (addFvBtn) {
+          addFvBtn.addEventListener('click', () => {
+            const lblEl = block.querySelector('.fv-new-label');
+            const valEl = block.querySelector('.fv-new-value');
+            const lbl = (lblEl?.value || '').trim();
+            if (!lbl) { ui.toast('Nhập tên trường trước', 'warning'); return; }
+            if (!it.field_values) it.field_values = [];
+            it.field_values.push({ label: lbl, value: (valEl?.value || '').trim() });
+            it._infoOpen = true;
+            renderLines();
+          });
+        }
+
+        // Product combo — dùng row items-grid bên trong block
+        const itemRow = block.querySelector('.ic-row.items-grid');
+        if (itemRow) bindProductCombo(itemRow, ln, ii);
+        // qty / price
+        const qtyEl = block.querySelector('.qty');
         qtyEl.addEventListener('input', (e) => {
-          ln.items[ii].qty = Math.max(1, parseNum(e.target.value) || 1);
+          it.qty = Math.max(1, parseNum(e.target.value) || 1);
           updateLineTotals(card, ln);
         });
-        qtyEl.addEventListener('blur', (e) => { e.target.value = fmtNum(ln.items[ii].qty); });
-        qtyEl.addEventListener('focus', (e) => { e.target.value = String(ln.items[ii].qty); e.target.select(); });
+        qtyEl.addEventListener('blur', (e) => { e.target.value = fmtNum(it.qty); });
+        qtyEl.addEventListener('focus', (e) => { e.target.value = String(it.qty); e.target.select(); });
 
-        const priceEl = row.querySelector('.price');
+        const priceEl = block.querySelector('.price');
         priceEl.addEventListener('input', (e) => {
-          ln.items[ii].unit_price = Math.max(0, parseNum(e.target.value));
+          it.unit_price = Math.max(0, parseNum(e.target.value));
           updateLineTotals(card, ln);
         });
-        priceEl.addEventListener('blur', (e) => { e.target.value = fmtNum(ln.items[ii].unit_price); });
-        priceEl.addEventListener('focus', (e) => { e.target.value = String(ln.items[ii].unit_price); e.target.select(); });
+        priceEl.addEventListener('blur', (e) => { e.target.value = fmtNum(it.unit_price); });
+        priceEl.addEventListener('focus', (e) => { e.target.value = String(it.unit_price); e.target.select(); });
 
-        row.querySelector('[data-act=del-item]').addEventListener('click', () => {
+        block.querySelector('[data-act=del-item]').addEventListener('click', () => {
           ln.items.splice(ii, 1);
           renderLines();
         });
@@ -742,11 +811,107 @@
       card.querySelectorAll('.line-charges .ic-row').forEach(row => {
         const ci = Number(row.dataset.ci);
         row.querySelector('.kind').addEventListener('change', (e) => {
-          ln.charges[ci].kind = e.target.value; renderLines();
+          const newKind = e.target.value;
+          ln.charges[ci].kind = newKind;
+          if (newKind === 'vat') {
+            if (ln.charges[ci].vat_percent == null) ln.charges[ci].vat_percent = 10;
+            const pOpts = getLineProductOptions(ln);
+            if (pOpts.length > 0 && !ln.charges[ci].vat_product_id) {
+              ln.charges[ci].vat_product_id = pOpts[0].id;
+              if (!ln.charges[ci].label) ln.charges[ci].label = `VAT cho sản phẩm ${pOpts[0].name}`;
+            }
+            if (ln.charges[ci].vat_product_id) {
+               ln.charges[ci].amount = calcVatAmountByRef(ln, ln.charges[ci].vat_product_id, ln.charges[ci].vat_percent);
+            }
+          }
+          renderLines();
         });
+
+        if (ln.charges[ci].kind === 'vat') {
+           // ---- VAT label combobox (gộp dropdown + input) ----
+           const vatCombo = row.querySelector('.vat-lbl-combo');
+           if (vatCombo) {
+             const vatInp = vatCombo.querySelector('.vat-lbl-inp');
+             const vatDd  = vatCombo.querySelector('.vat-lbl-dd');
+             const pOpts  = getLineProductOptions(ln);
+             let vatScrollH = null;
+
+             function positionVatDd() {
+               const r = vatInp.getBoundingClientRect();
+               vatDd.style.left  = r.left + 'px';
+               vatDd.style.top   = (r.bottom + 2) + 'px';
+               vatDd.style.width = Math.max(r.width, 220) + 'px';
+             }
+             function openVatDd(items) {
+               if (!items.length) { closeVatDd(); return; }
+               vatDd.innerHTML = items.map(p =>
+                 `<div class="vat-dd-opt" data-pid="${p.id}">VAT cho sản phẩm <b>${esc(p.name)}</b></div>`
+               ).join('');
+               vatDd.querySelectorAll('.vat-dd-opt').forEach(opt => {
+                 opt.addEventListener('mousedown', e => {
+                   e.preventDefault();
+                   const pid = Number(opt.dataset.pid);
+                   const p   = pOpts.find(x => x.id === pid);
+                   if (p) {
+                     ln.charges[ci].vat_product_id = pid;
+                     ln.charges[ci].label = `VAT cho sản phẩm ${p.name}`;
+                     vatInp.value = ln.charges[ci].label;
+                     vatInp.dataset.pid = pid;
+                     ln.charges[ci].amount = calcVatAmountByRef(ln, pid, ln.charges[ci].vat_percent);
+                     const amtEl = row.querySelector('.amt');
+                     if (amtEl) { amtEl.value = fmtNum(ln.charges[ci].amount); updateLineTotals(card, ln); }
+                   }
+                   closeVatDd();
+                 });
+               });
+               positionVatDd();
+               vatDd.classList.add('on');
+               if (!vatScrollH) {
+                 vatScrollH = () => positionVatDd();
+                 window.addEventListener('scroll', vatScrollH, true);
+                 window.addEventListener('resize', vatScrollH);
+               }
+             }
+             function closeVatDd() {
+               vatDd.classList.remove('on');
+               if (vatScrollH) {
+                 window.removeEventListener('scroll', vatScrollH, true);
+                 window.removeEventListener('resize', vatScrollH);
+                 vatScrollH = null;
+               }
+             }
+             function filterVatOpts(q) {
+               const s = (q || '').trim().toLowerCase();
+               if (!s) return pOpts;
+               return pOpts.filter(p => p.name.toLowerCase().includes(s) || `vat cho sản phẩm ${p.name}`.toLowerCase().includes(s));
+             }
+             vatInp.addEventListener('focus', () => openVatDd(filterVatOpts('')));
+             vatInp.addEventListener('input', e => {
+               ln.charges[ci].label = e.target.value;
+               if (!e.target.value.trim()) {
+                 ln.charges[ci].vat_product_id = null;
+                 vatInp.dataset.pid = '';
+               }
+               openVatDd(filterVatOpts(e.target.value));
+               updateBill();
+             });
+             vatInp.addEventListener('blur', () => setTimeout(() => closeVatDd(), 150));
+           }
+
+           const pctCustom = row.querySelector('.vat-percent-custom');
+           if (pctCustom) pctCustom.addEventListener('input', (e) => {
+              ln.charges[ci].vat_percent = parseNum(e.target.value);
+              if (ln.charges[ci].vat_product_id) {
+                 ln.charges[ci].amount = calcVatAmountByRef(ln, ln.charges[ci].vat_product_id, ln.charges[ci].vat_percent);
+                 const amtEl = row.querySelector('.amt');
+                 if (amtEl) { amtEl.value = fmtNum(ln.charges[ci].amount); updateLineTotals(card, ln); }
+              }
+           });
+        } else {
         row.querySelector('.lbl').addEventListener('input', (e) => {
           ln.charges[ci].label = e.target.value; updateBill();
         });
+        }
         const amtEl = row.querySelector('.amt');
         amtEl.addEventListener('input', (e) => {
           ln.charges[ci].amount = parseNum(e.target.value);
@@ -762,57 +927,39 @@
     });
   }
 
-  // Cap nhat thanh tien tung row + sub-show + bill (giu focus, khong re-render line card)
   function updateLineTotals(card, ln) {
-    card.querySelectorAll('.line-items .ic-row').forEach(row => {
-      const ii = Number(row.dataset.ii);
+    card.querySelectorAll('.item-block').forEach(block => {
+      const ii = Number(block.dataset.ii);
       const it = ln.items[ii];
       if (!it) return;
       const lineTotal = (Number(it.qty) || 0) * (Number(it.unit_price) || 0);
-      const cell = row.querySelector('.line-total');
+      const cell = block.querySelector('.line-total');
       if (cell) cell.textContent = fmtVnd(lineTotal);
     });
+    
+    let vatChanged = false;
+    ln.charges.forEach((c, ci) => {
+       if (c.kind === 'vat' && c.vat_product_id) {
+          const oldAmt = c.amount;
+          c.amount = calcVatAmountByRef(ln, c.vat_product_id, c.vat_percent);
+          if (c.amount !== oldAmt) vatChanged = true;
+       }
+    });
+    if (vatChanged) {
+       card.querySelectorAll('.line-charges .ic-row').forEach(row => {
+          const ci = Number(row.dataset.ci);
+          if (ln.charges[ci].kind === 'vat') {
+             const amtEl = row.querySelector('.amt');
+             if (amtEl) amtEl.value = fmtNum(ln.charges[ci].amount);
+          }
+       });
+    }
+
     const subEl = card.querySelector('.sub-show');
     if (subEl) subEl.textContent = fmtVnd(lineSubtotal(ln));
     updateBill();
   }
 
-  // ---- ORDER CHARGES (cap don) --------------------------------
-  function renderOrderCharges() {
-    const $box = document.getElementById('orderChargesBox');
-    if (!state.orderCharges.length) {
-      $box.innerHTML = '<div class="ic-empty">Chưa có chi phí khác.</div>';
-      updateBill();
-      return;
-    }
-    $box.innerHTML = state.orderCharges.map((c, idx) => `
-      <div class="ic-row charges-grid" data-idx="${idx}">
-        <div class="cell">
-          <select class="ic-select kind">
-            <option value="shipping" ${c.kind === 'shipping' ? 'selected' : ''}>Ship</option>
-            <option value="discount" ${c.kind === 'discount' ? 'selected' : ''}>Giảm</option>
-            <option value="fee"      ${c.kind === 'fee'      ? 'selected' : ''}>Phí</option>
-          </select>
-        </div>
-        <div class="cell"><input type="text" class="ic-input lbl" value="${esc(c.label)}" placeholder="Mô tả..."></div>
-        <div class="cell"><input type="text" inputmode="numeric" class="ic-input num amt" value="${fmtNum(c.amount)}" placeholder="0"></div>
-        <div class="cell"><button type="button" class="btn-x" data-act="del-och">×</button></div>
-      </div>
-    `).join('');
-    $box.querySelectorAll('.ic-row').forEach(row => {
-      const idx = Number(row.dataset.idx);
-      row.querySelector('.kind').addEventListener('change', (e) => { state.orderCharges[idx].kind = e.target.value; updateBill(); });
-      row.querySelector('.lbl').addEventListener('input', (e) => { state.orderCharges[idx].label = e.target.value; updateBill(); });
-      const amtEl = row.querySelector('.amt');
-      amtEl.addEventListener('input', (e) => { state.orderCharges[idx].amount = parseNum(e.target.value); updateBill(); });
-      amtEl.addEventListener('blur', (e) => { e.target.value = fmtNum(state.orderCharges[idx].amount); });
-      amtEl.addEventListener('focus', (e) => { e.target.value = String(state.orderCharges[idx].amount); e.target.select(); });
-      row.querySelector('[data-act=del-och]').addEventListener('click', () => {
-        state.orderCharges.splice(idx, 1); renderOrderCharges();
-      });
-    });
-    updateBill();
-  }
 
   // ---- PRODUCTS / STAFF ---------------------------------------
   async function loadProducts() {
@@ -822,16 +969,27 @@
     state.products = (res && res.items) || [];
   }
   async function loadStaff() {
-    const res = await api.get('/admin/staff?role=kithuat&limit=200').catch(() => null);
-    const items = (res && res.items) || [];
+    // Lay tat ca nhan vien khong phan biet role (admin, kithuat, staff)
+    const res = await api.get('/admin/staff?limit=500').catch(() => null);
+    state.staffList = (res && res.items) || [];
     const $sel = document.getElementById('f_staff');
     $sel.innerHTML = '<option value="">— Chưa gán —</option>' +
-      items.map(s => `<option value="${s.id}">${esc(s.full_name)}</option>`).join('');
+      state.staffList.map(s => `<option value="${s.id}">${esc(s.full_name)} (${esc(s.role)})</option>`).join('');
+    
+    // Cap nhat dropdown cho staff commission inline
+    const $scSel = document.getElementById('f_sc_staff');
+    if ($scSel) {
+      $scSel.innerHTML = '<option value="">— Chọn nhân viên —</option>' +
+        state.staffList.map(s => `<option value="${s.id}">${esc(s.full_name)} (${esc(s.role)})</option>`).join('');
+    }
+
+    // Cap nhat dropdown cho staff commission neu dang co form mo
+    renderStaffCommissions();
   }
 
   // ---- BILL ---------------------------------------------------
   const PAY_LABEL = { cash: '💵 Tiền mặt', transfer: '🏦 Chuyển khoản', debt: '📒 Ghi nợ' };
-  const KIND_LABEL = { fee: 'Phí', shipping: 'Ship', discount: 'Giảm giá' };
+  const KIND_LABEL = { fee: 'Phí', shipping: 'Ship', discount: 'Giảm giá', vat: 'VAT' };
 
   function updateBill() {
     document.getElementById('billDate').textContent = todayVN();
@@ -887,30 +1045,10 @@
       }).join('');
     }
 
-    // order charges
-    const validOC = state.orderCharges.filter(c => (c.label || '').trim() || c.amount);
-    const $ocWrap = document.getElementById('billOrderChargesWrap');
-    const $oc = document.getElementById('billOrderCharges');
-    if (!validOC.length) {
-      $ocWrap.style.display = 'none';
-    } else {
-      $ocWrap.style.display = '';
-      $oc.innerHTML = validOC.map(c => {
-        const amt = Number(c.amount) || 0;
-        const cls = amt < 0 ? 'amt neg' : 'amt';
-        return `<div class="bill-line">
-          <div class="nm">${esc(c.label || KIND_LABEL[c.kind] || 'Khác')}<span class="qp">${KIND_LABEL[c.kind] || c.kind}</span></div>
-          <div class="${cls}">${fmtVnd(amt)}</div>
-        </div>`;
-      }).join('');
-    }
-
     // totals
     const lineSum = state.lines.reduce((s, ln) => s + lineSubtotal(ln), 0);
-    const ocSum = state.orderCharges.reduce((s, c) => s + (Number(c.amount) || 0), 0);
-    const grand = lineSum + ocSum;
+    const grand = lineSum;
     document.getElementById('billLineSum').textContent  = fmtVnd(lineSum);
-    document.getElementById('billOrderChSum').textContent = fmtVnd(ocSum);
     const $tot = document.getElementById('billTotal');
     $tot.textContent = fmtVnd(Math.max(0, grand));
     if (grand < 0) {
@@ -924,17 +1062,158 @@
       PAY_LABEL[document.getElementById('f_pay').value] || '—';
   }
 
+  // ---- PHOTOS -------------------------------------------------
+  function renderPhotos() {
+    const $box = document.getElementById('photosPreview');
+    if (!state.photos.length) {
+      $box.innerHTML = '<div style="color:#94a3b8; font-size:12px; font-style:italic">Chưa có ảnh nào</div>';
+      return;
+    }
+    $box.innerHTML = state.photos.map((p, idx) => `
+      <div style="position:relative; width:80px; height:80px; border:1px solid var(--border); border-radius:6px; overflow:hidden">
+        <img src="${esc(p.url)}" style="width:100%; height:100%; object-fit:cover">
+        <button type="button" data-idx="${idx}" class="btn-del-photo" style="position:absolute; top:2px; right:2px; background:rgba(220,38,38,0.8); color:#fff; border:none; border-radius:4px; width:20px; height:20px; cursor:pointer; font-size:12px; display:grid; place-items:center">×</button>
+      </div>
+    `).join('');
+    $box.querySelectorAll('.btn-del-photo').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.photos.splice(Number(btn.dataset.idx), 1);
+        renderPhotos();
+      });
+    });
+  }
+
+  async function handlePhotoUpload(e) {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    
+    for (const file of files) {
+      ui.toast('Đang upload: ' + file.name, 'info');
+      try {
+        const url = await imgbb.upload(file);
+        state.photos.push({ url, caption: '' });
+      } catch (err) {
+        ui.toast('Lỗi upload: ' + file.name, 'error');
+      }
+    }
+    renderPhotos();
+    e.target.value = ''; // reset
+  }
+
+  // ---- COMMISSIONS --------------------------------------------
+  function renderStaffCommissions() {
+    const $box = document.getElementById('staffCommBox');
+    if (!$box) return;
+
+    const scCountEl = document.getElementById('scCount');
+    if (scCountEl) {
+      const n = state.staffCommissions.length;
+      scCountEl.textContent = n + ' người';
+      scCountEl.hidden = n === 0;
+    }
+
+    if (!state.staffCommissions.length) {
+      $box.innerHTML = '<div class="sc-empty">Chưa có hoa hồng nào — thêm nhân viên bên dưới</div>';
+      return;
+    }
+
+    const itemsHtml = state.staffCommissions.map((sc, idx) => {
+      const s = state.staffList.find(x => x.id === sc.staff_id);
+      const sName = s ? s.full_name : ('ID: ' + sc.staff_id);
+      const sRole = s ? (s.role || '') : '';
+      const initial = sName.trim().split(/\s+/).slice(-1)[0][0].toUpperCase();
+      const roleLabel = sRole === 'ktv' ? 'KTV' : sRole === 'admin' ? 'Admin' : (sRole ? sRole.toUpperCase() : 'NV');
+      return `
+        <div class="sc-card" data-idx="${idx}">
+          <div class="sc-card-top">
+            <div class="sc-avatar">${initial}</div>
+            <div class="sc-info">
+              <div class="sc-name">${esc(sName)}</div>
+              <span class="sc-role-tag">${roleLabel}</span>
+            </div>
+            <input type="text" inputmode="numeric" class="sc-amt-inp" data-idx="${idx}" value="${fmtNum(sc.amount)}" placeholder="0">
+            <button type="button" class="sc-del" data-act="del-sc" data-idx="${idx}" title="Xoá">×</button>
+          </div>
+          <input type="text" class="sc-note-inp" data-idx="${idx}" placeholder="Ghi chú riêng cho nhân viên này..." value="${esc(sc.note || '')}">
+        </div>
+      `;
+    }).join('');
+
+    $box.innerHTML = itemsHtml;
+
+    $box.querySelectorAll('.sc-amt-inp').forEach(inp => {
+      inp.addEventListener('input', (e) => {
+        const idx = Number(inp.dataset.idx);
+        state.staffCommissions[idx].amount = parseNum(e.target.value);
+      });
+      inp.addEventListener('blur', (e) => {
+        const idx = Number(inp.dataset.idx);
+        e.target.value = fmtNum(state.staffCommissions[idx].amount);
+      });
+      inp.addEventListener('focus', (e) => {
+        const idx = Number(inp.dataset.idx);
+        e.target.value = String(state.staffCommissions[idx].amount);
+        e.target.select();
+      });
+    });
+    $box.querySelectorAll('.sc-note-inp').forEach(inp => {
+      inp.addEventListener('input', (e) => {
+        const idx = Number(inp.dataset.idx);
+        state.staffCommissions[idx].note = e.target.value;
+      });
+    });
+    $box.querySelectorAll('[data-act=del-sc]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.staffCommissions.splice(Number(btn.dataset.idx), 1);
+        renderStaffCommissions();
+      });
+    });
+  }
+
+  function addStaffCommissionRow() {
+    try {
+      const staffId = Number(document.getElementById('f_sc_staff').value);
+      const amount  = parseNum(document.getElementById('f_sc_amt').value);
+      const note    = document.getElementById('f_sc_note').value.trim();
+
+      if (!staffId) { ui.toast('Vui lòng chọn nhân viên', 'warning'); return; }
+      if (amount <= 0) { ui.toast('Vui lòng nhập số tiền hoa hồng > 0', 'warning'); return; }
+
+      state.staffCommissions.push({ staff_id: staffId, amount, note });
+      renderStaffCommissions();
+
+      document.getElementById('f_sc_staff').value = '';
+      document.getElementById('f_sc_amt').value = '0';
+      document.getElementById('f_sc_note').value = '';
+
+      document.getElementById('staffCommBox').lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      ui.toast('Đã thêm hoa hồng nhân viên', 'success');
+    } catch (err) {
+      console.error('addStaffCommissionRow:', err);
+      ui.toast('Lỗi: ' + (err.message || err), 'error');
+    }
+  }
+
   // ---- BOOT + SUBMIT ------------------------------------------
   document.addEventListener('DOMContentLoaded', async () => {
     adminShell.init('new-order');
     renderCustomer();
 
     document.getElementById('btnAddLine').addEventListener('click', () => addLine());
-    document.getElementById('btnAddOrderCharge').addEventListener('click', () => {
-      state.orderCharges.push({ kind: 'shipping', label: '', amount: 0 });
-      renderOrderCharges();
-    });
     document.getElementById('f_pay').addEventListener('change', updateBill);
+
+    // Photos
+    document.getElementById('btnUploadPhoto').addEventListener('click', () => document.getElementById('filePhoto').click());
+    document.getElementById('filePhoto').addEventListener('change', handlePhotoUpload);
+    renderPhotos();
+
+    // Commissions
+    const scAmtEl = document.getElementById('f_sc_amt');
+    scAmtEl.addEventListener('blur',  (e) => { e.target.value = fmtNum(parseNum(e.target.value)); });
+    scAmtEl.addEventListener('focus', (e) => { e.target.value = String(parseNum(e.target.value)); e.target.select(); });
+
+    document.getElementById('btnAddStaffComm').addEventListener('click', addStaffCommissionRow);
+    renderStaffCommissions();
 
     // Format tien cong KTV
     const wageEl = document.getElementById('f_wage');
@@ -950,18 +1229,20 @@
       // Build lines payload
       const linesPayload = [];
       for (const ln of state.lines) {
-        const fvs = [];
-        for (const cf of (ln.customFields || [])) {
-          const lbl = (cf.label || '').trim();
-          const val = (cf.value || '').trim();
-          if (lbl && val) fvs.push({ label: lbl, value: val });
-        }
         const items = ln.items.filter(it => it.product_id && it.qty > 0).map(it => ({
           product_id: it.product_id, qty: it.qty, unit_price: it.unit_price,
+          field_values: (it.field_values || [])
+            .filter(fv => (fv.label || '').trim() && (fv.value || '').trim())
+            .map(fv => ({ label: fv.label.trim(), value: fv.value.trim() })),
         }));
-        const charges = ln.charges.filter(c => (c.label || '').trim()).map(c => ({
-          kind: c.kind, label: c.label.trim(), amount: c.amount,
-        }));
+        const charges = ln.charges.filter(c => (c.label || '').trim() || c.kind === 'vat').map(c => {
+          const out = { kind: c.kind, label: (c.label || '').trim(), amount: c.amount };
+          if (c.kind === 'vat') {
+            out.vat_percent = c.vat_percent;
+            out.vat_product_id = c.vat_product_id;
+          }
+          return out;
+        });
         if (!items.length && !charges.length) {
           ui.toast('Mỗi dòng công việc cần ít nhất 1 sản phẩm hoặc 1 chi phí', 'warning');
           return;
@@ -969,12 +1250,9 @@
         linesPayload.push({
           template_id: ln.template_id || null,
           custom_name: ln.custom_name || null,
-          items, charges, field_values: fvs,
+          items, charges,
         });
       }
-      const orderChargesPayload = state.orderCharges.filter(c => (c.label || '').trim()).map(c => ({
-        kind: c.kind, label: c.label.trim(), amount: c.amount,
-      }));
 
       const staffId = Number(document.getElementById('f_staff').value) || null;
       const wage    = Math.max(0, parseNum(document.getElementById('f_wage').value));
@@ -987,7 +1265,6 @@
         assigned_staff_id: staffId,
         wage_amount: wage,
         lines: linesPayload,
-        order_charges: orderChargesPayload,
         approve: document.getElementById('f_approve').checked,
       };
 
@@ -1004,20 +1281,57 @@
     });
 
     async function submitCreate(body, staffName) {
+      ui.loading(true);
       try {
         const res = await api.post('/admin/orders', body, { silent: true });
         if (res && res.id) {
+          const orderId = res.id;
+          
+          // ---- Follow-up actions ----
+          // 1. Photos
+          for (const p of state.photos) {
+            try {
+              await api.post(`/admin/orders/${orderId}/photos`, { url: p.url, caption: p.caption }, { silent: true });
+            } catch (err) {
+              console.error('Lỗi lưu ảnh', err);
+              ui.toast('Lỗi lưu 1 số ảnh đính kèm', 'warning');
+            }
+          }
+
+          // 2. Staff Commissions
+          const _myRole = auth.user()?.role;
+          for (const sc of state.staffCommissions) {
+            if (sc.amount > 0) {
+              try {
+                if (_myRole === 'staff') {
+                  await api.post(`/admin/orders/${orderId}/my-staff-commission-request`, { staff_id: sc.staff_id, amount: sc.amount, note: sc.note }, { silent: true });
+                } else {
+                  await api.post(`/admin/orders/${orderId}/staff-commissions`, { staff_id: sc.staff_id, amount: sc.amount, note: sc.note }, { silent: true });
+                }
+              } catch (err) {
+                console.error('Lỗi lưu hoa hồng nhân viên', err);
+                ui.toast('Lỗi gán hoa hồng 1 số nhân viên', 'warning');
+              }
+            }
+          }
+
           ui.toast('Đã tạo đơn ' + res.code, 'success');
-          setTimeout(() => { location.href = '/admin/orders.html#order-' + res.id; }, 600);
+          setTimeout(() => { location.href = '/admin/orders.html#order-' + res.id; }, 800);
         }
       } catch (e) {
         if (e.status === 409 && e.data && e.data.code === 'INSUFFICIENT_HOLDINGS') {
           const lacks = (e.data.details && e.data.details.lacks) || [];
+          ui.loading(false);
           const yes = await ui.insufficientHoldingsDialog({ staffName, lacks });
-          if (yes) await submitCreate({ ...body, force: true }, staffName);
-          return;
+          if (yes) {
+            await submitCreate({ ...body, force: true }, staffName);
+            return;
+          }
+        } else {
+          ui.toast(e.message || 'Lỗi tạo đơn', 'error');
         }
-        ui.toast(e.message || 'Lỗi tạo đơn', 'error');
+      } finally {
+        ui.loading(false);
       }
     }
 

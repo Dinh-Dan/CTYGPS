@@ -17,16 +17,17 @@
     { type: 'sep',  label: 'Khách & Đại lý' },
     { type: 'item', href: '/admin/customers.html', icon: '👥', label: 'Khách hàng', key: 'customers', badgeKey: 'customers' },
     { type: 'sep',  label: 'Bán hàng' },
-    { type: 'item', href: '/admin/chat.html',      icon: '💬', label: 'Tin nhắn',   key: 'chat',      badgeKey: 'chat' },
     { type: 'item', href: '/admin/orders.html',    icon: '🛒', label: 'Đơn hàng',   key: 'orders',    badgeKey: 'orders' },
     { type: 'item', href: '/admin/debts.html',     icon: '💳', label: 'Công nợ',    key: 'debts',     badgeKey: 'debts' },
     { type: 'sep',  label: 'Vận hành' },
     { type: 'item', href: '/admin/products.html',    icon: '🏷', label: 'Sản phẩm',     key: 'products' },
     { type: 'item', href: '/admin/inventory.html',   icon: '📦', label: 'Kho thiết bị', key: 'inventory' },
-    { type: 'item', href: '/admin/staff-stock.html', icon: '🎒', label: 'Kho cá nhân KTV', key: 'staff-stock' },
-    { type: 'item', href: '/admin/suppliers.html',   icon: '🏭', label: 'Nhà cung cấp', key: 'suppliers' },
-    { type: 'item', href: '/admin/staff.html', icon: '👷', label: 'Nhân viên', key: 'staff' },
-    { type: 'item', href: '/admin/reports.html',     icon: '📈', label: 'Báo cáo',      key: 'reports' },
+    { type: 'item', href: '/admin/staff.html', icon: '👷', label: 'Nhân viên', key: 'staff', adminOnly: true },
+    { type: 'item', href: '/admin/commissions.html',    icon: '⭐', label: 'Duyệt hoa hồng',   key: 'commissions',    badgeKey: 'commissions', adminOnly: true },
+    { type: 'item', href: '/admin/my-commissions.html', icon: '💰', label: 'Hoa hồng của tôi', key: 'my-commissions', staffOnly: true },
+    { type: 'item', href: '/admin/reports.html',        icon: '📈', label: 'Báo cáo',           key: 'reports' },
+    { type: 'sep',  label: 'Liên hệ' },
+    { type: 'item', href: '/admin/chat.html',      icon: '💬', label: 'Tin nhắn',   key: 'chat',      badgeKey: 'chat' },
     { type: 'sep',  label: 'Hệ thống', adminOnly: true },
     { type: 'item', href: '/admin/settings.html',  icon: '⚙', label: 'Cài đặt',    key: 'settings', adminOnly: true },
   ];
@@ -36,6 +37,7 @@
     const out = [];
     for (const n of NAV) {
       if (n.adminOnly && !isAdmin) continue;
+      if (n.staffOnly && isAdmin) continue;
       out.push(n);
     }
     // Bo sep "mo coi" (sep ma sau no la sep khac hoac het mang)
@@ -154,6 +156,42 @@
   // Don topnav: bo tieu de + nut user (yeu cau tu user)
   function cleanupTopnav() {
     document.querySelectorAll('.topnav-title, #topnav-user').forEach(el => el.remove());
+  }
+
+  // ---- Hamburger + drawer (mobile admin) ---------------------
+  function injectHamburger() {
+    const shellEl = document.querySelector('div.shell');
+    if (!shellEl) return;
+    const topnav = shellEl.querySelector('.main .topnav');
+    if (!topnav || document.getElementById('admin-hamburger-btn')) return;
+
+    // Backdrop trong shell div
+    if (!document.getElementById('admin-drawer-bg')) {
+      const bg = document.createElement('div');
+      bg.id = 'admin-drawer-bg';
+      bg.className = 'admin-drawer-bg';
+      shellEl.appendChild(bg);
+      bg.addEventListener('click', () => shellEl.classList.remove('menu-open'));
+    }
+
+    // Nut hamburger prepend vao dau topnav
+    const btn = document.createElement('button');
+    btn.id = 'admin-hamburger-btn';
+    btn.className = 'admin-hamburger';
+    btn.type = 'button';
+    btn.setAttribute('aria-label', 'Mở menu');
+    btn.textContent = '☰';
+    topnav.prepend(btn);
+
+    btn.addEventListener('click', () => shellEl.classList.toggle('menu-open'));
+
+    // Click vao link trong sidebar -> dong drawer
+    const sb = document.getElementById('sidebar');
+    if (sb) {
+      sb.addEventListener('click', (e) => {
+        if (e.target.closest('a')) shellEl.classList.remove('menu-open');
+      });
+    }
   }
 
   // ---- Bell + Dropdown ---------------------------------------
@@ -480,11 +518,13 @@
     const u = auth.user();   // co the null
 
     injectStyle();
+    document.body.classList.add('admin-shell');
 
     const sb = document.getElementById('sidebar');
     if (sb) sb.innerHTML = renderSidebar(activeKey);
 
     cleanupTopnav();
+    injectHamburger();
     injectBell();
 
     document.body.addEventListener('click', (e) => {

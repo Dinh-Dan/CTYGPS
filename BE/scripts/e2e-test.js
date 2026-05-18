@@ -178,6 +178,7 @@ async function login(role, user, pwd) {
   // ============================================================
   section('10) KTV: upload anh');
   await req('POST', `/api/kithuat/orders/${orderId}/photos`, {
+    step_code: 'in_progress',
     url: 'https://i.ibb.co/abc1234/test-photo.jpg',
     caption: 'Anh truoc khi lap',
   }, ktvTok);
@@ -272,8 +273,17 @@ function finish() {
   if (errors.length) {
     console.log('\nDanh sach loi:');
     for (const e of errors) {
-      console.log(color('r', `  #${pad(e.step)} ${e.method} ${e.path} -> ${e.status}`));
-      console.log('     ' + JSON.stringify(e.body).slice(0, 300));
+      const method = e.method || 'N/A';
+      const status = e.status == null ? 'N/A' : e.status;
+      let bodyPreview = '';
+      try {
+        bodyPreview = JSON.stringify(e.body);
+      } catch (_) {
+        bodyPreview = String(e.body || '');
+      }
+      if (!bodyPreview && e.err) bodyPreview = String(e.err);
+      console.log(color('r', `  #${pad(e.step)} ${method} ${e.path} -> ${status}`));
+      console.log('     ' + String(bodyPreview || '').slice(0, 300));
     }
   }
   process.exit(errors.length ? 1 : 0);

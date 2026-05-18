@@ -18,9 +18,11 @@
   }
 
   const state = {
-    filters: { code: '', type: '', name: '', phone: '', email: '' },
+    filters: { code: '', type: '', name: '', phone: '' },
     page: 1, limit: 20, total: 0,
   };
+
+  let lastItems = [];
 
   // ---- Util ---------------------------------------------------
   function escape(s) {
@@ -66,17 +68,18 @@
       return;
     }
     tb.innerHTML = items.map(c => `
-      <tr>
+      <tr data-id="${c.id}" style="cursor:pointer">
         <td>${avatarCell(c)}</td>
-        <td><b>${escape(c.code)}</b> ${pwBadge(c)}</td>
-        <td>${typeBadge(c.type)}</td>
-        <td>${nameCell(c)}</td>
-        <td>${escape(c.phone || '')}</td>
-        <td>${escape(c.email || '')}</td>
+        <td data-label="Mã"><b>${escape(c.code)}</b> ${pwBadge(c)}</td>
+        <td data-label="Loại">${typeBadge(c.type)}</td>
+        <td data-label="Họ tên">${nameCell(c)}</td>
+        <td data-label="SĐT">${escape(c.phone || '')}</td>
+        <td data-label="Tổng đơn" style="text-align:right">${fmt.format(c.order_count || 0)}</td>
+        <td data-label="Tổng tiền" style="text-align:right">${fmt.format(c.total_revenue || 0)}đ</td>
         ${c.type === 'dealer'
-          ? `<td>${fmt.format(c.debt_limit || 0)}</td><td>${(c.credit_term_days || 0)} ngày</td>`
-          : `<td class="muted-dash">—</td><td class="muted-dash">—</td>`}
-        <td class="col-actions">${actionsCell(c)}</td>
+          ? `<td data-label="Hạn mức nợ">${fmt.format(c.debt_limit || 0)}</td>`
+          : `<td data-label="Hạn mức nợ" class="muted-dash">—</td>`}
+        <td data-label="Hành động" class="col-actions">${actionsCell(c)}</td>
       </tr>
     `).join('');
   }
@@ -91,6 +94,7 @@
     const res = await api.get('/admin/customers?' + p.toString()).catch(() => null);
     if (!res) return;
     state.total = res.total;
+    lastItems = res.items;
     renderRows(res.items);
 
     const totalPage = Math.max(1, Math.ceil(res.total / state.limit));
@@ -105,6 +109,7 @@
 
   function openModal(c) {
     editing = c || null;
+    $('modal').style.zIndex = '1050';
     $('modal').classList.add('open');
     $('modalTitle').textContent = c ? 'Sửa khách hàng' : 'Thêm khách hàng';
     fillForm(c || { type: state.filters.type || 'retail' });
@@ -112,6 +117,7 @@
   }
   function closeModal() {
     $('modal').classList.remove('open');
+    setTimeout(() => { $('modal').style.zIndex = ''; }, 200);
     editing = null;
   }
 
@@ -120,13 +126,18 @@
     $('pw_name').textContent = name;
     $('pw_code').textContent = code;
     $('pw_new').value = '';
+    $('pwModal').style.zIndex = '1100';
     $('pwModal').classList.add('open');
     setTimeout(() => $('pw_new').focus(), 50);
   }
-  function closePwModal() { $('pwModal').classList.remove('open'); }
+  function closePwModal() {
+    $('pwModal').classList.remove('open');
+    setTimeout(() => { $('pwModal').style.zIndex = ''; }, 200);
+  }
 
   function fillForm(c) {
     $('f_id').value             = c.id || '';
+    $('f_parent_id').value      = c.parent_id || '';
     $('f_type').value           = c.type || 'retail';
     $('f_code').value           = c.code || '';
     $('f_full_name').value      = c.full_name || '';
@@ -170,6 +181,7 @@
       address:    $('f_address').value.trim() || null,
       avatar_url: $('f_avatar_url').value.trim() || null,
       default_tier_id: $('f_default_tier_id').value ? Number($('f_default_tier_id').value) : null,
+      parent_id:  $('f_parent_id').value ? Number($('f_parent_id').value) : null,
       note:       $('f_note').value.trim() || null,
     };
     if (data.type === 'dealer') {
@@ -233,6 +245,9 @@
     if (!ok) return;
     closeModal();
     load();
+    if ($('assetsModal').classList.contains('open') && assetsState.customer) {
+      reloadAssets();
+    }
   }
 
   async function handlePwSubmit(e) {
@@ -348,7 +363,22 @@
       $('f_avatar_file').value  = '';
     });
 
-    $('tbody').addEventListener('click', handleTableClick);
+    $('tbody').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-act]');
+      if (btn) { handleTableClick(e); return; }
+      const row = e.target.closest('tr[data-id]');
+      if (row) openDetailModal(Number(row.dataset.id));
+    });
+
+    $('dt_close').addEventListener('click', closeDetailModal);
+    $('dt_close2').addEventListener('click', closeDetailModal);
+    $('detailModal').addEventListener('click', (e) => { if (e.target.id === 'detailModal') closeDetailModal(); });
+    $('dt_edit').addEventListener('click', async () => {
+      const id = $('dt_edit').dataset.id;
+      closeDetailModal();
+      const c = await api.get('/admin/customers/' + id).catch(() => null);
+      if (c) openModal(c);
+    });
 
     // Dong bo top cua filter row khi load + resize
     syncStickyOffset();
@@ -451,11 +481,12 @@
     if (!res) { $sec.innerHTML = '<p style="color:#dc2626;font-size:13px">Lỗi tải danh sách</p>'; return; }
     const items = res.items || [];
     $sec.innerHTML = `
-      <div style="font-size:12px;font-weight:700;color:#0369a1;margin-bottom:8px;letter-spacing:.3px;text-transform:uppercase">
-        👤 Khách đầu cuối đã từng làm việc (${items.length})
+      <div style="font-size:12px;font-weight:700;color:#0369a1;margin-bottom:8px;letter-spacing:.3px;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center">
+        <span>👤 Khách đầu cuối / Khách con (${items.length})</span>
+        <button class="btn sm ghost" id="ax_add_ec" style="padding:4px 8px;font-size:11px">+ Thêm mới</button>
       </div>
       ${!items.length
-        ? '<p style="color:#94a3b8;font-size:13px">Chưa có khách đầu cuối nào.</p>'
+        ? '<p style="color:#94a3b8;font-size:13px">Chưa có khách con nào.</p>'
         : `<div style="display:flex;flex-direction:column;gap:6px">
             ${items.map(ec => `
               <div style="padding:9px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -467,12 +498,28 @@
                 </div>
                 <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
                   <span style="font-size:11px;color:#64748b">${ec.order_count} đơn</span>
+                  <button class="btn ghost sm" data-ec-edit="${ec.id}" style="font-size:12px;padding:4px 10px;color:#1f6feb">Sửa</button>
                   <button class="btn sm" data-ec-assets="${ec.id}" data-ec-name="${escape(ec.full_name)}" data-ec-code="${escape(ec.code)}" data-ec-type="retail"
                     style="font-size:12px;padding:4px 10px">Tài sản</button>
                 </div>
               </div>`).join('')}
            </div>`}
     `;
+
+    const addBtn = document.getElementById('ax_add_ec');
+    if (addBtn) {
+      addBtn.addEventListener('click', () => {
+        openModal({ type: 'retail', parent_id: assetsState.customer.id });
+      });
+    }
+
+    $sec.querySelectorAll('button[data-ec-edit]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.ecEdit;
+        const c = await api.get('/admin/customers/' + id).catch(() => null);
+        if (c) openModal(c);
+      });
+    });
 
     // Wire nut "Tai san" cho tung khach dau cuoi
     $sec.querySelectorAll('button[data-ec-assets]').forEach(btn => {
@@ -672,6 +719,227 @@
     });
     $('btnRequests').addEventListener('click', openReqModal);
     refreshReqBadge();
+  }
+
+  // ============================================================
+  // DETAIL MODAL — xem chi tiet khach hang khi click row
+  // ============================================================
+  function openDetailModal(id) {
+    const c = lastItems.find(x => x.id === id);
+    if (!c) return;
+    $('detailModal').classList.add('open');
+    $('dt_title').textContent = c.type === 'dealer' && c.company_name
+      ? `${c.company_name} — ${c.full_name} (${c.code})`
+      : `${c.full_name} (${c.code})`;
+    $('dt_edit').dataset.id = c.id;
+    $('dt_body').innerHTML = renderDetailStatic(c);
+    loadDetailAsync(c);
+  }
+
+  function closeDetailModal() {
+    $('detailModal').classList.remove('open');
+  }
+
+  function renderDetailStatic(c) {
+    const av = c.avatar_url
+      ? `<img src="${escape(c.avatar_url)}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;flex-shrink:0">`
+      : `<div style="width:64px;height:64px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;color:#64748b;flex-shrink:0">${escape((c.full_name||'?').trim().charAt(0).toUpperCase())}</div>`;
+
+    return `
+      <div style="display:flex;gap:16px;align-items:flex-start;padding-bottom:16px;border-bottom:1px solid #e2e8f0;margin-bottom:16px">
+        ${av}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+            ${typeBadge(c.type)}
+            <code style="font-size:12px;color:#64748b">${escape(c.code)}</code>
+            ${c.has_password ? '<span class="pill green" style="font-size:10px">🔒 Có mật khẩu</span>' : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:#334155">
+            ${c.phone ? `<div>📞 <a href="tel:${escape(c.phone)}" style="color:#0369a1">${escape(c.phone)}</a></div>` : ''}
+            ${c.email ? `<div>✉️ ${escape(c.email)}</div>` : ''}
+            ${c.address ? `<div>📍 ${escape(c.address)}</div>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:12px;margin-bottom:16px">
+        <div style="flex:1;text-align:center;background:#f0f9ff;border-radius:8px;padding:10px 8px">
+          <div style="font-size:26px;font-weight:700;color:#0369a1">${fmt.format(c.order_count || 0)}</div>
+          <div style="font-size:12px;color:#64748b">Đơn hàng</div>
+        </div>
+        <div style="flex:2;text-align:center;background:#f0fdf4;border-radius:8px;padding:10px 8px">
+          <div style="font-size:20px;font-weight:700;color:#15803d">${fmt.format(c.total_revenue || 0)}đ</div>
+          <div style="font-size:12px;color:#64748b">Tổng tiền đã giao dịch</div>
+        </div>
+      </div>
+
+      ${c.type === 'dealer' ? `
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:16px">
+        <div style="font-weight:600;color:#92400e;margin-bottom:8px">🏪 Thông tin đại lý</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px">
+          ${c.company_name ? `<div><span style="color:#64748b">Công ty:</span> <b>${escape(c.company_name)}</b></div>` : ''}
+          ${c.tax_code ? `<div><span style="color:#64748b">MST:</span> ${escape(c.tax_code)}</div>` : ''}
+          ${c.contact_person ? `<div><span style="color:#64748b">Người LH:</span> ${escape(c.contact_person)}</div>` : ''}
+          <div><span style="color:#64748b">Hạn mức nợ:</span> ${fmt.format(c.debt_limit || 0)}đ</div>
+          <div><span style="color:#64748b">Số ngày nợ:</span> ${c.credit_term_days || 0} ngày</div>
+          ${c.discount_rate ? `<div><span style="color:#64748b">Chiết khấu:</span> ${c.discount_rate}%</div>` : ''}
+        </div>
+      </div>` : ''}
+
+      ${c.note ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;font-size:13px;margin-bottom:16px;color:#475569">📝 ${escape(c.note)}</div>` : ''}
+
+      <div id="dt_assets"><div style="font-size:13px;color:#94a3b8;padding:4px 0">Đang tải tài sản…</div></div>
+      ${c.type === 'dealer' ? '<div id="dt_ec"><div style="font-size:13px;color:#94a3b8;padding:4px 0;margin-top:8px">Đang tải khách con…</div></div>' : ''}
+    `;
+  }
+
+  async function loadDetailAsync(c) {
+    const AX = [
+      { key: 'accounts', col: 'account_name', label: 'Tài khoản',  icon: '👤', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe' },
+      { key: 'vehicles', col: 'plate',        label: 'Biển số xe', icon: '🚗', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
+      { key: 'sims',     col: 'sim_number',   label: 'Số SIM',     icon: '📱', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
+    ];
+
+    // ---- Tải tài sản ----
+    const assetsSec = document.getElementById('dt_assets');
+    const assets = await api.get('/admin/customer-assets/' + c.id, { silent: true }).catch(() => null);
+
+    if (assetsSec) {
+      if (!assets) {
+        assetsSec.innerHTML = '<div style="font-size:13px;color:#dc2626">Lỗi tải tài sản</div>';
+      } else {
+        const total = AX.reduce((s, a) => s + (assets[a.key] || []).length, 0);
+        if (!total) {
+          assetsSec.innerHTML = '<div style="font-size:13px;color:#94a3b8">Chưa có tài sản đăng ký</div>';
+        } else {
+          const colsHtml = AX.map(a => {
+            const list = assets[a.key] || [];
+            if (!list.length) return '';
+            const rowsHtml = list.map((it, i) =>
+              `<div class="axd-item" data-val="${escape(it[a.col]).toLowerCase()}"
+                style="padding:6px 10px;border-bottom:1px solid ${a.border};font-size:12.5px;color:#1e293b;
+                       word-break:break-all;line-height:1.4;background:${i % 2 ? '#fafafa' : '#fff'}">${escape(it[a.col])}</div>`
+            ).join('');
+            return `
+              <div class="axd-col" style="flex:1;min-width:160px">
+                <div style="font-size:12px;font-weight:700;color:${a.color};margin-bottom:6px;
+                            display:flex;align-items:center;gap:5px">
+                  <span>${a.icon} ${a.label}</span>
+                  <span class="axd-cnt" style="background:${a.bg};border:1px solid ${a.border};
+                    color:${a.color};border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600">${list.length}</span>
+                  <span class="axd-of" style="display:none;font-size:11px;color:#94a3b8">/ ${list.length}</span>
+                </div>
+                <div style="max-height:220px;overflow-y:auto;border:1px solid ${a.border};
+                            border-radius:6px;background:#fff;box-shadow:inset 0 2px 4px rgba(0,0,0,.03)">${rowsHtml}</div>
+              </div>`;
+          }).filter(Boolean).join('');
+
+          assetsSec.innerHTML = `
+            <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;background:#fafafa">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+                <span style="font-weight:700;font-size:13px;color:#334155">
+                  🗂 Tài sản đăng ký
+                  <span id="axd_badge" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:999px;
+                    padding:2px 9px;font-size:12px;color:#64748b;margin-left:4px">${total}</span>
+                </span>
+                <input id="axd_search" type="text" placeholder="🔍 Tìm trong tài sản…"
+                  style="border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px;font-size:12.5px;
+                         width:210px;outline:none;transition:border .15s"
+                  onfocus="this.style.borderColor='#818cf8'" onblur="this.style.borderColor='#e2e8f0'">
+              </div>
+              <div id="axd_cols" style="display:flex;gap:14px;flex-wrap:wrap">${colsHtml}</div>
+              <div id="axd_empty" style="display:none;text-align:center;font-size:13px;
+                color:#94a3b8;padding:12px 0">Không tìm thấy tài sản phù hợp</div>
+            </div>`;
+
+          document.getElementById('axd_search').addEventListener('input', function () {
+            const term = this.value.toLowerCase().trim();
+            let vis = 0;
+            assetsSec.querySelectorAll('.axd-col').forEach(col => {
+              let colVis = 0;
+              const allItems = col.querySelectorAll('.axd-item');
+              allItems.forEach(item => {
+                const show = !term || item.dataset.val.includes(term);
+                item.style.display = show ? '' : 'none';
+                if (show) colVis++;
+              });
+              col.querySelector('.axd-cnt').textContent = colVis;
+              col.querySelector('.axd-of').style.display = term ? '' : 'none';
+              col.style.display = colVis ? '' : 'none';
+              vis += colVis;
+            });
+            const badge = document.getElementById('axd_badge');
+            if (badge) badge.textContent = term ? `${vis} / ${total}` : total;
+            const empty = document.getElementById('axd_empty');
+            if (empty) empty.style.display = vis ? 'none' : '';
+          });
+        }
+      }
+    }
+
+    if (c.type !== 'dealer') return;
+
+    // ---- Tải khách con ----
+    const ecSec = document.getElementById('dt_ec');
+    if (!ecSec) return;
+    const res = await api.get(`/admin/customers/${c.id}/end-customers`, { silent: true }).catch(() => null);
+    if (!res) { ecSec.innerHTML = ''; return; }
+    const items = res.items || [];
+
+    if (!items.length) {
+      ecSec.innerHTML = '<div style="font-size:13px;color:#94a3b8;margin-top:10px">Chưa có khách con</div>';
+      return;
+    }
+
+    const ecRows = items.map((ec, i) =>
+      `<div class="ec-item" data-val="${escape((ec.full_name + ' ' + (ec.phone || '') + ' ' + ec.code).toLowerCase())}"
+        style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;
+               padding:7px 12px;border-bottom:1px solid #e0f2fe;flex-wrap:wrap;
+               background:${i % 2 ? '#f7fbff' : '#fff'}">
+        <div style="min-width:0;flex:1">
+          <span style="font-weight:600;font-size:13px">${escape(ec.full_name)}</span>
+          ${ec.phone ? `<a href="tel:${escape(ec.phone)}" style="color:#0369a1;font-size:13px;margin-left:8px">${escape(ec.phone)}</a>` : ''}
+          <span style="color:#94a3b8;font-size:11px;margin-left:6px">(${escape(ec.code)})</span>
+          ${ec.address ? `<div style="font-size:11.5px;color:#64748b;margin-top:2px">📍 ${escape(ec.address)}</div>` : ''}
+        </div>
+        <span style="font-size:12px;color:#0369a1;flex-shrink:0;background:#e0f2fe;
+          border-radius:999px;padding:2px 9px;white-space:nowrap;margin-top:2px">${ec.order_count} đơn</span>
+      </div>`
+    ).join('');
+
+    ecSec.innerHTML = `
+      <div style="border:1px solid #bae6fd;border-radius:10px;padding:14px 16px;background:#f7fbff;margin-top:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <span style="font-weight:700;font-size:13px;color:#0369a1">
+            👥 Khách con / Đầu cuối
+            <span id="ec_badge" style="background:#e0f2fe;border:1px solid #bae6fd;border-radius:999px;
+              padding:2px 9px;font-size:12px;color:#0369a1;margin-left:4px">${items.length}</span>
+          </span>
+          <input id="ec_search" type="text" placeholder="🔍 Tìm khách con…"
+            style="border:1px solid #bae6fd;border-radius:6px;padding:5px 10px;font-size:12.5px;
+                   width:180px;outline:none;transition:border .15s"
+            onfocus="this.style.borderColor='#38bdf8'" onblur="this.style.borderColor='#bae6fd'">
+        </div>
+        <div style="max-height:260px;overflow-y:auto;border:1px solid #bae6fd;border-radius:6px;
+                    background:#fff;box-shadow:inset 0 2px 4px rgba(0,0,0,.03)" id="ec_list">${ecRows}</div>
+        <div id="ec_empty" style="display:none;text-align:center;font-size:13px;color:#94a3b8;padding:10px 0">Không tìm thấy</div>
+      </div>`;
+
+    document.getElementById('ec_search').addEventListener('input', function () {
+      const term = this.value.toLowerCase().trim();
+      let vis = 0;
+      ecSec.querySelectorAll('.ec-item').forEach(item => {
+        const show = !term || item.dataset.val.includes(term);
+        item.style.display = show ? '' : 'none';
+        if (show) vis++;
+      });
+      const badge = document.getElementById('ec_badge');
+      if (badge) badge.textContent = term ? `${vis} / ${items.length}` : items.length;
+      const list  = document.getElementById('ec_list');
+      const empty = document.getElementById('ec_empty');
+      if (list)  list.style.display  = vis ? '' : 'none';
+      if (empty) empty.style.display = vis ? 'none' : '';
+    });
   }
 
   document.addEventListener('DOMContentLoaded', () => {

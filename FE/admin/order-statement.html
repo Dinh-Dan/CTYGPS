@@ -30,7 +30,8 @@
   /* Order card */
   .order-card{border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:14px;background:#fff}
   .order-card .oc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed #e2e8f0}
-  .order-card .oc-code{font-weight:700;color:#2563eb;font-size:15px}
+  .order-card .oc-code{font-weight:700;color:#2563eb;font-size:15px;text-decoration:none}
+  .order-card a.oc-code:hover{text-decoration:underline}
   .order-card .oc-amount{font-weight:700;color:#dc2626;font-size:16px;white-space:nowrap}
   .order-card .oc-meta{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:#475569;margin-bottom:4px}
   .order-card .oc-meta b{color:#0f172a}
@@ -107,6 +108,7 @@
 <script src="/shared/js/ui.js"></script>
 <script src="/shared/js/api.js"></script>
 <script src="/shared/js/auth.js"></script>
+<script src="/shared/js/order-quick-view.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="/admin/order-statement.js"></script>

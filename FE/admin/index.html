@@ -71,12 +71,16 @@
             <div><div class="label">Sắp hết (&lt;5)</div><div class="value" id="cntLow">—</div></div>
           </div>
         </a>
-        <div class="stat"><div class="icon amber">🛒</div>
-          <div><div class="label">Đơn (tháng)</div><div class="value">—</div><div class="trend">sắp có</div></div>
-        </div>
-        <div class="stat"><div class="icon red">💳</div>
-          <div><div class="label">Công nợ đại lý</div><div class="value">—</div><div class="trend">sắp có</div></div>
-        </div>
+        <a href="/admin/orders.html" class="stat-link">
+          <div class="stat"><div class="icon amber">🛒</div>
+            <div><div class="label">Đơn hàng</div><div class="value">Mở quản lý</div><div class="trend">đã hoạt động</div></div>
+          </div>
+        </a>
+        <a href="/admin/debts.html" class="stat-link">
+          <div class="stat"><div class="icon red">💳</div>
+            <div><div class="label">Công nợ</div><div class="value">Mở quản lý</div><div class="trend">đã hoạt động</div></div>
+          </div>
+        </a>
       </div>
 
       <div class="card mt-3">
@@ -102,16 +106,16 @@
             <h3>Nhà cung cấp</h3>
             <p class="text-muted mb-0">Danh sách NCC để gắn vào hàng nhập kho.</p>
           </a>
-          <div class="card" style="opacity:.55">
+          <a class="card module-card" href="/admin/orders.html">
             <div style="font-size:36px">🛒</div>
             <h3>Đơn hàng</h3>
-            <p class="text-muted mb-0">Sắp ra mắt</p>
-          </div>
-          <div class="card" style="opacity:.55">
+            <p class="text-muted mb-0">Theo dõi, xử lý và cập nhật trạng thái đơn hàng.</p>
+          </a>
+          <a class="card module-card" href="/admin/debts.html">
             <div style="font-size:36px">💳</div>
             <h3>Công nợ</h3>
-            <p class="text-muted mb-0">Sắp ra mắt</p>
-          </div>
+            <p class="text-muted mb-0">Quản lý công nợ khách hàng, đại lý và kỹ thuật.</p>
+          </a>
         </div>
       </div>
     </div>

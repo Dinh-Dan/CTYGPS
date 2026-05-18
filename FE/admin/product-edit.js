@@ -475,7 +475,8 @@
   // LOAD product + categories (song song)
   // ============================================================
   async function loadAll() {
-    $('pageTitle').textContent = 'Đang tải…';
+    const $title = $('pageTitle');
+    if ($title) $title.textContent = 'Đang tải…';
 
     const [cats, p, tiers] = await Promise.all([
       api.get('/admin/categories',         { silent: true }).catch(() => null),
@@ -491,11 +492,11 @@
     }
 
     if (!p) {
-      $('pageTitle').textContent = 'Không tải được sản phẩm';
+      if ($title) $title.textContent = 'Không tải được sản phẩm';
       return;
     }
 
-    $('pageTitle').textContent = `${p.name} (${p.code})`;
+    if ($title) $title.textContent = `${p.name} (${p.code})`;
     document.title = `${p.name} – Sửa sản phẩm`;
 
     $('pCode').value         = p.code || '';

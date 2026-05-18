@@ -42,13 +42,14 @@
     $('kDebt').textContent    = fmt(t.total_debt);
     $('kUnremit').textContent = fmt(t.total_unremitted);
     $('kRemit').textContent   = fmt(t.total_remitted);
-    $('kWage').textContent    = fmt(t.total_wage);
+    $('kWage').textContent       = fmt(t.total_wage);
+    $('kCommission').textContent = fmt(t.total_commission);
   }
 
   function renderRows(items) {
     const tb = $('tbody');
     if (!items.length) {
-      tb.innerHTML = '<tr><td colspan="10" class="empty">Không có đơn nào khớp lọc</td></tr>';
+      tb.innerHTML = '<tr><td colspan="11" class="empty">Không có đơn nào khớp lọc</td></tr>';
       return;
     }
     tb.innerHTML = items.map(o => {
@@ -67,6 +68,7 @@
         <td class="num" style="color:${Number(o.unremitted_amount) > 0 ? '#b45309' : '#94a3b8'}">${fmt(o.unremitted_amount)}</td>
         <td class="num">${fmt(o.remitted_amount)}</td>
         <td class="num" style="color:${o.status === 'done' ? '#16a34a' : '#94a3b8'}">${fmt(o.wage_amount)}</td>
+        <td class="num" style="color:${Number(o.commission_amount) > 0 ? '#7c3aed' : '#94a3b8'}">${fmt(o.commission_amount)}</td>
       </tr>`;
     }).join('');
   }

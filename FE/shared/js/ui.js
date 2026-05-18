@@ -60,7 +60,7 @@
 
   // ---- Generic dialog (alert / confirm) ---------------------
   // Layout: head (title + close) dinh, body cuon, footer (actions) dinh.
-  function showDialog({ title, message, type, okText, cancelText, allowCancel }) {
+  function showDialog({ title, message, body, type, okText, cancelText, allowCancel }) {
     return new Promise((resolve) => {
       const bg = document.createElement('div');
       bg.className = 'ui-dialog-bg';
@@ -71,7 +71,8 @@
             <button class="modal-close" data-act="${allowCancel ? 'cancel' : 'ok'}" aria-label="Đóng">×</button>
           </div>
           <div class="ui-dialog-body">
-            <div class="ui-dialog-msg">${escapeHtml(message || '')}</div>
+            ${message ? `<div class="ui-dialog-msg">${escapeHtml(message)}</div>` : ''}
+            ${body || ''}
           </div>
           <div class="ui-dialog-actions">
             ${allowCancel ? `<button class="btn ghost" data-act="cancel">${escapeHtml(cancelText || 'Huỷ')}</button>` : ''}
@@ -111,8 +112,8 @@
   function alertDialog({ title, message, type, okText } = {}) {
     return showDialog({ title, message, type, okText, allowCancel: false });
   }
-  function confirmDialog({ title, message, type, okText, cancelText } = {}) {
-    return showDialog({ title, message, type, okText, cancelText, allowCancel: true });
+  function confirmDialog({ title, message, body, type, okText, cancelText } = {}) {
+    return showDialog({ title, message, body, type, okText, cancelText, allowCancel: true });
   }
 
   // ---- Loading overlay --------------------------------------
@@ -324,8 +325,10 @@
   // ---- Util -------------------------------------------------
   function escapeHtml(s) {
     return String(s ?? '')
-      .replaceAll('&', '&amp;').replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   // ---- Dialog canh bao KTV thieu hang (hard warning, cho phep override) ----
@@ -393,6 +396,25 @@
     });
   }
 
+  // ---- Copy-code button ----------------------------------------
+  const COPY_ICON = `<svg width="10" height="10" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="pointer-events:none"><rect x="5" y="5" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5" stroke="currentColor" stroke-width="1.5"/></svg>`;
+  function copyCodeBtn(code) {
+    const safe = String(code || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return `<button class="btn-copy-code" data-copy="${safe}" title="Copy mã đơn">${COPY_ICON}</button>`;
+  }
+  document.addEventListener('click', function(e) {
+    const btn = e.target.closest && e.target.closest('.btn-copy-code');
+    if (!btn) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const text = btn.dataset.copy || '';
+    navigator.clipboard.writeText(text).then(function() {
+      btn.classList.add('copied');
+      btn.innerHTML = '✓';
+      setTimeout(function() { btn.classList.remove('copied'); btn.innerHTML = COPY_ICON; }, 1300);
+    }).catch(function() {});
+  }, true);
+
   global.ui = {
     toast,
     alert: alertDialog,
@@ -402,6 +424,7 @@
     insufficientHoldingsDialog,
     bus,
     pushDialog, popDialog, dialogCount,
+    copyCodeBtn,
   };
 })(window);
 

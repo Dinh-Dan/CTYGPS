@@ -28,6 +28,7 @@
     currentDetail: null,        // detail loaded in modal
     products: null,             // lazy
     customCacheStaff: null,     // suggested staff cache
+    selectedIds: new Set(),     // bulk-select order IDs
   };
 
   // ---- TEMPLATE DROPDOWN --------------------------------------
@@ -113,7 +114,7 @@
   function render() {
     const $tb = $('tbody');
     if (!state.items.length) {
-      $tb.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:30px">Không có đơn nào</td></tr>';
+      $tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:30px">Không có đơn nào</td></tr>';
     } else {
       $tb.innerHTML = state.items.map(o => {
         const sCls = pillForStatus(o);
@@ -122,26 +123,46 @@
         const paid  = Number(o.paid_amount) || 0;
         const remain = Math.max(0, total - paid);
         const paidCls = paid <= 0 ? 'amt-paid-zero' : 'amt-paid';
+        const checked = state.selectedIds.has(o.id) ? 'checked' : '';
         return `
           <tr data-id="${o.id}" style="cursor:pointer">
-            <td><b>${esc(o.code)}</b></td>
-            <td>${fmtDate(o.created_at)}</td>
-            <td>${esc(o.customer_name || '')}<br><small style="color:#64748b">${esc(o.customer_phone || '')}</small></td>
-            <td>${esc(o.template_names || o.template_name || '—')}</td>
-            <td>${renderDeviceInfo(o)}</td>
-            <td style="text-align:right">
+            <td class="cb-col" data-no-open>
+              <input type="checkbox" class="row-cb order-cb" data-id="${o.id}"
+                     data-cid="${o.customer_id}" data-cname="${esc(o.customer_name || '')}"
+                     data-remain="${remain}" ${checked}>
+            </td>
+            <td data-label="Mã đơn"><b>${esc(o.code)}</b>${ui.copyCodeBtn(o.code)}</td>
+            <td data-label="Ngày tạo">${fmtDate(o.created_at)}</td>
+            <td data-label="Khách">${esc(o.customer_name || '')}<br><small style="color:#64748b">${esc(o.customer_phone || '')}</small></td>
+            <td data-label="Loại đơn">${esc(o.template_names || o.template_name || '—')}</td>
+            <td data-label="Thông tin">${renderDeviceInfo(o)}</td>
+            <td data-label="Tổng tiền" style="text-align:right">
               <span class="amt-total">${fmt(total)}</span><br>
               <small class="${paidCls}">Đã thu: ${fmt(paid)}</small>
               ${remain > 0 ? `<br><small class="amt-remain">Còn: ${fmt(remain)}</small>` : ''}
             </td>
-            <td><span class="pill ${sCls.cls}">${esc(sCls.label)}</span></td>
-            <td><span class="pill ${pCls.cls}">${esc(pCls.label)}</span></td>
-            <td><button class="btn ghost sm" data-act="open">Xem</button></td>
+            <td data-label="Trạng thái"><span class="pill ${sCls.cls}">${esc(sCls.label)}</span></td>
+            <td data-label="Thanh toán"><span class="pill ${pCls.cls}">${esc(pCls.label)}</span></td>
+            <td data-label="Hành động"><button class="btn ghost sm" data-act="open">Xem</button></td>
           </tr>
         `;
       }).join('');
       $tb.querySelectorAll('tr').forEach(tr => {
-        tr.addEventListener('click', () => openDetail(Number(tr.dataset.id)));
+        tr.addEventListener('click', (e) => {
+          // Không mở modal nếu click vào ô checkbox
+          if (e.target.closest('[data-no-open]')) return;
+          openDetail(Number(tr.dataset.id));
+        });
+      });
+      // Checkbox events
+      $tb.querySelectorAll('.order-cb').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const id = Number(cb.dataset.id);
+          if (cb.checked) state.selectedIds.add(id);
+          else state.selectedIds.delete(id);
+          syncCbAll();
+          updateBulkBar();
+        });
       });
       $tb.querySelectorAll('.dev-info-cell').forEach(el => {
         const tip = el.querySelector('.dev-tooltip');
@@ -149,7 +170,186 @@
         el.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
       });
     }
+    syncCbAll();
     $('pageInfo').textContent = `Trang ${state.page} / ${Math.max(1, Math.ceil(state.total / state.limit))} (${state.total} đơn)`;
+  }
+
+  function syncCbAll() {
+    const cbAll = $('cbAll');
+    if (!cbAll) return;
+    const cbs = document.querySelectorAll('.order-cb');
+    if (!cbs.length) { cbAll.checked = false; cbAll.indeterminate = false; return; }
+    const checkedCount = Array.from(cbs).filter(c => c.checked).length;
+    cbAll.checked = checkedCount === cbs.length;
+    cbAll.indeterminate = checkedCount > 0 && checkedCount < cbs.length;
+  }
+
+  // ---- BULK BAR ------------------------------------------------
+  function updateBulkBar() {
+    const bar = $('bulkBar');
+    const sel = state.selectedIds;
+    if (!sel.size) {
+      bar.classList.remove('visible');
+      return;
+    }
+    bar.classList.add('visible');
+
+    // Lấy thông tin các đơn đã chọn từ state.items
+    const selItems = state.items.filter(o => sel.has(o.id));
+    const custIds  = [...new Set(selItems.map(o => o.customer_id))];
+    const total    = selItems.reduce((s, o) => s + Math.max(0, (Number(o.total_amount)||0) - (Number(o.paid_amount)||0)), 0);
+    const eligibleCount = selItems.filter(o => (Number(o.total_amount)||0) > (Number(o.paid_amount)||0)).length;
+
+    $('bbCount').textContent = sel.size;
+    $('bbTotal').textContent = fmt(total) + 'đ';
+
+    if (custIds.length === 1) {
+      const cust = selItems[0];
+      $('bbCustomer').textContent = cust.customer_name || `ID ${cust.customer_id}`;
+      $('btnCreatePR').disabled = eligibleCount <= 0;
+    } else if (custIds.length > 1) {
+      $('bbCustomer').textContent = `⚠️ ${custIds.length} khách khác nhau`;
+      $('btnCreatePR').disabled = true;
+    }
+  }
+
+  // ---- TẠO PHIẾU YÊU CẦU THANH TOÁN --------------------------------
+  async function openCreatePRModal() {
+    const sel = state.selectedIds;
+    if (!sel.size) { ui.toast('Chưa chọn đơn nào', 'warning'); return; }
+
+    const selItems = state.items.filter(o => sel.has(o.id));
+    const custIds  = [...new Set(selItems.map(o => o.customer_id))];
+
+    // Rang buoc: 1 khach hang
+    if (custIds.length > 1) {
+      ui.toast('⚠️ Chỉ chọn đơn cùng 1 khách hàng để tạo phiếu', 'error');
+      return;
+    }
+
+    const customerId   = custIds[0];
+    const customerName = selItems[0].customer_name || `ID ${customerId}`;
+    const orderTotal   = selItems.reduce((s, o) => s + Math.max(0, (Number(o.total_amount)||0) - (Number(o.paid_amount)||0)), 0);
+    const eligibleItems = selItems.filter(o => (Number(o.total_amount)||0) > (Number(o.paid_amount)||0));
+    if (!eligibleItems.length) {
+      ui.toast('Các đơn đã chọn đã thu đủ tiền, không cần tạo phiếu', 'warning');
+      return;
+    }
+
+    // Lấy opening_balance + phiếu cũ còn nợ + kiểm tra đơn trùng phiếu cùng lúc
+    const eligibleIds = eligibleItems.map(o => o.id);
+    let openingBalance = 0;
+    let overlaps = [];
+    let oldPendingPRs = [];
+    const [custRes, overlapRes, oldPRsRes] = await Promise.all([
+      api.get(`/admin/customers/${customerId}`).catch(() => null),
+      api.get(`/admin/payment-requests/check-overlap?order_ids=${eligibleIds.join(',')}`, { silent: true }).catch(() => null),
+      api.get(`/admin/payment-requests?customer_id=${customerId}&status=active&has_remaining=1`, { silent: true }).catch(() => null),
+    ]);
+    if (custRes) openingBalance = Math.max(0, Number(custRes.opening_balance) || 0);
+    if (overlapRes) overlaps = overlapRes.overlaps || [];
+    if (oldPRsRes) oldPendingPRs = (oldPRsRes.items || []).filter(p => Number(p.remaining) > 0);
+    const overlapMap = new Map(overlaps.map(o => [o.order_id, o.existing_request_code]));
+
+    const orderListHtml = selItems.map(o => {
+      const remain = Math.max(0, (Number(o.total_amount)||0) - (Number(o.paid_amount)||0));
+      const dupCode = overlapMap.get(o.id);
+      const dupBadge = dupCode
+        ? `<span style="color:#dc2626;font-size:11px;margin-left:6px">⚠ đã có trong ${esc(dupCode)}</span>`
+        : '';
+      return `<div class="orow" style="${dupCode ? 'opacity:.55' : ''}">
+        <div>
+          <span class="ocode">${esc(o.code)}</span>${ui.copyCodeBtn(o.code)}
+          <small style="color:#64748b;margin-left:6px">${esc(o.template_names || o.template_name || '')}</small>
+          ${dupBadge}
+        </div>
+        <span class="oamt">${fmt(remain)}đ</span>
+      </div>`;
+    }).join('');
+
+    const dupWarnHtml = overlaps.length
+      ? `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;font-size:13px;color:#92400e;margin-bottom:8px">
+           ⚠ <b>${overlaps.length} đơn</b> đã nằm trong phiếu khác — sẽ bị <b>bỏ qua</b> khi tạo phiếu mới:<br>
+           ${overlaps.map(w => `• Đơn trùng phiếu <b>${esc(w.existing_request_code)}</b>`).join('<br>')}
+         </div>`
+      : '';
+
+    const obHtml = openingBalance > 0
+      ? `<div class="pyc-ob-row">
+           <input type="checkbox" id="pycIncludeOB" style="width:18px;height:18px;accent-color:#2563eb">
+           <label for="pycIncludeOB">
+             Bao gồm nợ kỳ trước: <b style="color:#dc2626">${fmt(openingBalance)}đ</b>
+           </label>
+         </div>`
+      : '';
+
+    const oldPRHtml = oldPendingPRs.length
+      ? `<div style="border-top:1px solid #e2e8f0;padding-top:10px;margin-top:4px">
+           <div style="font-size:12.5px;font-weight:600;color:#475569;margin-bottom:6px">Phiếu yêu cầu cũ chưa thanh toán hết:</div>
+           ${oldPendingPRs.map(p => `
+             <div class="pyc-ob-row">
+               <input type="checkbox" id="pycOldPR_${p.id}" data-pr-id="${p.id}" class="pyc-old-pr-cb" style="width:18px;height:18px;accent-color:#2563eb">
+               <label for="pycOldPR_${p.id}" style="display:flex;justify-content:space-between;flex:1">
+                 <span>${esc(p.code)}</span>
+                 <b style="color:#dc2626">${fmt(Number(p.remaining))}đ</b>
+               </label>
+             </div>`).join('')}
+         </div>`
+      : '';
+
+    const html = `
+      <div class="pyc-modal">
+        ${dupWarnHtml}
+        <div id="pycErr" class="pyc-err"></div>
+        <div class="pyc-summary">
+          <div class="row"><span>Khách hàng</span><b>${esc(customerName)}</b></div>
+          <div class="row"><span>Số đơn</span><b>${selItems.length} đơn</b></div>
+          <div class="row total"><span>Tổng nợ (ước tính)</span><span>${fmt(orderTotal)}đ</span></div>
+        </div>
+        <div class="pyc-order-list">${orderListHtml}</div>
+        ${obHtml}
+        ${oldPRHtml}
+        <p style="font-size:12.5px;color:#64748b;margin:0">
+          ⚠️ Số tiền chính xác sẽ do server tính lại (trừ phần KTV đang giữ).
+          Phiếu có hiệu lực 3 ngày.
+        </p>
+      </div>`;
+
+    const ok = await openSimpleModal('💳 Tạo yêu cầu thanh toán', html, 'Tạo phiếu');
+    if (!ok) return;
+
+    const includeOB = !!(document.getElementById('pycIncludeOB') && document.getElementById('pycIncludeOB').checked);
+    const oldRequestIds = Array.from(document.querySelectorAll('.pyc-old-pr-cb:checked'))
+      .map(el => Number(el.dataset.prId)).filter(n => n > 0);
+    closeSimpleModal();
+
+    const body = {
+      customer_id: customerId,
+      order_ids: eligibleItems.map(o => o.id),
+      include_opening_balance: includeOB,
+      old_request_ids: oldRequestIds,
+    };
+
+    const r = await api.post('/admin/payment-requests', body, { silent: true }).catch(e => {
+      // Xử lý lỗi BE trả về
+      const msg = (e && e.data && e.data.error) || (e && e.message) || 'Lỗi không xác định';
+      ui.toast(msg, 'error');
+      return null;
+    });
+
+    if (!r) return;
+
+    const skipped = r.skipped_orders || [];
+    if (skipped.length) {
+      ui.toast(`✅ Phiếu ${r.code} tạo, bỏ qua ${skipped.length} đơn đã trùng`, 'success', 4000);
+    } else {
+      ui.toast(`✅ Đã tạo phiếu ${r.code}!`, 'success');
+    }
+    state.selectedIds.clear();
+    updateBulkBar();
+    setTimeout(() => {
+      window.location.href = `/admin/payment-request-detail.html?id=${r.request_id}`;
+    }, 900);
   }
 
   const STATUS_LABELS = {
@@ -168,10 +368,6 @@
     return { cls: 'purple', label };
   }
   function pillForPayment(p, o) {
-    // Don da ket vao phieu rolling balance ma van con thieu -> hien "Đã kết nợ"
-    if (p === 'customer_owes' && o && o.debt_carried_at) {
-      return { cls: 'gray', label: 'Đã kết nợ' };
-    }
     const map = {
       unpaid:                 { cls: 'gray',   label: 'Chưa trả' },
       partial:                { cls: 'amber',  label: 'Một phần' },
@@ -192,7 +388,12 @@
     if (!res) { $('odBody').innerHTML = '<p style="color:#dc2626">Không tải được</p>'; return; }
     state.currentDetail = res;
     location.hash = 'order-' + id;
-    renderDetail();
+    try {
+      renderDetail();
+    } catch (err) {
+      console.error('[openDetail] renderDetail lỗi:', err);
+      $('odBody').innerHTML = `<p style="color:#dc2626;padding:20px">Lỗi hiển thị: ${err.message}</p>`;
+    }
   }
 
   function closeDetail() {
@@ -207,12 +408,10 @@
     const o = state.currentDetail;
     const lines = o.lines || [];
     const tplNames = lines.map(l => l.template_name).filter(Boolean).join(' + ');
-    $('modalTitle').textContent = `${o.code} — ${tplNames || ''}`;
+    $('modalTitle').innerHTML = `${esc(o.code)}${ui.copyCodeBtn(o.code)}<span style="font-weight:400;color:#64748b"> — ${esc(tplNames || '')}</span>`;
 
     // Tong subtotal cua moi line (items + charges trong line)
     const lineSum = lines.reduce((s, l) => s + Number(l.subtotal || 0), 0);
-    const orderCharges = o.order_charges || [];
-    const orderChargeSum = orderCharges.reduce((s, c) => s + Number(c.amount), 0);
     const remain = Math.max(0, Number(o.total_amount) - Number(o.paid_amount));
 
     const sCls = pillForStatus(o);
@@ -276,13 +475,6 @@
       </div>
 
       <div class="od-section">
-        <h4>Chi phí khác
-          <button class="btn ghost sm" id="btnEditOrderCharges">Sửa</button>
-        </h4>
-        <div id="orderChargesList"></div>
-      </div>
-
-      <div class="od-section">
         <h4>Ảnh các bước</h4>
         <div class="photo-list" id="photoList"></div>
       </div>
@@ -297,7 +489,6 @@
       <div class="od-section">
         <div class="bill">
           <div class="row"><span>Tổng dòng công việc</span><span>${fmt(lineSum)}đ</span></div>
-          <div class="row"><span>Chi phí khác</span><span>${fmt(orderChargeSum)}đ</span></div>
           <div class="row total"><span>Tổng đơn</span><span>${fmt(o.total_amount)}đ</span></div>
           <div class="row"><span>Đã thu</span><span>${fmt(o.paid_amount)}đ</span></div>
           ${remain > 0 ? `<div class="row remain"><span>Còn lại</span><span>${fmt(remain)}đ</span></div>` : ''}
@@ -308,7 +499,6 @@
 
     renderTimeline();
     renderLinesList();
-    renderOrderChargesList();
     renderPhotoList();
     renderKtvRequests();
     renderCommission();
@@ -316,7 +506,6 @@
 
     $('btnReloadDetail').addEventListener('click', () => openDetail(o.id));
     $('btnEditLines').addEventListener('click', editLines);
-    $('btnEditOrderCharges').addEventListener('click', editOrderCharges);
     if ($('btnSaveProgressNote')) {
       $('btnSaveProgressNote').addEventListener('click', async () => {
         const v = $('progressNote').value;
@@ -496,29 +685,32 @@
     lines.forEach(l => (l.items || []).forEach(it => allItems.push(it)));
 
     $box.innerHTML = lines.map((ln, idx) => {
-      const fvs = ln.field_values || [];
       const items = ln.items || [];
       const charges = ln.charges || [];
-      const fieldsHtml = fvs.length ? `
-        <div class="ln-fields" style="margin-bottom:8px">
-          ${fvs.map(f => `<div class="row" style="padding:3px 0">
-            <span style="flex:1;color:#64748b;font-size:13px">${esc(f.label)}</span>
-            <span style="flex:2;font-size:13px">${esc(f.value || '—')}</span>
-          </div>`).join('')}
-        </div>` : '';
+
       const itemsHtml = items.length ? items.map(i => {
         const line = Number(i.qty) * Number(i.unit_price);
         const vat = Number(i.vat_percent) || 0;
         const sub = Math.round(line + line * vat / 100);
         const aii = allItems.indexOf(i);
-        return `<div class="row" data-item-idx="${aii}" style="cursor:pointer">
-          <span class="name">${esc(i.product_name || ('SP #' + i.product_id))}
-            ${i.product_code ? `<small style="color:#94a3b8">(${esc(i.product_code)})</small>` : ''}
-          </span>
-          <span class="qty">${i.qty}</span>
-          <span class="price">${fmt(i.unit_price)}đ</span>
-          <span class="vat">${vat ? vat + '%' : '—'}</span>
-          <span class="sub">${fmt(sub)}đ</span>
+        const fvs = i.field_values || [];
+        const shownFvs = fvs.filter(f => f.value);
+        const infoHtml = shownFvs.length
+          ? `<div style="font-size:11.5px;color:#475569;margin-top:3px;padding-left:4px">
+               ${shownFvs.map(f => `<span style="background:#f1f5f9;border-radius:4px;padding:1px 6px;margin-right:4px;display:inline-block"><b>${esc(f.label)}:</b> ${esc(f.value||'—')}</span>`).join('')}
+               ${fvs.length > shownFvs.length ? `<span style="color:#94a3b8;font-size:10.5px">+${fvs.length - shownFvs.length} trường khác</span>` : ''}
+             </div>` : '';
+        return `<div class="row" data-item-idx="${aii}" style="cursor:pointer;flex-direction:column;align-items:flex-start;padding:5px 0">
+          <div style="display:flex;width:100%;gap:8px;align-items:center">
+            <span class="name" style="flex:2">${esc(i.product_name || ('SP #' + i.product_id))}
+              ${i.product_code ? `<small style="color:#94a3b8">(${esc(i.product_code)})</small>` : ''}
+            </span>
+            <span class="qty" style="flex:0 0 28px">${i.qty}</span>
+            <span class="price" style="flex:0 0 80px;text-align:right">${fmt(i.unit_price)}đ</span>
+            <span class="vat" style="flex:0 0 30px;text-align:right;color:#94a3b8">${vat ? vat + '%' : ''}</span>
+            <span class="sub" style="flex:0 0 80px;text-align:right;font-weight:600">${fmt(sub)}đ</span>
+          </div>
+          ${infoHtml}
         </div>`;
       }).join('') : '<p style="color:#94a3b8;font-size:12.5px;font-style:italic">Không có sản phẩm</p>';
 
@@ -536,7 +728,6 @@
           <span>${esc(ln.template_name || '(?)')}</span>
           <span style="margin-left:auto;color:#64748b;font-weight:600;font-size:13px">${fmt(ln.subtotal)}đ</span>
         </div>
-        ${fieldsHtml}
         <div class="item-list">${itemsHtml}</div>
         ${chargesHtml ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #e2e8f0">${chargesHtml}</div>` : ''}
       </div>`;
@@ -550,187 +741,257 @@
     });
   }
 
-  function renderOrderChargesList() {
-    const cs = state.currentDetail.order_charges || [];
-    const $box = $('orderChargesList');
-    if (!cs.length) { $box.innerHTML = '<p style="color:#94a3b8">Không có chi phí khác</p>'; return; }
-    $box.innerHTML = cs.map(c => {
-      const neg = Number(c.amount) < 0;
-      return `<div class="row">
-        <span style="flex:1">${esc(c.label)} <small style="color:#94a3b8">(${esc(c.kind)})</small></span>
-        <span style="color:${neg ? '#16a34a' : '#dc2626'};font-weight:600">${fmt(c.amount)}đ</span>
-      </div>`;
-    }).join('');
-  }
-
-  // ---- HOA HONG (KTV + Nhan vien) — admin duyet ----------------
+  // ---- HOA HONG NHAN VIEN — staff tu gui yeu cau, admin duyet rieng ----
   function renderCommission() {
     const o = state.currentDetail;
     const $box = $('commissionSection');
     if (!$box) return;
 
-    // --- Hoa hong KTV ---
-    const ktvAmt      = Number(o.tech_commission_amount) || 0;
-    const ktvApproved = !!o.tech_commission_approved_at && ktvAmt > 0;
+    const me      = auth && auth.user ? auth.user() : null;
+    const isAdmin = me && me.role === 'admin';
+    const isStaff = me && me.role === 'staff';
+    const isKTV   = me && me.role === 'kithuat';
+    const canRequest = isStaff || isKTV;  // co the gui yeu cau (can admin duyet)
 
-    const ktvPill = ktvApproved
-      ? `<span class="cc-pill approved">✓ Đã duyệt</span>`
-      : `<span class="cc-pill pending">Chưa duyệt</span>`;
-
-    const ktvAmountHtml = ktvApproved
-      ? `<div class="cc-amount">+ ${fmt(ktvAmt)}đ</div>`
-      : `<div class="cc-amount empty">Chưa có hoa hồng cho KTV</div>`;
-
-    const ktvMetaHtml = ktvApproved
-      ? `<div class="cc-meta">Duyệt bởi <b>${esc(o.tech_commission_approved_by_name || '—')}</b>
-           · ${fmtDate(o.tech_commission_approved_at)}
-           ${o.staff_name ? `· KTV: <b>${esc(o.staff_name)}</b>` : ''}</div>`
-      : `<div class="cc-meta">${o.staff_name
-           ? `Sẽ cộng vào lương KTV <b>${esc(o.staff_name)}</b> khi duyệt.`
-           : `<span style="color:#b45309">⚠ Chưa gán KTV — vẫn nhập được trước.</span>`}</div>`;
-
-    const ktvNoteHtml = (ktvApproved && o.tech_commission_note)
-      ? `<div class="cc-note">📝 ${esc(o.tech_commission_note)}</div>` : '';
-
-    const ktvActionsHtml = ktvApproved
-      ? `<div class="cc-actions">
-           <button class="btn-cc ghost" id="ccEditBtn">✎ Sửa</button>
-           <button class="btn-cc danger" id="ccClearBtn">🗑 Huỷ</button>
-         </div>`
-      : `<div class="cc-actions">
-           <button class="btn-cc" id="ccEditBtn">⭐ Nhập & Duyệt</button>
-         </div>`;
-
-    // --- Hoa hong nhan vien ---
     const staffComms = o.staff_commissions || [];
+
+    // Tao HTML tung dong hoa hong nhan vien
     const staffRowsHtml = staffComms.length
-      ? staffComms.map(sc => `
-          <div class="cc-staff-row" data-cid="${sc.id}">
-            <span class="name">👤 ${esc(sc.staff_name || '—')}</span>
-            <span class="amt">+ ${fmt(sc.amount)}đ</span>
-            <div class="row-actions">
-              <button class="edit-sc" title="Sửa">✎</button>
-              <button class="del-sc danger" title="Xoá">🗑</button>
-            </div>
-            <div class="meta">
-              Duyệt ${fmtDate(sc.approved_at)} · bởi ${esc(sc.approved_by_name || '—')}
-              ${sc.note ? `· ${esc(sc.note)}` : ''}
-            </div>
-          </div>`).join('')
+      ? staffComms.map(sc => {
+          const approved = !!sc.approved_at;
+          const pill = approved
+            ? `<span class="cc-pill approved">✓ Đã duyệt</span>`
+            : `<span class="cc-pill pending">⏳ Chờ duyệt</span>`;
+
+          // Nut hanh dong theo role
+          let actionsHtml = '';
+          if (isAdmin) {
+            const approveBtn = !approved
+              ? `<button class="approve-sc btn-cc" data-cid="${sc.id}" style="font-size:11px;padding:2px 8px">✓ Duyệt</button>`
+              : '';
+            actionsHtml = `<div class="row-actions">
+              ${approveBtn}
+              <button class="edit-sc btn-cc ghost" data-cid="${sc.id}" title="Sửa">✎ Sửa</button>
+              <button class="del-sc btn-cc danger" data-cid="${sc.id}" title="Xoá">🗑 Xoá</button>
+            </div>`;
+          } else if (canRequest && !approved && sc.requested_by === me.id) {
+            actionsHtml = `<div class="row-actions">
+              <button class="my-sc-withdraw btn-cc danger" data-cid="${sc.id}" style="font-size:11px;padding:2px 8px">✗ Rút</button>
+            </div>`;
+          }
+
+          return `
+            <div class="cc-staff-row" data-cid="${sc.id}">
+              <span class="name">👤 ${esc(sc.staff_name || '—')}</span>
+              <span class="amt">+ ${fmt(sc.amount)}đ</span>
+              ${pill}
+              ${actionsHtml}
+              <div class="meta">
+                ${approved
+                  ? `Duyệt ${fmtDate(sc.approved_at)} · bởi ${esc(sc.approved_by_name || '—')}`
+                  : `Yêu cầu ${fmtDate(sc.requested_at)}`}
+                ${sc.note ? ` · ${esc(sc.note)}` : ''}
+              </div>
+            </div>`;
+        }).join('')
       : `<div style="color:#b45309;font-size:13px;font-style:italic">Chưa có hoa hồng nhân viên cho đơn này.</div>`;
+
+    // Form them: label va API khac nhau theo role
+    const addBtnLabel  = isAdmin ? '+ Thêm' : '+ Gửi yêu cầu';
+    const saveBtnLabel = isAdmin ? '✓ Thêm & Duyệt' : 'Gửi yêu cầu';
 
     $box.innerHTML = `
       <div class="commission-card">
-        <div class="cc-head"><span class="star">⭐</span><span>Hoa hồng</span></div>
-
-        <div style="font-size:11.5px;font-weight:700;color:#92400e;letter-spacing:.3px;
-                    text-transform:uppercase;margin-bottom:6px">🔧 KTV ${ktvPill}</div>
-        ${ktvAmountHtml}
-        ${ktvMetaHtml}
-        ${ktvNoteHtml}
-        ${ktvActionsHtml}
-        <div class="cc-edit" id="ccEdit">
-          <input type="number" id="ccAmount" min="0" step="1000"
-                 placeholder="Số tiền KTV (VND)" value="${ktvApproved ? ktvAmt : ''}">
-          <input type="text" id="ccNote" maxlength="300"
-                 placeholder="Ghi chú (tuỳ chọn)" value="${esc(o.tech_commission_note || '')}">
-          <button class="btn-cc" id="ccSaveBtn">✓ Duyệt</button>
-          <button class="btn-cc ghost" id="ccCancelBtn">Huỷ</button>
-        </div>
-
-        <hr class="cc-divider">
+        <div class="cc-head"><span class="star">⭐</span><span>Hoa hồng nhân viên</span></div>
 
         <div class="cc-staff-head">
           <span>👥 Nhân viên</span>
-          <button class="btn-cc" id="ccAddStaffBtn"
-                  style="font-size:12px;padding:4px 10px;margin-left:auto">+ Thêm</button>
+          ${(isAdmin || canRequest) ? `<button class="btn-cc" id="ccAddStaffBtn"
+                  style="font-size:12px;padding:4px 10px;margin-left:auto">${addBtnLabel}</button>` : ''}
         </div>
         <div class="cc-staff-list" id="ccStaffList">${staffRowsHtml}</div>
         <div class="cc-add-staff-form" id="ccAddStaffForm">
           <div class="form-row">
-            <select id="ccStaffSelect"><option value="">-- Chọn nhân viên --</option></select>
+            <div class="cc-staff-picker" id="ccStaffPicker">
+              <button type="button" class="cc-staff-picker-btn" id="ccStaffPickerBtn">
+                <span class="sp-placeholder">-- Chọn nhân viên / KTV --</span>
+                <span class="sp-caret">▼</span>
+              </button>
+              <div class="cc-staff-picker-panel" id="ccStaffPickerPanel"></div>
+              <input type="hidden" id="ccStaffSelect" value="">
+            </div>
             <input type="number" id="ccStaffAmt" min="0" step="1000" placeholder="Số tiền (VND)">
           </div>
           <input type="text" id="ccStaffNote" maxlength="300" placeholder="Ghi chú (tuỳ chọn)">
           <div class="cc-actions" style="margin-top:4px">
-            <button class="btn-cc" id="ccStaffSaveBtn">✓ Thêm & Duyệt</button>
+            <button class="btn-cc" id="ccStaffSaveBtn">${saveBtnLabel}</button>
             <button class="btn-cc ghost" id="ccStaffCancelBtn">Huỷ</button>
           </div>
         </div>
       </div>
     `;
 
-    // Bind KTV
-    const $edit = $('ccEdit');
-    $('ccEditBtn').addEventListener('click', () => { $edit.classList.add('open'); $('ccAmount').focus(); });
-    $('ccCancelBtn').addEventListener('click', () => $edit.classList.remove('open'));
-    $('ccSaveBtn').addEventListener('click', async () => {
-      const v = Math.max(0, Math.round(Number($('ccAmount').value) || 0));
-      if (!v) { ui.toast('Nhập số tiền hoa hồng KTV', 'error'); return; }
-      const r = await api.patch(`/admin/orders/${o.id}/tech-commission`,
-        { amount: v, note: $('ccNote').value.trim() }, { onError: 'toast' });
-      if (r) { ui.toast('Đã duyệt hoa hồng KTV', 'success'); openDetail(o.id); }
-    });
-    if ($('ccClearBtn')) {
-      $('ccClearBtn').addEventListener('click', async () => {
-        const yes = await ui.confirm({ title: 'Huỷ duyệt hoa hồng KTV?', okText: 'Huỷ duyệt' });
-        if (!yes) return;
-        const r = await api.delete(`/admin/orders/${o.id}/tech-commission`, { onError: 'toast' });
-        if (r) { ui.toast('Đã huỷ', 'success'); openDetail(o.id); }
+    // Bind form them moi
+    const $addForm     = $('ccAddStaffForm');
+    const $addBtn      = $('ccAddStaffBtn');
+    const $staffHidden = $('ccStaffSelect');       // hidden input luu id
+    const $pickerBtn   = $('ccStaffPickerBtn');
+    const $pickerPanel = $('ccStaffPickerPanel');
+
+    // Helper: lay mau avatar theo role
+    function spColor(role) { return role === 'staff' ? '#3b82f6' : '#16a34a'; }
+    function spInitials(name) {
+      const parts = name.trim().split(/\s+/);
+      return parts.length >= 2 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+                               : name.slice(0, 2).toUpperCase();
+    }
+    function spRoleLabel(role) { return role === 'staff' ? 'Nhân viên' : 'KTV'; }
+
+    let staffPickerList = [];
+
+    function renderPickerBtn(s) {
+      if (!s) {
+        $pickerBtn.innerHTML = `<span class="sp-placeholder">-- Chọn nhân viên / KTV --</span><span class="sp-caret">▼</span>`;
+        return;
+      }
+      $pickerBtn.innerHTML = `
+        <span class="sp-avatar" style="background:${spColor(s.role)}">${spInitials(s.full_name)}</span>
+        <span class="sp-name">${esc(s.full_name)}</span>
+        <span class="sp-role-pill ${s.role}">${spRoleLabel(s.role)}</span>
+        <span class="sp-caret">▼</span>`;
+    }
+
+    function buildPickerPanel(list) {
+      const groups = [
+        { key: 'staff',    label: 'Nhân viên', items: list.filter(x => x.role === 'staff') },
+        { key: 'kithuat',  label: 'Kỹ thuật viên', items: list.filter(x => x.role === 'kithuat') },
+      ];
+      $pickerPanel.innerHTML = groups.filter(g => g.items.length).map(g => `
+        <div class="sp-group-label">${g.label}</div>
+        ${g.items.map(s => `
+          <div class="sp-item" data-sid="${s.id}" data-role="${s.role}">
+            <span class="sp-avatar" style="background:${spColor(s.role)}">${spInitials(s.full_name)}</span>
+            <div class="sp-info">
+              <div class="sp-iname">${esc(s.full_name)}</div>
+              ${s.phone ? `<div class="sp-iphone">📞 ${esc(s.phone)}</div>` : ''}
+            </div>
+            <span class="sp-role-pill ${s.role}">${spRoleLabel(s.role)}</span>
+          </div>`).join('')}
+      `).join('');
+
+      $pickerPanel.querySelectorAll('.sp-item').forEach($item => {
+        $item.addEventListener('click', () => {
+          const sid  = Number($item.dataset.sid);
+          const found = staffPickerList.find(x => x.id === sid);
+          $staffHidden.value = sid;
+          renderPickerBtn(found);
+          $pickerPanel.classList.remove('open');
+          $pickerPanel.querySelectorAll('.sp-item').forEach(el => el.classList.toggle('selected', el === $item));
+        });
       });
     }
 
-    // Bind Staff — form them
-    const $addForm  = $('ccAddStaffForm');
-    const $staffSel = $('ccStaffSelect');
-    $('ccAddStaffBtn').addEventListener('click', async () => {
-      $addForm.classList.add('open');
-      if ($staffSel.options.length <= 1) {
-        const list = await api.get('/admin/orders/staff-list-for-commission', { onError: 'toast' });
-        if (list && list.length) {
-          list.forEach(s => {
-            const opt = document.createElement('option');
-            opt.value = s.id; opt.textContent = s.full_name;
-            $staffSel.appendChild(opt);
-          });
-        } else if (list) {
-          ui.toast('Chưa có nhân viên (role staff) nào trong hệ thống', 'error');
-          $addForm.classList.remove('open'); return;
+    if ($pickerBtn) {
+      $pickerBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const isOpen = $pickerPanel.classList.contains('open');
+        $pickerPanel.classList.toggle('open', !isOpen);
+        if (!isOpen && staffPickerList.length === 0) {
+          const list = await api.get('/admin/orders/staff-list-for-commission', { onError: 'toast' });
+          if (list && list.length) {
+            staffPickerList = list;
+            buildPickerPanel(list);
+          } else if (list) {
+            ui.toast('Chưa có nhân viên / KTV nào trong hệ thống', 'error');
+            $pickerPanel.classList.remove('open');
+          }
         }
-      }
-      $staffSel.focus();
+      });
+      document.addEventListener('click', (e) => {
+        if (!$('ccStaffPicker')?.contains(e.target)) $pickerPanel?.classList.remove('open');
+      });
+    }
+
+    if ($addBtn) {
+      $addBtn.addEventListener('click', () => {
+        $addForm.style.display = 'flex';
+        $addForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        $pickerBtn && $pickerBtn.focus();
+      });
+    }
+
+    if ($('ccStaffCancelBtn')) $('ccStaffCancelBtn').addEventListener('click', () => {
+      $addForm.style.display = 'none';
+      $pickerPanel.classList.remove('open');
     });
-    $('ccStaffCancelBtn').addEventListener('click', () => $addForm.classList.remove('open'));
-    $('ccStaffSaveBtn').addEventListener('click', async () => {
-      const staffId = Number($staffSel.value);
+
+    if ($('ccStaffSaveBtn')) $('ccStaffSaveBtn').addEventListener('click', async () => {
+      const staffId = Number($staffHidden.value);
       const amt     = Math.max(0, Math.round(Number($('ccStaffAmt').value) || 0));
       if (!staffId) { ui.toast('Chọn nhân viên', 'error'); return; }
       if (!amt)     { ui.toast('Nhập số tiền', 'error'); return; }
-      const r = await api.post(`/admin/orders/${o.id}/staff-commissions`,
-        { staff_id: staffId, amount: amt, note: $('ccStaffNote').value.trim() }, { onError: 'toast' });
-      if (r) { ui.toast('Đã thêm hoa hồng', 'success'); openDetail(o.id); }
+      const note = ($('ccStaffNote').value || '').trim();
+      if (isAdmin) {
+        const r = await api.post(`/admin/orders/${o.id}/staff-commissions`,
+          { staff_id: staffId, amount: amt, note: note || null }, { onError: 'toast' });
+        if (r) { ui.toast('Đã thêm hoa hồng', 'success'); openDetail(o.id); }
+      } else {
+        const r = await api.post(`/admin/orders/${o.id}/my-staff-commission-request`,
+          { staff_id: staffId, amount: amt, note: note || null }, { onError: 'toast' });
+        if (r) { ui.toast('Đã gửi yêu cầu. Admin sẽ xét duyệt sớm.', 'success'); openDetail(o.id); }
+      }
     });
 
-    // Bind tung dong nhan vien (Sua / Xoa)
+    // Bind tung dong: Duyet / Sua / Xoa (admin) + Rut (staff)
     $('ccStaffList').querySelectorAll('.cc-staff-row').forEach($row => {
       const cid = Number($row.dataset.cid);
       const sc  = staffComms.find(x => x.id === cid);
       if (!sc) return;
-      $row.querySelector('.edit-sc').addEventListener('click', async () => {
-        const newAmt = await promptNumberModal(`Sửa hoa hồng — ${sc.staff_name}`, sc.amount);
-        if (newAmt === null) return;
-        const v = Math.max(0, Math.round(Number(newAmt) || 0));
-        if (!v) { ui.toast('Số tiền phải lớn hơn 0', 'error'); return; }
-        const r = await api.patch(`/admin/orders/${o.id}/staff-commissions/${cid}`,
-          { amount: v, note: sc.note }, { onError: 'toast' });
-        if (r) { ui.toast('Đã cập nhật', 'success'); openDetail(o.id); }
-      });
-      $row.querySelector('.del-sc').addEventListener('click', async () => {
-        const yes = await ui.confirm({ title: `Xoá hoa hồng của ${sc.staff_name}?`, okText: 'Xoá' });
-        if (!yes) return;
-        const r = await api.delete(`/admin/orders/${o.id}/staff-commissions/${cid}`, { onError: 'toast' });
-        if (r) { ui.toast('Đã xoá', 'success'); openDetail(o.id); }
-      });
+
+      // Duyet (admin, pending)
+      const $approveBtn = $row.querySelector('.approve-sc');
+      if ($approveBtn) {
+        $approveBtn.addEventListener('click', async () => {
+          const r = await api.patch(`/admin/orders/${o.id}/staff-commissions/${cid}`, {}, { onError: 'toast' });
+          if (r) { ui.toast('Đã duyệt hoa hồng', 'success'); openDetail(o.id); }
+        });
+      }
+
+      // Sua (admin)
+      const $editBtn = $row.querySelector('.edit-sc');
+      if ($editBtn) {
+        $editBtn.addEventListener('click', async () => {
+          const newAmt = await promptNumberModal(`Sửa hoa hồng — ${sc.staff_name}`, sc.amount);
+          if (newAmt === null) return;
+          const v = Math.max(0, Math.round(Number(newAmt) || 0));
+          if (!v) { ui.toast('Số tiền phải lớn hơn 0', 'error'); return; }
+          const r = await api.patch(`/admin/orders/${o.id}/staff-commissions/${cid}`,
+            { amount: v, note: sc.note }, { onError: 'toast' });
+          if (r) { ui.toast('Đã cập nhật', 'success'); openDetail(o.id); }
+        });
+      }
+
+      // Xoa (admin)
+      const $delBtn = $row.querySelector('.del-sc');
+      if ($delBtn) {
+        $delBtn.addEventListener('click', async () => {
+          const yes = await ui.confirm({ title: `Xoá hoa hồng của ${sc.staff_name}?`, okText: 'Xoá' });
+          if (!yes) return;
+          const r = await api.delete(`/admin/orders/${o.id}/staff-commissions/${cid}`, { onError: 'toast' });
+          if (r) { ui.toast('Đã xoá', 'success'); openDetail(o.id); }
+        });
+      }
+
+      // Rut (staff, pending, requested_by === me)
+      const $withdrawBtn = $row.querySelector('.my-sc-withdraw');
+      if ($withdrawBtn) {
+        $withdrawBtn.addEventListener('click', async () => {
+          const yes = await ui.confirm({ title: 'Rút yêu cầu hoa hồng?', okText: 'Rút', okClass: 'danger' });
+          if (!yes) return;
+          const r = await api.delete(`/admin/orders/${o.id}/my-staff-commission-request/${cid}`, { onError: 'toast' });
+          if (r) { ui.toast('Đã rút yêu cầu', 'success'); openDetail(o.id); }
+        });
+      }
     });
   }
 
@@ -756,6 +1017,17 @@
   // ---- DIALOG CHI TIET SAN PHAM (overlay) -----------------------
   function openProductDialog(item) {
     const img = item.product_image || item.product_thumb || '';
+    const fields = (item.field_values || []).slice().sort((a, b) => a.seq - b.seq);
+    const fieldHtml = fields.length
+      ? `<div style="margin-top:12px;border-top:1px dashed #e2e8f0;padding-top:10px">
+          <div style="font-weight:600;color:#475569;margin-bottom:6px;font-size:13px">Thông tin gắn theo</div>
+          ${fields.map(f => `
+            <div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;font-size:14px;border-bottom:1px solid #f1f5f9">
+              <span style="color:#64748b">${esc(f.label)}</span>
+              <span style="font-weight:600;color:#1e293b;text-align:right">${esc(f.value || '—')}</span>
+            </div>`).join('')}
+         </div>`
+      : '';
     const html = `
       <div style="padding:16px;display:flex;gap:14px;flex-wrap:wrap">
         <div style="flex:0 0 180px">
@@ -776,6 +1048,7 @@
           </div>
           ${item.product_warranty_months ? `<div style="color:#64748b">Bảo hành: <b>${item.product_warranty_months} tháng</b></div>` : ''}
           ${item.product_description ? `<div style="margin-top:8px;color:#334155;white-space:pre-wrap">${esc(item.product_description)}</div>` : ''}
+          ${fieldHtml}
         </div>
       </div>
     `;
@@ -1183,9 +1456,10 @@
     if (ok) { ui.toast('Đã xoá', 'success'); closeDetail(); loadList(); }
   }
 
-  // ---- EDIT: lines + order charges -----------------------------
+  // ---- EDIT: lines ---------------------------------------------
   // Sua toan bo lines (PUT /admin/orders/:id/lines).
-  // Tat ca line se duoc thay the. UI gon trong 1 modal lon.
+  const DEFAULT_ITEM_FIELDS = ['Biển số xe', 'IMEI', 'Tên tài khoản', 'Số SIM'];
+
   async function editLines() {
     const o = state.currentDetail;
     if (!state.products) {
@@ -1196,53 +1470,26 @@
       const r = await api.get('/admin/order-templates').catch(() => null);
       state.templates = (r && r.items) || [];
     }
-    // Cache template details (de co fields)
     const tplCache = state.templateById = state.templateById || {};
-    for (const ln of (o.lines || [])) {
-      if (ln.template_id && !tplCache[ln.template_id]) {
-        const r = await api.get('/admin/order-templates/' + ln.template_id).catch(() => null);
-        if (r) tplCache[ln.template_id] = r;
-      }
-    }
 
-    // Working copy
+    // Working copy — items mang field_values riêng
     const wlines = (o.lines || []).map(ln => ({
       template_id: ln.template_id,
       custom_name: ln.custom_name || null,
       items: (ln.items || []).map(i => ({
         product_id: i.product_id, qty: i.qty, unit_price: i.unit_price,
         vat_percent: Number(i.vat_percent) || 0,
+        field_values: (i.field_values && i.field_values.length)
+          ? i.field_values.map(fv => ({ label: fv.label || '', value: fv.value || '' }))
+          : DEFAULT_ITEM_FIELDS.map(l => ({ label: l, value: '' })),
       })),
       charges: (ln.charges || []).map(c => ({ kind: c.kind, label: c.label, amount: c.amount })),
-      customFields: (ln.field_values || []).map(fv => ({
-        label: fv.label || '', value: fv.value || '',
-      })),
     }));
 
-    // Neu line chua co customFields nao -> seed tu template
-    for (const ln of wlines) {
-      if (!ln.customFields.length && ln.template_id && tplCache[ln.template_id]) {
-        const fs = tplCache[ln.template_id].fields || [];
-        ln.customFields = fs.map(f => ({ label: f.label || '', value: '', _fromTpl: true }));
-      } else if (ln.customFields.length && ln.template_id && tplCache[ln.template_id]) {
-        // Da co data tu DB — danh dau field nao trung label voi template = _fromTpl
-        const tplLabels = new Set(
-          (tplCache[ln.template_id].fields || []).map(f => String(f.label || '').trim().toLowerCase())
-        );
-        ln.customFields = ln.customFields.map(f => ({
-          ...f,
-          _fromTpl: tplLabels.has(String(f.label || '').trim().toLowerCase()),
-        }));
-      }
-    }
-
-    const VAT_OPTS = [0, 8, 10];
-    const fmtMoney = (n) => Math.round(Number(n) || 0).toLocaleString('vi-VN');
+    const fmtMoney =(n) => Math.round(Number(n) || 0).toLocaleString('vi-VN');
     const calcLineTotal = (ln) => {
       const itemSum = (ln.items || []).reduce((s, it) => {
-        const sub = (Number(it.qty) || 0) * (Number(it.unit_price) || 0);
-        const vat = sub * ((Number(it.vat_percent) || 0) / 100);
-        return s + sub + vat;
+        return s + (Number(it.qty) || 0) * (Number(it.unit_price) || 0);
       }, 0);
       const chargeSum = (ln.charges || []).reduce((s, c) => {
         const amt = Number(c.amount) || 0;
@@ -1251,101 +1498,101 @@
       return itemSum + chargeSum;
     };
 
+    const renderItemInfoBox = (fvs, ii) => {
+      const filled = fvs.filter(f => (f.value || '').trim());
+      const summary = filled.length ? filled.map(f => `${f.label}: ${f.value}`).join(' · ') : 'Chưa nhập';
+      return `
+        <div class="item-info-box" data-ii="${ii}">
+          <div class="info-toggle" data-act="toggle-info">
+            <span class="chev">▶</span>
+            <span>Hộp thông tin</span>
+            <span class="info-summary">${esc(summary)}</span>
+          </div>
+          <div class="info-body" style="display:none">
+            ${fvs.map((fv, fi) => `
+              <div class="fv-row" data-ii="${ii}" data-fi="${fi}">
+                <input type="text" class="input fv-label" value="${esc(fv.label)}" placeholder="Nhãn" style="flex:1;font-size:12px">
+                <input type="text" class="input fv-value" value="${esc(fv.value)}" placeholder="Giá trị" style="flex:2;font-size:12px">
+                <button type="button" class="btn-x" data-act="del-fv" title="Xoá">×</button>
+              </div>`).join('')}
+            <button type="button" class="btn ghost sm" data-act="add-fv" data-ii="${ii}" style="margin-top:4px;font-size:11px">+ Thêm ô</button>
+          </div>
+        </div>`;
+    };
+
     const renderLine = (ln, idx) => {
       const tpl = tplCache[ln.template_id];
       const lineName = ln.custom_name || (tpl ? tpl.name : '');
-      if (!ln.customFields) ln.customFields = [];
 
-      const fieldsHtml = ln.customFields.map((f, fi) => f._fromTpl
-        ? `<div class="el-row el-field el-field-fixed" data-fi="${fi}">
-             <span class="cf-fixed-label">${esc(f.label || '')}</span>
-             <input type="text" class="input cf-value" placeholder="Nhập ${esc(f.label || '')}" value="${esc(f.value || '')}">
-           </div>`
-        : `<div class="el-row el-field el-field-custom" data-fi="${fi}">
-             <input type="text" class="input cf-label" placeholder="Nhãn" value="${esc(f.label || '')}" style="flex:1">
-             <input type="text" class="input cf-value" placeholder="Giá trị" value="${esc(f.value || '')}" style="flex:2">
-             <button type="button" class="btn-x" data-act="del-field" title="Xoá">×</button>
-           </div>`).join('');
-
-      const itemsHeader = ln.items.length ? `
-        <div class="el-col-head el-item-cols">
-          <span class="c-prod">Sản phẩm</span>
-          <span class="c-qty">SL</span>
-          <span class="c-price">Đơn giá</span>
-          <span class="c-vat">VAT</span>
-          <span class="c-line">Thành tiền</span>
-          <span class="c-x"></span>
-        </div>` : '';
-      const itemsHtml = ln.items.map((it, ii) => {
+      const itemsHtml = ln.items.length ? ln.items.map((it, ii) => {
         const sub = (Number(it.qty) || 0) * (Number(it.unit_price) || 0);
-        const lineAmt = sub * (1 + (Number(it.vat_percent) || 0) / 100);
-        return `<div class="el-row el-item el-item-cols" data-ii="${ii}">
-          <select class="select prod c-prod">
-            <option value="">— SP —</option>
-            ${state.products.map(p => `<option value="${p.id}" ${p.id === it.product_id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
-          </select>
-          <input type="number" class="input qty c-qty" value="${it.qty || 1}" min="1">
-          <input type="number" class="input price c-price" value="${it.unit_price || 0}" min="0">
-          <select class="select vat c-vat">
-            ${VAT_OPTS.map(v => `<option value="${v}" ${v === Number(it.vat_percent || 0) ? 'selected' : ''}>${v ? v + '%' : 'No VAT'}</option>`).join('')}
-          </select>
-          <span class="c-line el-amt-cell">${fmtMoney(lineAmt)}</span>
-          <button type="button" class="btn-x c-x" data-act="del-item" title="Xoá">×</button>
+        return `<div class="item-block" data-ii="${ii}">
+          <div class="ic-row el-item items-grid">
+            <div class="cell">
+              <select class="ic-select prod">
+                <option value="">— Sản phẩm —</option>
+                ${state.products.map(p => `<option value="${p.id}" ${p.id === it.product_id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="cell"><input type="number" class="ic-input num qty" value="${it.qty || 1}" min="1"></div>
+            <div class="cell"><input type="number" class="ic-input num price" value="${it.unit_price || 0}" min="0"></div>
+            <div class="cell right el-amt-cell">${fmtMoney(sub)}</div>
+            <div class="cell"><button type="button" class="btn-x" data-act="del-item">×</button></div>
+          </div>
+          ${renderItemInfoBox(it.field_values || [], ii)}
         </div>`;
-      }).join('');
+      }).join('') : '<div class="ic-empty">Chưa có sản phẩm</div>';
 
-      const chargesHeader = ln.charges.length ? `
-        <div class="el-col-head el-charge-cols">
-          <span class="c-kind">Loại</span>
-          <span class="c-lbl">Mô tả</span>
-          <span class="c-amt">Số tiền</span>
-          <span class="c-x"></span>
-        </div>` : '';
-      const chargesHtml = ln.charges.map((c, ci) => `
-        <div class="el-row el-charge el-charge-cols" data-ci="${ci}">
-          <select class="select kind c-kind">
-            <option value="fee"      ${c.kind === 'fee'      ? 'selected' : ''}>Phí</option>
-            <option value="shipping" ${c.kind === 'shipping' ? 'selected' : ''}>Ship</option>
-            <option value="discount" ${c.kind === 'discount' ? 'selected' : ''}>Giảm</option>
-          </select>
-          <input type="text" class="input lbl c-lbl" value="${esc(c.label || '')}" placeholder="VD: Phí công lắp đặt">
-          <input type="number" class="input amt c-amt" value="${c.amount || 0}">
-          <button type="button" class="btn-x c-x" data-act="del-charge" title="Xoá">×</button>
-        </div>`).join('');
+      const chargesHtml = ln.charges.length ? ln.charges.map((c, ci) => `
+        <div class="ic-row el-charge charges-grid" data-ci="${ci}">
+          <div class="cell">
+            <select class="ic-select kind">
+              <option value="fee"      ${c.kind === 'fee'      ? 'selected' : ''}>Phí</option>
+              <option value="shipping" ${c.kind === 'shipping' ? 'selected' : ''}>Ship</option>
+              <option value="discount" ${c.kind === 'discount' ? 'selected' : ''}>Giảm</option>
+            </select>
+          </div>
+          <div class="cell"><input type="text" class="ic-input lbl" value="${esc(c.label || '')}" placeholder="Mô tả..."></div>
+          <div class="cell"><input type="number" class="ic-input num amt" value="${c.amount || 0}"></div>
+          <div class="cell"><button type="button" class="btn-x" data-act="del-charge">×</button></div>
+        </div>`).join('') : '<div class="ic-empty">Chưa có chi phí</div>';
 
-      return `<div class="el-line" data-idx="${idx}">
-        <div class="el-line-head">
-          <span class="el-line-num">${idx + 1}</span>
-          <div class="tpl-combo" style="flex:1;position:relative">
-            <input type="text" class="input tpl-input" value="${esc(lineName)}" placeholder="Loại / tên công việc..." autocomplete="off" style="width:100%;padding-right:30px">
+      return `<div class="line-card" data-idx="${idx}">
+        <div class="line-head">
+          <div class="seq">${idx + 1}</div>
+          <div class="tpl-combo">
+            <input type="text" class="tpl-input" value="${esc(lineName)}" placeholder="Loại / tên công việc..." autocomplete="off">
             <button type="button" class="tpl-caret" tabindex="-1">▾</button>
             <div class="tpl-pop" hidden></div>
           </div>
-          <button type="button" class="btn-x" data-act="del-line" title="Xoá dòng">×</button>
+          <span class="sub-show">${fmtMoney(calcLineTotal(ln))}đ</span>
+          <button type="button" class="x-btn" data-act="del-line">Xoá dòng</button>
         </div>
-        <div class="el-line-body">
-          <div class="el-section">
-            <div class="el-section-head">
-              <span class="sh">Thông tin</span>
-              <button type="button" class="btn ghost sm" data-act="add-field">+ Thêm ô</button>
+        <div class="line-body">
+          <div class="line-section">
+            <div class="sh">Sản phẩm <button type="button" class="add" data-act="add-item">+ Thêm SP</button></div>
+            <div class="ic-table">
+              <div class="ic-thead items-grid">
+                <div class="cell">Sản phẩm</div>
+                <div class="cell">SL</div>
+                <div class="cell">Đơn giá</div>
+                <div class="cell right">Thành tiền</div>
+                <div class="cell"></div>
+              </div>
+              ${itemsHtml}
             </div>
-            ${fieldsHtml || '<div class="el-empty">Chưa có thông tin</div>'}
           </div>
-          <div class="el-section">
-            <div class="el-section-head">
-              <span class="sh">Sản phẩm</span>
-              <button type="button" class="btn ghost sm" data-act="add-item">+ Sản phẩm</button>
+          <div class="line-section">
+            <div class="sh">Phụ phí trong dòng <button type="button" class="add" data-act="add-charge">+ Thêm phí</button></div>
+            <div class="ic-table">
+              <div class="ic-thead charges-grid">
+                <div class="cell">Loại</div>
+                <div class="cell">Mô tả</div>
+                <div class="cell right">Số tiền</div>
+                <div class="cell"></div>
+              </div>
+              ${chargesHtml}
             </div>
-            ${itemsHeader}
-            ${itemsHtml || '<div class="el-empty">Chưa có sản phẩm</div>'}
-          </div>
-          <div class="el-section">
-            <div class="el-section-head">
-              <span class="sh">Chi phí khác</span>
-              <button type="button" class="btn ghost sm" data-act="add-charge">+ Chi phí</button>
-            </div>
-            ${chargesHeader}
-            ${chargesHtml || '<div class="el-empty">Chưa có chi phí</div>'}
           </div>
         </div>
         <div class="el-line-total">
@@ -1356,53 +1603,74 @@
     };
 
     const html = `<style>
-      #simpleModal .modal { max-width: 760px !important; }
+      #simpleModal .modal { max-width: 860px !important; }
       #simpleModal .modal-body { background:#f1f5f9; }
       .el-wrap { padding:14px; }
-      .el-line { border:1px solid #e2e8f0; border-radius:10px; background:#fff; margin-bottom:14px; overflow:hidden; box-shadow:0 1px 2px rgba(15,23,42,.04); }
-      .el-line-head { display:flex; gap:8px; align-items:center; padding:10px 12px; background:#f8fafc; border-bottom:1px solid #e2e8f0; }
-      .el-line-num { background:#3b82f6; color:#fff; width:26px; height:26px; border-radius:50%; display:grid; place-items:center; font-size:13px; font-weight:700; flex-shrink:0; }
-      .el-line-body { padding:14px; }
-      .el-section { margin-bottom:14px; }
-      .el-section:last-child { margin-bottom:0; }
-      .el-section-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
-      .el-section-head .sh { font-size:11px; color:#475569; text-transform:uppercase; letter-spacing:.6px; font-weight:700; }
-      .el-row { display:flex; gap:8px; margin-bottom:6px; align-items:center; }
-      .el-row:last-child { margin-bottom:0; }
-      .el-empty { font-size:12px; color:#94a3b8; font-style:italic; padding:6px 4px; }
 
-      /* Grid columns dung chung header + row, dam bao thang hang */
-      .el-item-cols { display:grid; grid-template-columns: 1fr 56px 110px 90px 110px 30px; gap:8px; align-items:center; }
-      .el-charge-cols { display:grid; grid-template-columns: 110px 1fr 130px 30px; gap:8px; align-items:center; }
-      .el-col-head { font-size:10.5px; color:#94a3b8; text-transform:uppercase; letter-spacing:.5px; font-weight:600; padding:0 4px 4px; }
-      .el-col-head .c-qty, .el-col-head .c-vat { text-align:center; }
-      .el-col-head .c-price, .el-col-head .c-line, .el-col-head .c-amt { text-align:right; }
-      .el-amt-cell { text-align:right; font-size:13px; color:#0f172a; font-variant-numeric:tabular-nums; padding:0 4px; }
+      /* Line card – khớp trang tạo đơn */
+      .line-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; margin-bottom:14px; overflow:hidden; box-shadow:0 1px 4px rgba(15,23,42,.06); }
+      .line-head { display:flex; align-items:center; gap:8px; padding:8px 12px; background:linear-gradient(135deg,#f1f5ff,#fafbfd); border-bottom:1px solid #e2e8f0; }
+      .line-head .seq { width:24px; height:24px; border-radius:50%; background:#2563eb; color:#fff; font-weight:700; display:grid; place-items:center; font-size:12px; flex-shrink:0; }
+      .line-head .tpl-combo { flex:1; position:relative; }
+      .line-head .tpl-combo .tpl-input { width:100%; font-size:13px; padding:6px 28px 6px 10px; font-weight:600; border:1px solid #e2e8f0; border-radius:6px; background:#fff; box-sizing:border-box; }
+      .line-head .tpl-combo .tpl-caret { position:absolute; right:6px; top:50%; transform:translateY(-50%); width:22px; height:22px; border:none; background:transparent; color:#64748b; cursor:pointer; font-size:11px; display:grid; place-items:center; padding:0; }
+      .line-head .tpl-combo .tpl-pop { position:absolute; left:0; right:0; top:calc(100% + 4px); background:#fff; border:1px solid #e2e8f0; border-radius:8px; box-shadow:0 8px 24px rgba(15,23,42,.12); max-height:220px; overflow-y:auto; z-index:50; }
+      .line-head .tpl-combo .tpl-pop[hidden] { display:none; }
+      .line-head .sub-show { font-size:12px; color:#64748b; font-variant-numeric:tabular-nums; }
+      .line-head .x-btn { background:transparent; border:1px solid #e2e8f0; border-radius:6px; padding:4px 10px; font-size:12px; color:#dc2626; cursor:pointer; }
+      .line-head .x-btn:hover { background:#fee2e2; border-color:#fecaca; }
 
-      /* Thong tin: nhan co dinh + gia tri */
-      .el-field-fixed { display:grid; grid-template-columns: 130px 1fr; gap:10px; align-items:center; }
-      .el-field-fixed .cf-fixed-label { font-size:13px; color:#334155; font-weight:500; padding:0 4px; }
-      .el-field-custom { display:grid; grid-template-columns: 1fr 2fr 30px; gap:8px; align-items:center; }
+      .line-body { padding:10px 12px; }
+      .line-section { margin-bottom:10px; }
+      .line-section .sh { font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:.3px; font-weight:700; margin-bottom:6px; display:flex; align-items:center; gap:6px; }
+      .line-section .sh .add { margin-left:auto; font-size:11.5px; padding:2px 8px; border:1px solid #e2e8f0; border-radius:5px; background:#fff; color:#2563eb; cursor:pointer; }
+      .line-section .sh .add:hover { background:#eff6ff; }
 
-      /* Combo template */
-      .tpl-combo .tpl-caret { position:absolute; right:6px; top:50%; transform:translateY(-50%); width:24px; height:24px; border:none; background:transparent; color:#64748b; cursor:pointer; font-size:14px; }
-      .tpl-combo .tpl-pop { position:absolute; left:0; right:0; top:calc(100% + 4px); background:#fff; border:1px solid #e2e8f0; border-radius:8px; box-shadow:0 8px 24px rgba(15,23,42,.12); max-height:220px; overflow-y:auto; z-index:50; }
+      /* Bảng sản phẩm / phụ phí */
+      .ic-table { border:1px solid #e2e8f0; border-radius:6px; overflow:hidden; background:#fff; }
+      .ic-thead { background:#f8fafc; font-size:10.5px; color:#94a3b8; text-transform:uppercase; letter-spacing:.3px; font-weight:600; border-bottom:1px solid #e2e8f0; }
+      .ic-row { border-bottom:1px solid #f1f5f9; }
+      .ic-row:last-child { border-bottom:0; }
+      .ic-row .cell, .ic-thead .cell { padding:4px 6px; min-width:0; }
+      .ic-thead .cell.center, .ic-row .cell.center { text-align:center; }
+      .ic-thead .cell.right,  .ic-row .cell.right  { text-align:right; }
+      .items-grid   { display:grid; grid-template-columns:2fr 60px 110px 110px 32px; gap:0; align-items:center; }
+      .charges-grid { display:grid; grid-template-columns:90px 1fr 120px 30px; gap:0; align-items:center; }
+      .ic-input, .ic-select { width:100%; border:1px solid transparent; background:transparent; padding:4px 6px; font-size:12.5px; border-radius:4px; box-sizing:border-box; }
+      .ic-input:focus, .ic-select:focus { outline:none; border-color:#2563eb; background:#fff; }
+      .ic-input.num { text-align:right; font-variant-numeric:tabular-nums; }
+      .el-amt-cell { font-weight:600; color:#0f172a; font-variant-numeric:tabular-nums; font-size:12.5px; }
+      .ic-empty { padding:8px; text-align:center; color:#94a3b8; font-size:12px; font-style:italic; }
 
-      /* Tong dong */
+      /* Item block */
+      .item-block { border-bottom:2px solid #e2e8f0; }
+      .item-block:last-child { border-bottom:0; }
+
+      /* Hộp thông tin (collapsible) */
+      .item-info-box { background:#f8fafc; border-top:1px solid #e9eef4; }
+      .info-toggle { display:flex; align-items:center; gap:6px; padding:5px 10px; cursor:pointer; font-size:11.5px; color:#64748b; user-select:none; }
+      .info-toggle:hover { background:#eef2f7; }
+      .info-toggle .chev { font-size:9px; color:#2563eb; }
+      .info-toggle > span:nth-child(2) { font-weight:600; color:#475569; }
+      .info-summary { margin-left:4px; color:#94a3b8; font-style:italic; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; }
+      .info-body { padding:8px 10px 6px; border-top:1px dashed #dde3ec; }
+      .fv-row { display:flex; gap:6px; align-items:center; margin-bottom:4px; }
+
+      /* Tổng dòng */
       .el-line-total { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#f8fafc; border-top:1px solid #e2e8f0; font-size:13px; color:#475569; }
       .el-line-total b { color:#0f172a; font-size:15px; font-variant-numeric:tabular-nums; }
 
-      /* Nut xoa */
-      .btn-x { width:30px; height:30px; border-radius:6px; border:1px solid #e2e8f0; background:#fff; color:#64748b; cursor:pointer; flex-shrink:0; font-size:16px; line-height:1; padding:0; }
+      /* Nút xoá */
+      .btn-x { width:28px; height:28px; border-radius:6px; border:1px solid #e2e8f0; background:#fff; color:#64748b; cursor:pointer; flex-shrink:0; font-size:15px; line-height:1; padding:0; display:grid; place-items:center; }
       .btn-x:hover { background:#fef2f2; color:#dc2626; border-color:#fecaca; }
 
-      /* Nut +Them dong cuoi */
-      #edAddLine { width:100%; padding:12px; border:2px dashed #cbd5e1; background:#fff; color:#3b82f6; font-weight:600; border-radius:10px; cursor:pointer; }
-      #edAddLine:hover { background:#eff6ff; border-color:#3b82f6; }
+      /* Nút thêm dòng */
+      #edAddLine { width:100%; padding:10px; background:#fff; border:2px dashed #cbd5e1; border-radius:10px; color:#2563eb; font-weight:600; font-size:13px; cursor:pointer; }
+      #edAddLine:hover { background:#eff6ff; border-color:#2563eb; }
     </style>
     <div class="el-wrap">
       <div id="edLinesBox">${wlines.map(renderLine).join('')}</div>
-      <button type="button" class="btn ghost sm" id="edAddLine">+ Thêm dòng công việc</button>
+      <button type="button" id="edAddLine">+ Thêm dòng công việc</button>
     </div>`;
 
     function rebuild() {
@@ -1410,18 +1678,26 @@
       bindAll();
     }
     function readDom() {
-      // sync UI -> wlines (keep state up-to-date)
-      document.querySelectorAll('.el-line').forEach(el => {
+      document.querySelectorAll('.line-card').forEach(el => {
         const idx = Number(el.dataset.idx);
         const ln = wlines[idx];
         if (!ln) return;
         ln.items = [];
-        el.querySelectorAll('.el-item').forEach(row => {
+        el.querySelectorAll('.item-block').forEach(block => {
+          const ii = Number(block.dataset.ii);
+          const row = block.querySelector('.el-item');
+          const fvs = [];
+          block.querySelectorAll('.fv-row').forEach(fvRow => {
+            fvs.push({
+              label: fvRow.querySelector('.fv-label').value.trim(),
+              value: fvRow.querySelector('.fv-value').value.trim(),
+            });
+          });
           ln.items.push({
             product_id: Number(row.querySelector('.prod').value) || 0,
             qty: Math.max(1, Number(row.querySelector('.qty').value) || 1),
             unit_price: Math.max(0, Number(row.querySelector('.price').value) || 0),
-            vat_percent: Math.max(0, Number(row.querySelector('.vat').value) || 0),
+            field_values: fvs,
           });
         });
         ln.charges = [];
@@ -1432,26 +1708,10 @@
             amount: Number(row.querySelector('.amt').value) || 0,
           });
         });
-        ln.customFields = [];
-        el.querySelectorAll('.el-field').forEach(row => {
-          if (row.classList.contains('el-field-fixed')) {
-            ln.customFields.push({
-              label: row.querySelector('.cf-fixed-label').textContent || '',
-              value: row.querySelector('.cf-value').value || '',
-              _fromTpl: true,
-            });
-          } else {
-            ln.customFields.push({
-              label: row.querySelector('.cf-label').value || '',
-              value: row.querySelector('.cf-value').value || '',
-              _fromTpl: false,
-            });
-          }
-        });
       });
     }
     function bindAll() {
-      document.querySelectorAll('.el-line').forEach(el => {
+      document.querySelectorAll('.line-card').forEach(el => {
         const idx = Number(el.dataset.idx);
         const combo  = el.querySelector('.tpl-combo');
         const tplInp = combo.querySelector('.tpl-input');
@@ -1478,16 +1738,9 @@
           if (matched) {
             wlines[idx].template_id = matched.id;
             wlines[idx].custom_name = null;
-            if (!tplCache[matched.id]) {
-              const r = await api.get('/admin/order-templates/' + matched.id).catch(() => null);
-              if (r) tplCache[matched.id] = r;
-            }
-            const fs = (tplCache[matched.id] && tplCache[matched.id].fields) || [];
-            wlines[idx].customFields = fs.map(f => ({ label: f.label || '', value: '', _fromTpl: true }));
           } else {
             wlines[idx].template_id = null;
             wlines[idx].custom_name = String(name || '').trim() || null;
-            wlines[idx].customFields = wlines[idx].customFields || [];
           }
           rebuild();
         };
@@ -1528,7 +1781,10 @@
         });
         el.querySelector('[data-act=add-item]').addEventListener('click', () => {
           readDom();
-          wlines[idx].items.push({ product_id: 0, qty: 1, unit_price: 0, vat_percent: 0 });
+          wlines[idx].items.push({
+            product_id: 0, qty: 1, unit_price: 0, vat_percent: 0,
+            field_values: DEFAULT_ITEM_FIELDS.map(l => ({ label: l, value: '' })),
+          });
           rebuild();
         });
         el.querySelector('[data-act=add-charge]').addEventListener('click', () => {
@@ -1536,9 +1792,19 @@
           wlines[idx].charges.push({ kind: 'fee', label: '', amount: 0 });
           rebuild();
         });
+        el.querySelectorAll('[data-act=toggle-info]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const box = btn.closest('.item-info-box');
+            const body = box.querySelector('.info-body');
+            const chev = btn.querySelector('.chev');
+            const isOpen = body.style.display !== 'none';
+            body.style.display = isOpen ? 'none' : '';
+            chev.textContent = isOpen ? '▶' : '▼';
+          });
+        });
         el.querySelectorAll('[data-act=del-item]').forEach(b => b.addEventListener('click', () => {
           readDom();
-          const ii = Number(b.closest('.el-item').dataset.ii);
+          const ii = Number(b.closest('.item-block').dataset.ii);
           wlines[idx].items.splice(ii, 1);
           rebuild();
         }));
@@ -1548,17 +1814,20 @@
           wlines[idx].charges.splice(ci, 1);
           rebuild();
         }));
-        const addFieldBtn = el.querySelector('[data-act=add-field]');
-        if (addFieldBtn) addFieldBtn.addEventListener('click', () => {
+        el.querySelectorAll('[data-act=add-fv]').forEach(b => b.addEventListener('click', () => {
           readDom();
-          if (!wlines[idx].customFields) wlines[idx].customFields = [];
-          wlines[idx].customFields.push({ label: '', value: '', _fromTpl: false });
+          const ii = Number(b.dataset.ii);
+          if (!wlines[idx].items[ii]) return;
+          wlines[idx].items[ii].field_values.push({ label: '', value: '' });
           rebuild();
-        });
-        el.querySelectorAll('[data-act=del-field]').forEach(b => b.addEventListener('click', () => {
+        }));
+        el.querySelectorAll('[data-act=del-fv]').forEach(b => b.addEventListener('click', () => {
           readDom();
-          const fi = Number(b.closest('.el-field').dataset.fi);
-          wlines[idx].customFields.splice(fi, 1);
+          const fvRow = b.closest('.fv-row');
+          const ii = Number(fvRow.dataset.ii);
+          const fi = Number(fvRow.dataset.fi);
+          if (!wlines[idx].items[ii]) return;
+          wlines[idx].items[ii].field_values.splice(fi, 1);
           rebuild();
         }));
       });
@@ -1566,45 +1835,41 @@
         readDom();
         const tid = state.templates[0] && state.templates[0].id;
         if (!tid) { ui.toast('Chưa có loại đơn', 'warning'); return; }
-        if (!tplCache[tid]) {
-          const r = await api.get('/admin/order-templates/' + tid).catch(() => null);
-          if (r) tplCache[tid] = r;
-        }
-        const fs = (tplCache[tid] && tplCache[tid].fields) || [];
         wlines.push({
-          template_id: tid, custom_name: null, items: [], charges: [],
-          customFields: fs.map(f => ({ label: f.label || '', value: '', _fromTpl: true })),
+          template_id: tid, custom_name: null,
+          items: [{
+            product_id: 0, qty: 1, unit_price: 0, vat_percent: 0,
+            field_values: DEFAULT_ITEM_FIELDS.map(l => ({ label: l, value: '' })),
+          }],
+          charges: [],
         });
         rebuild();
       });
 
       // Live update tong tien moi dong khi thay doi qty/price/vat/amount/kind
-      document.querySelectorAll('.el-line').forEach(el => {
+      document.querySelectorAll('.line-card').forEach(el => {
         const updateTotal = () => {
           const idx = Number(el.dataset.idx);
           // doc nhanh tu DOM cua line nay
           const items = [...el.querySelectorAll('.el-item')].map(r => ({
             qty: Number(r.querySelector('.qty').value) || 0,
             unit_price: Number(r.querySelector('.price').value) || 0,
-            vat_percent: Number(r.querySelector('.vat').value) || 0,
           }));
           const charges = [...el.querySelectorAll('.el-charge')].map(r => ({
             kind: r.querySelector('.kind').value,
             amount: Number(r.querySelector('.amt').value) || 0,
           }));
-          // Cap nhat thanh tien tung dong SP
           el.querySelectorAll('.el-item').forEach((r, i) => {
             const it = items[i];
             const sub = it.qty * it.unit_price;
-            const lineAmt = sub * (1 + it.vat_percent / 100);
             const cell = r.querySelector('.el-amt-cell');
-            if (cell) cell.textContent = fmtMoney(lineAmt);
+            if (cell) cell.textContent = fmtMoney(sub);
           });
           const total = calcLineTotal({ items, charges });
           const totalEl = el.querySelector('.el-line-total-val');
           if (totalEl) totalEl.textContent = fmtMoney(total) + ' đ';
         };
-        el.querySelectorAll('.qty, .price, .vat, .amt, .kind').forEach(inp => {
+        el.querySelectorAll('.qty, .price, .amt, .kind').forEach(inp => {
           inp.addEventListener('input', updateTotal);
           inp.addEventListener('change', updateTotal);
         });
@@ -1625,65 +1890,18 @@
       }
     }
     // Build payload
-    const linesPayload = wlines.map(ln => {
-      const fvs = [];
-      for (const cf of (ln.customFields || [])) {
-        const lbl = (cf.label || '').trim();
-        const val = (cf.value || '').trim();
-        if (lbl && val) fvs.push({ label: lbl, value: val });
-      }
-      return {
-        template_id: ln.template_id || null,
-        custom_name: ln.custom_name || null,
-        items: ln.items.filter(it => it.product_id),
-        charges: ln.charges.filter(c => (c.label || '').trim()),
-        field_values: fvs,
-      };
-    });
+    const linesPayload = wlines.map(ln => ({
+      template_id: ln.template_id || null,
+      custom_name: ln.custom_name || null,
+      items: ln.items.filter(it => it.product_id).map(it => ({
+        product_id: it.product_id, qty: it.qty,
+        unit_price: it.unit_price, vat_percent: it.vat_percent,
+        field_values: (it.field_values || []).filter(fv => (fv.label || '').trim()),
+      })),
+      charges: ln.charges.filter(c => (c.label || '').trim()),
+    }));
     closeSimpleModal();
     const r = await api.put(`/admin/orders/${o.id}/lines`, { lines: linesPayload }, { onError: 'toast' });
-    if (r) { ui.toast('Đã lưu', 'success'); openDetail(o.id); }
-  }
-
-  async function editOrderCharges() {
-    const o = state.currentDetail;
-    const cs = (o.order_charges || []).filter(c => c.label !== 'Công lắp');
-    const buildRow = (c) => `
-      <div class="ed-charge-row" style="display:flex;gap:6px;margin-bottom:6px">
-        <select class="select kind" style="width:120px">
-          <option value="shipping" ${c.kind === 'shipping' ? 'selected' : ''}>Ship</option>
-          <option value="discount" ${c.kind === 'discount' ? 'selected' : ''}>Giảm</option>
-          <option value="fee"      ${c.kind === 'fee'      ? 'selected' : ''}>Phí</option>
-        </select>
-        <input type="text" class="input lbl" value="${esc(c.label || '')}" style="flex:2" placeholder="Mô tả">
-        <input type="number" class="input amt" value="${c.amount || 0}" style="width:120px">
-        <button type="button" class="btn-x">×</button>
-      </div>`;
-    const html = `<div style="padding:14px">
-      <p style="color:#94a3b8;font-size:12px">Chi phí khác áp cho cả đơn (vd ship, giảm tổng, phụ phí). Có thể thêm nhiều dòng. "Công lắp" tự sync từ tiền công KTV.</p>
-      <div id="edChBox">${cs.map(buildRow).join('')}</div>
-      <button type="button" class="btn ghost sm" id="edAddCh">+ Thêm</button>
-    </div>`;
-    const ok = await openSimpleModal('Sửa chi phí khác', html, 'Lưu', () => {
-      document.getElementById('edAddCh').addEventListener('click', () => {
-        const div = document.createElement('div');
-        div.innerHTML = buildRow({ kind: 'shipping', label: '', amount: 0 });
-        document.getElementById('edChBox').appendChild(div.firstElementChild);
-      });
-      document.getElementById('edChBox').addEventListener('click', (e) => {
-        if (e.target.classList.contains('btn-x')) e.target.closest('.ed-charge-row').remove();
-      });
-    });
-    if (!ok) return;
-    const charges = [];
-    document.querySelectorAll('.ed-charge-row').forEach(row => {
-      const kind = row.querySelector('.kind').value;
-      const label = row.querySelector('.lbl').value.trim();
-      const amount = Number(row.querySelector('.amt').value) || 0;
-      if (label) charges.push({ kind, label, amount });
-    });
-    closeSimpleModal();
-    const r = await api.patch(`/admin/orders/${o.id}/order-charges`, { charges }, { onError: 'toast' });
     if (r) { ui.toast('Đã lưu', 'success'); openDetail(o.id); }
   }
 
@@ -1744,26 +1962,35 @@
     await loadTemplates();
 
     // helper tạo multi-select dropdown
-    function initMultiSelect({ btnId, popId, applyId, clearId, filterKey, labels }) {
+    function initMultiSelect({ btnId, popId, applyId, clearId, filterKey, labels, defaults }) {
       const btn = document.getElementById(btnId);
       const pop = document.getElementById(popId);
 
       function getCbs() { return pop.querySelectorAll('input[type=checkbox]'); }
 
-      function apply() {
+      function applyQuiet() {
         const cbs = getCbs();
         const sel = Array.from(cbs).filter(c => c.checked).map(c => c.value);
-        if (labels) {
-          btn.textContent = sel.length ? sel.map(v => labels[v] || v).join(', ') : 'Tất cả';
-        } else {
+        function selLabel(v) {
+          if (labels) return labels[v] || v;
           const tplMap = Object.fromEntries(state.templates.map(t => [String(t.id), t.name]));
-          btn.textContent = sel.length ? sel.map(v => tplMap[v] || v).join(', ') : 'Tất cả';
+          return tplMap[v] || v;
         }
-        const newVal = sel.join(',');
-        const changed = state.filters[filterKey] !== newVal;
-        state.filters[filterKey] = newVal;
+        if (!sel.length) {
+          btn.textContent = 'Tất cả';
+        } else if (sel.length === 1) {
+          btn.textContent = selLabel(sel[0]);
+        } else {
+          btn.textContent = selLabel(sel[0]) + ' +' + (sel.length - 1);
+        }
+        state.filters[filterKey] = sel.join(',');
         pop.style.display = 'none';
-        if (changed) { state.page = 1; loadList(); }
+      }
+
+      function apply() {
+        const prev = state.filters[filterKey];
+        applyQuiet();
+        if (state.filters[filterKey] !== prev) { state.page = 1; loadList(); }
       }
 
       btn.addEventListener('click', (e) => {
@@ -1780,6 +2007,11 @@
         getCbs().forEach(c => c.checked = false);
         apply();
       });
+
+      if (defaults && defaults.length) {
+        getCbs().forEach(c => { c.checked = defaults.includes(c.value); });
+        applyQuiet();
+      }
     }
 
     // Multi-select thanh toán
@@ -1789,11 +2021,12 @@
       labels: { unpaid: 'Chưa trả', partial: 'Một phần', paid: 'Đã trả', customer_owes: 'KH nợ', staff_owes: 'KTV giữ', pending_admin_confirm: 'Chờ xác nhận' }
     });
 
-    // Multi-select trạng thái
+    // Multi-select trạng thái — mặc định tick 4 trạng thái đang hoạt động, ẩn đã huỷ
     initMultiSelect({
       btnId: 'stBtn', popId: 'stPop', applyId: 'stApply', clearId: 'stClear',
       filterKey: 'status',
-      labels: { pending: 'Đang chờ', confirmed: 'Lên đơn', in_progress: 'Đang xử lý', done: 'Đã xong', cancelled: 'Đã huỷ' }
+      labels: { pending: 'Đang chờ', confirmed: 'Lên đơn', in_progress: 'Đang xử lý', done: 'Đã xong', cancelled: 'Đã huỷ' },
+      defaults: ['pending', 'confirmed', 'in_progress', 'done']
     });
 
     // Multi-select loại đơn
@@ -1887,5 +2120,30 @@
     // ------------------------------------------------------------------
 
     await loadList();
+
+    // ---- BULK SELECT init -----------------------------------------
+    // cbAll: chọn/bỏ toàn trang
+    document.addEventListener('change', (e) => {
+      if (e.target.id === 'cbAll') {
+        const checked = e.target.checked;
+        document.querySelectorAll('.order-cb').forEach(cb => {
+          cb.checked = checked;
+          const id = Number(cb.dataset.id);
+          if (checked) state.selectedIds.add(id);
+          else state.selectedIds.delete(id);
+        });
+        updateBulkBar();
+      }
+    });
+
+    $('btnClearSel').addEventListener('click', () => {
+      state.selectedIds.clear();
+      document.querySelectorAll('.order-cb').forEach(cb => cb.checked = false);
+      syncCbAll();
+      updateBulkBar();
+    });
+
+    $('btnCreatePR').addEventListener('click', openCreatePRModal);
+    // ------------------------------------------------------------------
   });
 })();

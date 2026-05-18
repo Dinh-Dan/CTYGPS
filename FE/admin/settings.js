@@ -1,4 +1,4 @@
-// Logic trang admin/settings — cau hinh QR (5 slot) + thong tin ngan hang
+// Logic trang admin/settings — cau hinh 5 QR, moi QR co tai khoan ngan hang rieng
 // Lưu vao app_settings qua /api/admin/settings/bulk
 
 (function () {
@@ -9,8 +9,8 @@
   const SLOTS = [1, 2, 3, 4, 5];
 
   const state = {
-    settings: {},        // snapshot tu server (de Reset)
-    edits: {},           // { key: value } chi cac key da thay doi
+    settings: {},
+    edits: {},
     defaultSlot: 1,
   };
 
@@ -25,14 +25,32 @@
     const row = $('qrRow');
     const def = state.defaultSlot;
     row.innerHTML = SLOTS.map(i => {
-      const url = get(`qr.slot${i}.image_url`);
-      const label = get(`qr.slot${i}.label`);
+      const url       = get(`qr.slot${i}.image_url`);
+      const label     = get(`qr.slot${i}.label`);
+      const bankName  = get(`qr.slot${i}.bank_name`);
+      const accountNo = get(`qr.slot${i}.account_no`);
+      const accOwner  = get(`qr.slot${i}.account_name`);
       const isDefault = def === i;
       return `<div class="qr-slot ${isDefault ? 'is-default' : ''}" data-slot="${i}">
         <div class="qr-img-wrap">
           ${url ? `<img src="${escape(url)}" alt="">` : '<span class="empty-text">Chưa có ảnh</span>'}
         </div>
-        <input class="qr-label-input" data-key="qr.slot${i}.label" value="${escape(label)}" placeholder="Nhãn slot ${i}">
+        <div class="qr-field">
+          <label>Nhãn</label>
+          <input data-key="qr.slot${i}.label" value="${escape(label)}" placeholder="VD: Vietcombank cá nhân">
+        </div>
+        <div class="qr-field">
+          <label>Tên ngân hàng</label>
+          <input data-key="qr.slot${i}.bank_name" value="${escape(bankName)}" placeholder="VD: Vietcombank">
+        </div>
+        <div class="qr-field">
+          <label>Số tài khoản</label>
+          <input data-key="qr.slot${i}.account_no" value="${escape(accountNo)}" placeholder="VD: 0123456789">
+        </div>
+        <div class="qr-field">
+          <label>Chủ tài khoản</label>
+          <input data-key="qr.slot${i}.account_name" value="${escape(accOwner)}" placeholder="VD: NGUYEN VAN A">
+        </div>
         <div class="qr-actions">
           <label class="btn ghost sm" style="cursor:pointer;text-align:center">
             📤 Tải lên
@@ -47,11 +65,6 @@
       </div>`;
     }).join('');
   }
-  function renderBank() {
-    $('bkName').value  = get('bank.bank_name');
-    $('bkNo').value    = get('bank.account_no');
-    $('bkOwner').value = get('bank.account_name');
-  }
 
   async function loadSettings() {
     const r = await api.get('/admin/settings', { silent: true }).catch(() => null);
@@ -60,7 +73,6 @@
     state.edits = {};
     state.defaultSlot = Math.max(1, Math.min(5, Number(r['bank.default_qr_slot']) || 1));
     renderQr();
-    renderBank();
   }
 
   // ==== EVENTS =================================================
@@ -92,16 +104,11 @@
       renderQr();
       return;
     }
-    // Label input
-    const label = e.target.matches('input[data-key]') ? e.target : null;
-    if (label) {
-      set(label.dataset.key, label.value);
-      return;
-    }
   });
+
   document.body.addEventListener('input', (e) => {
-    const label = e.target.matches('input[data-key]') ? e.target : null;
-    if (label) set(label.dataset.key, label.value);
+    const inp = e.target.matches('input[data-key]') ? e.target : null;
+    if (inp) set(inp.dataset.key, inp.value);
   });
 
   document.body.addEventListener('click', (e) => {
@@ -113,26 +120,13 @@
     }
   });
 
-  // Bank inputs (oninput de mark edit)
-  ['bkName', 'bkNo', 'bkOwner'].forEach(id => {
-    $(id).oninput = () => {
-      const map = { bkName: 'bank.bank_name', bkNo: 'bank.account_no', bkOwner: 'bank.account_name' };
-      set(map[id], $(id).value);
-    };
-  });
-
   $('btnReset').onclick = () => loadSettings();
 
   $('btnSave').onclick = async () => {
-    // Sync bank inputs (du oninput co the chua trigger neu user thoi tab nhanh)
-    set('bank.bank_name',    $('bkName').value);
-    set('bank.account_no',   $('bkNo').value);
-    set('bank.account_name', $('bkOwner').value);
-    // Default slot luon o trong edits neu da chon
     if (!('bank.default_qr_slot' in state.edits)) {
       state.edits['bank.default_qr_slot'] = String(state.defaultSlot);
     }
-const items = Object.entries(state.edits).map(([key, value]) => ({ key, value }));
+    const items = Object.entries(state.edits).map(([key, value]) => ({ key, value }));
     if (!items.length) return ui.toast('Không có thay đổi', 'info');
     $('btnSave').disabled = true;
     try {
@@ -145,8 +139,6 @@ const items = Object.entries(state.edits).map(([key, value]) => ({ key, value })
   };
 
   // ==== INIT ===================================================
-  // Staff khong duoc vao trang cai dat — redirect ve dashboard.
-  // Neu chua login, de loadSettings tu trigger ui.loginDialog qua 401.
   const _u = (window.auth && auth.user && auth.user()) || null;
   if (_u && _u.role && _u.role !== 'admin') {
     if (window.ui && ui.toast) ui.toast('Chi admin moi truy cap duoc Cai dat', 'error');

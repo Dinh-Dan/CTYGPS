@@ -54,13 +54,13 @@
       const shortDesc = desc.length > 80 ? desc.slice(0, 80) + '…' : desc;
       return `
       <tr>
-        <td>${thumbCell(p)}</td>
-        <td>${escape(p.name)}</td>
-        <td class="text-muted" style="font-size:13px" title="${escape(desc)}">${shortDesc ? escape(shortDesc) : '—'}</td>
-        <td>${p.category_name ? `<span class="pill gray">${escape(p.category_name)}</span>` : '<span class="text-muted">—</span>'}</td>
-        <td>${p.warranty_months ? p.warranty_months + ' tháng' : '<span class="text-muted">—</span>'}</td>
-        <td class="text-muted">${fmt.format(p.cost_price || 0)}</td>
-        <td>
+        <td data-label="Ảnh">${thumbCell(p)}</td>
+        <td data-label="Tên sản phẩm">${escape(p.name)}</td>
+        <td data-label="Mô tả" class="text-muted" style="font-size:13px" title="${escape(desc)}">${shortDesc ? escape(shortDesc) : '—'}</td>
+        <td data-label="Danh mục">${p.category_name ? `<span class="pill gray">${escape(p.category_name)}</span>` : '<span class="text-muted">—</span>'}</td>
+        <td data-label="Bảo hành">${p.warranty_months ? p.warranty_months + ' tháng' : '<span class="text-muted">—</span>'}</td>
+        <td data-label="Giá gốc" class="text-muted">${fmt.format(p.cost_price || 0)}</td>
+        <td data-label="Hành động">
           <a class="btn sm" href="/admin/product-edit.html?id=${p.id}" title="Mở trang sửa sản phẩm">📝 Sửa sản phẩm</a>
           <button class="btn ghost sm" data-act="del" data-id="${p.id}" style="color:#dc2626">Xoá</button>
         </td>
