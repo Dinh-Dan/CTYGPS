@@ -902,6 +902,16 @@ router.patch('/orders/:id/complete', async (req, res, next) => {
     const [rows] = await conn.query(`SELECT * FROM orders WHERE id = ?`, [id]);
 
     try {
+      const actor = req.user?.username || 'KTV';
+      const d = new Date();
+      const ts = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      await db.query(
+        `UPDATE orders SET progress_note = CONCAT(COALESCE(progress_note, ''), ?, '\n') WHERE id = ?`,
+        [`[${ts} - ${actor}] KTV hoàn thành đơn`, id]
+      );
+    } catch (_) {}
+
+    try {
       const [info] = await db.query(
         `SELECT o.customer_id, c.full_name AS customer_name, s.full_name AS staff_name
            FROM orders o
@@ -1055,6 +1065,10 @@ router.get('/summary', async (req, res, next) => {
       `SELECT o.id, o.code, o.status,
               o.due_at, o.completed_at, o.created_at,
               o.total_amount, o.paid_amount, o.wage_amount,
+              COALESCE(o.tech_commission_amount, 0)  AS tech_commission_amount,
+              o.tech_commission_requested_at,
+              o.tech_commission_approved_at,
+              o.payslip_id,
               CASE WHEN o.tech_commission_approved_at IS NOT NULL THEN COALESCE(o.tech_commission_amount,0) ELSE 0 END AS commission_amount,
               GREATEST(0, COALESCE(o.total_amount,0) - COALESCE(o.paid_amount,0)) AS debt_amount,
               c.full_name AS customer_name, c.phone AS customer_phone,
@@ -1099,9 +1113,50 @@ router.get('/summary', async (req, res, next) => {
     const total_unremitted = Number(colRows[0].unremit) || 0;
     const total_remitted   = Number(colRows[0].remit)   || 0;
 
+    // Cac don KTV co hoa hong (order_staff_commissions) nhung KHONG phu trach
+    const commWhere = ['sc.staff_id = ?', 'sc.is_deleted = 0', 'o.is_deleted = 0',
+                       '(o.assigned_staff_id IS NULL OR o.assigned_staff_id != ?)'];
+    const commArgs  = [req.user.sub, req.user.sub];
+    if (status) { commWhere.push('o.status = ?'); commArgs.push(status); }
+    if (q) {
+      commWhere.push('(o.code LIKE ? OR c.full_name LIKE ? OR c.phone LIKE ?)');
+      const like = '%' + q + '%';
+      commArgs.push(like, like, like);
+    }
+    if (dateFrom) {
+      commWhere.push('DATE(COALESCE(o.completed_at, o.due_at, o.created_at)) >= ?');
+      commArgs.push(dateFrom);
+    }
+    if (dateTo) {
+      commWhere.push('DATE(COALESCE(o.completed_at, o.due_at, o.created_at)) <= ?');
+      commArgs.push(dateTo);
+    }
+    const [commItems] = await db.query(
+      `SELECT o.id, o.code, o.status,
+              o.due_at, o.completed_at, o.created_at,
+              o.total_amount, o.paid_amount,
+              sc.amount        AS staff_commission_amount,
+              sc.requested_at  AS comm_requested_at,
+              sc.approved_at   AS comm_approved_at,
+              sc.carried_at    AS comm_carried_at,
+              sc.payslip_id    AS comm_payslip_id,
+              c.full_name      AS customer_name,
+              c.phone          AS customer_phone,
+              assigned_s.full_name AS assigned_name
+         FROM order_staff_commissions sc
+         JOIN orders o ON o.id = sc.order_id
+         LEFT JOIN customers c    ON c.id = o.customer_id
+         LEFT JOIN staff assigned_s ON assigned_s.id = o.assigned_staff_id
+        WHERE ${commWhere.join(' AND ')}
+        ORDER BY COALESCE(o.completed_at, o.due_at, o.created_at) DESC, o.id DESC
+        LIMIT 500`,
+      commArgs
+    );
+
     res.json({
       items,
       totals: { ...totRows[0], total_unremitted, total_remitted },
+      commission_items: commItems,
     });
   } catch (err) { next(err); }
 });
@@ -1545,10 +1600,32 @@ router.get('/wages', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ----------------------------------------------------------
+// GET /kithuat/salary-advances-available
+// Tra ve cac staff_salary_advances cua KTV chua duoc tat toan (remittance_id IS NULL, carried_at IS NULL)
+// ----------------------------------------------------------
+router.get('/salary-advances-available', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user?.sub);
+    const [rows] = await db.query(
+      `SELECT ssa.id, ssa.amount, ssa.note, ssa.created_at,
+              s.full_name AS created_by_name
+         FROM staff_salary_advances ssa
+         LEFT JOIN staff s ON s.id = ssa.created_by
+        WHERE ssa.staff_id = ? AND ssa.is_deleted = 0
+          AND ssa.remittance_id IS NULL AND ssa.carried_at IS NULL
+        ORDER BY ssa.created_at ASC`,
+      [staffId]
+    );
+    res.json({ items: rows.map(r => ({ ...r, amount: Number(r.amount) })) });
+  } catch (err) { next(err); }
+});
+
 router.post('/remittances', async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const collectionIds = Array.isArray(req.body.collection_ids) ? req.body.collection_ids : [];
+    const advanceIds    = Array.isArray(req.body.advance_ids)    ? req.body.advance_ids.map(Number).filter(Boolean) : [];
     const method = req.body.method;
     const receiptUrl = req.body.receipt_url || null;
     const note = req.body.note || null;
@@ -1567,13 +1644,35 @@ router.post('/remittances', async (req, res, next) => {
     if (collections.length !== ids.length) {
       throw httpErr(400, 'Co collection khong hop le hoac da nop');
     }
-    const total = collections.reduce((s, c) => s + Number(c.amount), 0);
+    const totalCollected = collections.reduce((s, c) => s + Number(c.amount), 0);
+
+    // Validate advances neu co
+    let advancesDeducted = [];
+    let totalAdvances = 0;
+    if (advanceIds.length) {
+      const advPh = advanceIds.map(() => '?').join(',');
+      const [advRows] = await conn.query(
+        `SELECT id, amount, note, created_at FROM staff_salary_advances
+          WHERE id IN (${advPh}) AND staff_id = ? AND is_deleted = 0
+            AND remittance_id IS NULL AND carried_at IS NULL`,
+        [...advanceIds, req.user.sub]
+      );
+      if (advRows.length !== advanceIds.length) {
+        throw httpErr(400, 'Co phieu ung khong hop le hoac da tat toan');
+      }
+      advancesDeducted = advRows.map(a => ({ id: a.id, amount: Number(a.amount), note: a.note, created_at: a.created_at }));
+      totalAdvances = advancesDeducted.reduce((s, a) => s + a.amount, 0);
+      if (totalAdvances > totalCollected) {
+        throw httpErr(400, 'Tong tien ung khau tru vuot qua tong tien thu ho');
+      }
+    }
 
     await conn.beginTransaction();
     const [result] = await conn.query(
-      `INSERT INTO remittances (staff_id, amount, method, receipt_url, note)
-       VALUES (?, ?, ?, ?, ?)`,
-      [req.user.sub, total, method, receiptUrl, note]
+      `INSERT INTO remittances (staff_id, amount, method, receipt_url, note, advances_deducted_json)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [req.user.sub, totalCollected, method, receiptUrl, note,
+       advancesDeducted.length ? JSON.stringify(advancesDeducted) : null]
     );
     const remittanceId = result.insertId;
     await conn.query(
@@ -1581,6 +1680,16 @@ router.post('/remittances', async (req, res, next) => {
         WHERE id IN (${placeholders})`,
       [remittanceId, ...ids]
     );
+
+    // Danh dau cac phieu ung da khau tru qua remittance nay
+    if (advanceIds.length) {
+      const advPh = advanceIds.map(() => '?').join(',');
+      await conn.query(
+        `UPDATE staff_salary_advances SET remittance_id = ?, remitted_at = NOW()
+          WHERE id IN (${advPh})`,
+        [remittanceId, ...advanceIds]
+      );
+    }
 
     // Sau khi KTV nop: unremitted cua cac don lien quan giam -> recalc status
     // (staff_owes -> done neu paid du; hoac giu nguyen customer_owes neu van con khach no).
@@ -1619,7 +1728,7 @@ router.get('/remittances', async (req, res, next) => {
   try {
     const [rows] = await db.query(
       `SELECT id, amount, method, receipt_url, note, remitted_at, status, reject_reason,
-              approved_at,
+              approved_at, advances_deducted_json,
               (SELECT COUNT(*) FROM collections c WHERE c.remittance_id = remittances.id) AS collection_count
          FROM remittances
         WHERE staff_id = ? AND is_deleted = 0
@@ -2120,6 +2229,7 @@ router.get('/advances', async (req, res, next) => {
     if (period) { where.push('sa.period = ?'); args.push(period); }
     const [rows] = await db.query(
       `SELECT sa.id, sa.period, sa.amount, sa.note, sa.status,
+              sa.deduct_from_collection,
               sa.approved_at, sa.reject_reason, sa.created_at,
               s.full_name AS approved_by_name
          FROM staff_advances sa
@@ -2138,16 +2248,32 @@ router.get('/advances', async (req, res, next) => {
 router.post('/advances', async (req, res, next) => {
   try {
     const staffId = Number(req.user?.sub);
-    const period  = String(req.body.period || '').trim();
-    if (!/^\d{4}-\d{2}$/.test(period)) {
+    let period = String(req.body.period || '').trim();
+    if (!period) {
+      const now = new Date();
+      period = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    } else if (!/^\d{4}-\d{2}$/.test(period)) {
       return res.status(400).json({ error: 'period sai dinh dang YYYY-MM' });
     }
-    const [y, m] = period.split('-').map(Number);
-    if (m < 1 || m > 12) return res.status(400).json({ error: 'Thang khong hop le' });
 
-    const amount = Math.max(0, Math.round(Number(req.body.amount) || 0));
-    const note   = String(req.body.note || '').trim().slice(0, 300);
+    const amount              = Math.max(0, Math.round(Number(req.body.amount) || 0));
+    const note                = String(req.body.note || '').trim().slice(0, 300);
+    const deductFromCollection = req.body.deduct_from_collection ? 1 : 0;
     if (!amount) return res.status(400).json({ error: 'So tien ung phai lon hon 0' });
+
+    // Neu KTV chon tru vao thu ho: kiem tra co du tien thu ho chua
+    if (deductFromCollection) {
+      const [colSum] = await db.query(
+        `SELECT COALESCE(SUM(amount), 0) AS total FROM collections
+          WHERE staff_id = ? AND remitted = 0 AND is_deleted = 0`,
+        [staffId]
+      );
+      if (Number(colSum[0].total) < amount) {
+        return res.status(400).json({
+          error: `Tien thu ho chua nop (${Number(colSum[0].total).toLocaleString('vi-VN')}đ) khong du de tru ${amount.toLocaleString('vi-VN')}đ`,
+        });
+      }
+    }
 
     // Kiem tra hom nay co thuoc ky luong da chot khong (theo from_date/to_date)
     const [snap] = await db.query(
@@ -2158,11 +2284,426 @@ router.post('/advances', async (req, res, next) => {
     );
     if (snap.length) return res.status(409).json({ error: 'Ngay hom nay thuoc ky luong da chot, khong the gui yeu cau ung' });
 
+    const [[staffRow]] = await db.query('SELECT full_name FROM staff WHERE id = ?', [staffId]);
+    const staffName = staffRow?.full_name || `#${staffId}`;
+
     const [ins] = await db.query(
-      `INSERT INTO staff_advances (staff_id, period, amount, note, created_by, status) VALUES (?,?,?,?,?,'pending')`,
-      [staffId, period, amount, note, staffId]
+      `INSERT INTO staff_advances (staff_id, period, amount, note, created_by, status, deduct_from_collection)
+       VALUES (?,?,?,?,?,'pending',?)`,
+      [staffId, period, amount, note, staffId, deductFromCollection]
     );
+
+    await notify.create(db, {
+      type: 'advance_request',
+      title: 'Yêu cầu ứng lương mới',
+      message: `${staffName} yêu cầu ứng ${amount.toLocaleString('vi-VN')}đ kỳ ${period}`,
+      link_url: '/admin/staff.html',
+      ref_staff_id: staffId,
+    });
+
     res.status(201).json({ ok: true, id: ins.insertId });
+  } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------
+// GET /api/kithuat/my-done-orders  — KTV xem tat ca don da lam xong theo thang
+// ?month=YYYY-MM (mac dinh thang hien tai)
+// ----------------------------------------------------------
+router.get('/my-done-orders', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user?.sub);
+    let month = req.query.month; // 'YYYY-MM'
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+      const now = new Date();
+      month = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    }
+    const [year, mon] = month.split('-').map(Number);
+
+    const [orders] = await db.query(
+      `SELECT o.id, o.code, o.completed_at, o.debt_carried_at,
+              o.total_amount, o.wage_amount,
+              CASE WHEN o.tech_commission_approved_at IS NOT NULL
+                   THEN COALESCE(o.tech_commission_amount,0) ELSE 0 END AS commission_amount,
+              COALESCE(o.tech_commission_amount,0) AS comm_req_amount,
+              o.tech_commission_requested_at,
+              o.tech_commission_approved_at,
+              o.tech_commission_note,
+              (SELECT GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ')
+                 FROM order_lines ol LEFT JOIN order_templates t ON t.id=ol.template_id
+                WHERE ol.order_id=o.id AND ol.is_deleted=0) AS service_name,
+              (SELECT GROUP_CONCAT(DISTINCT fv.value ORDER BY fv.id SEPARATOR ', ')
+                 FROM order_field_values fv
+                WHERE fv.order_id=o.id AND fv.is_deleted=0
+                  AND fv.label IN ('Bien so xe','Biển số xe')) AS bien_so,
+              (SELECT GROUP_CONCAT(DISTINCT fv.value ORDER BY fv.id SEPARATOR ', ')
+                 FROM order_field_values fv
+                WHERE fv.order_id=o.id AND fv.is_deleted=0
+                  AND fv.label IN ('IMEI','Imei','imei')) AS imei,
+              (SELECT GROUP_CONCAT(DISTINCT fv.value ORDER BY fv.id SEPARATOR ', ')
+                 FROM order_field_values fv
+                WHERE fv.order_id=o.id AND fv.is_deleted=0
+                  AND fv.label IN ('Ten tai khoan','Tên tài khoản','tai khoan','tài khoản','Tai khoan')) AS tai_khoan,
+              c.full_name AS customer_name
+         FROM orders o
+         LEFT JOIN customers c ON c.id=o.customer_id
+        WHERE o.assigned_staff_id=? AND o.is_deleted=0
+          AND o.status='done'
+          AND YEAR(o.completed_at)=? AND MONTH(o.completed_at)=?
+        ORDER BY o.completed_at DESC, o.id DESC`,
+      [staffId, year, mon]
+    );
+
+    const totalWage    = orders.reduce((s,o) => s + (Number(o.wage_amount)||0), 0);
+    const totalComm    = orders.reduce((s,o) => s + (Number(o.commission_amount)||0), 0);
+    const totalPending = orders.reduce((s,o) => {
+      if (!o.tech_commission_approved_at && o.tech_commission_requested_at && Number(o.comm_req_amount)>0)
+        return s + Number(o.comm_req_amount);
+      return s;
+    }, 0);
+
+    res.json({ orders, month, total_wage: totalWage, total_commission: totalComm, total_pending: totalPending });
+  } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------
+// GET /api/kithuat/my-current-period  — KTV xem don hang ky hien tai (chua ket phieu)
+// ----------------------------------------------------------
+router.get('/my-current-period', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user?.sub);
+    const [orders] = await db.query(
+      `SELECT o.id, o.code, o.status, o.completed_at,
+              o.total_amount, o.wage_amount,
+              CASE WHEN o.tech_commission_approved_at IS NOT NULL
+                   THEN o.tech_commission_amount ELSE 0 END AS commission_amount,
+              o.tech_commission_amount  AS comm_req_amount,
+              o.tech_commission_requested_at,
+              o.tech_commission_approved_at,
+              (SELECT GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ')
+                 FROM order_lines ol LEFT JOIN order_templates t ON t.id=ol.template_id
+                WHERE ol.order_id=o.id AND ol.is_deleted=0) AS service_name,
+              (SELECT GROUP_CONCAT(DISTINCT fv.value ORDER BY fv.id SEPARATOR ', ')
+                 FROM order_field_values fv
+                WHERE fv.order_id=o.id AND fv.is_deleted=0
+                  AND fv.label IN ('Bien so xe','Biển số xe')) AS bien_so,
+              (SELECT GROUP_CONCAT(DISTINCT fv.value ORDER BY fv.id SEPARATOR ', ')
+                 FROM order_field_values fv
+                WHERE fv.order_id=o.id AND fv.is_deleted=0
+                  AND fv.label IN ('IMEI','Imei','imei')) AS imei,
+              (SELECT GROUP_CONCAT(DISTINCT fv.value ORDER BY fv.id SEPARATOR ', ')
+                 FROM order_field_values fv
+                WHERE fv.order_id=o.id AND fv.is_deleted=0
+                  AND fv.label IN ('Ten tai khoan','Tên tài khoản','tai khoan','tài khoản','Tai khoan')) AS tai_khoan,
+              c.full_name AS customer_name,
+              c.phone AS customer_phone,
+              COALESCE((SELECT SUM(col.amount) FROM collections col
+                         WHERE col.order_id=o.id AND col.is_deleted=0), 0) AS collected_amount
+         FROM orders o
+         LEFT JOIN customers c ON c.id=o.customer_id
+        WHERE o.assigned_staff_id=? AND o.is_deleted=0
+          AND o.debt_carried_at IS NULL AND o.status='done'
+        ORDER BY o.completed_at DESC, o.id DESC`,
+      [staffId]
+    );
+    const totalWage      = orders.reduce((s, o) => s + (Number(o.wage_amount)      || 0), 0);
+    const totalCollected = orders.reduce((s, o) => s + (Number(o.collected_amount) || 0), 0);
+
+    // Hoa hong rieng tu order_staff_commissions (ngoai tech_commission tren don)
+    const [scRows] = await db.query(
+      `SELECT sc.id, sc.order_id, sc.amount, sc.note, sc.approved_at,
+              o.code,
+              (SELECT GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ')
+                 FROM order_lines ol LEFT JOIN order_templates t ON t.id=ol.template_id
+                WHERE ol.order_id=o.id AND ol.is_deleted=0) AS service_name,
+              c.full_name AS customer_name
+         FROM order_staff_commissions sc
+         JOIN orders o ON o.id=sc.order_id
+         LEFT JOIN customers c ON c.id=o.customer_id
+        WHERE sc.staff_id=? AND sc.is_deleted=0
+          AND sc.carried_at IS NULL AND sc.approved_at IS NOT NULL
+        ORDER BY sc.approved_at DESC`,
+      [staffId]
+    );
+
+    const totalTechComm = orders.reduce((s, o) => s + (Number(o.commission_amount) || 0), 0);
+    const totalScComm   = scRows.reduce((s, sc) => s + (Number(sc.amount) || 0), 0);
+    res.json({
+      orders,
+      sc_commissions:  scRows,
+      total_wage:      totalWage,
+      total_commission: totalTechComm + totalScComm,
+      total_collected: totalCollected,
+    });
+  } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------
+// GET /api/kithuat/my-payslip-draft  — KTV xem ban nhap luong (read-only, tuong tu admin)
+// ?from=YYYY-MM-DD&to=YYYY-MM-DD  (optional)
+// ----------------------------------------------------------
+router.get('/my-payslip-draft', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user?.sub);
+
+    function fmtD(d) {
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+
+    let fromDate = req.query.from;
+    let toDate   = req.query.to || fmtD(new Date());
+
+    if (!fromDate) {
+      const [[lastSlip]] = await db.query(
+        `SELECT to_date FROM staff_payslips
+          WHERE staff_id=? AND is_deleted=0 AND finalized_at IS NOT NULL
+          ORDER BY to_date DESC, id DESC LIMIT 1`, [staffId]
+      );
+      if (lastSlip) {
+        const d = new Date(lastSlip.to_date);
+        d.setDate(d.getDate() + 1);
+        fromDate = fmtD(d);
+      } else {
+        const d = new Date(); d.setDate(d.getDate() - 35);
+        fromDate = fmtD(d);
+      }
+    }
+
+    const fromStart = `${fromDate} 00:00:00`;
+    const nextDay   = new Date(toDate); nextDay.setDate(nextDay.getDate() + 1);
+    const toEnd     = `${fmtD(nextDay)} 00:00:00`;
+
+    // Don cu co luong
+    const [orders] = await db.query(
+      `SELECT o.id, o.code, o.completed_at, o.total_amount, o.wage_amount,
+              CASE WHEN o.tech_commission_approved_at IS NOT NULL
+                   THEN o.tech_commission_amount ELSE 0 END AS commission_amount,
+              (SELECT GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ')
+                 FROM order_lines ol LEFT JOIN order_templates t ON t.id=ol.template_id
+                WHERE ol.order_id=o.id AND ol.is_deleted=0) AS service_name,
+              (SELECT GROUP_CONCAT(DISTINCT fv.value ORDER BY fv.id SEPARATOR ', ')
+                 FROM order_field_values fv
+                WHERE fv.order_id=o.id AND fv.is_deleted=0
+                  AND fv.label IN ('Bien so xe','Biển số xe')) AS bien_so,
+              (SELECT GROUP_CONCAT(DISTINCT fv.value ORDER BY fv.id SEPARATOR ', ')
+                 FROM order_field_values fv
+                WHERE fv.order_id=o.id AND fv.is_deleted=0
+                  AND fv.label IN ('IMEI','Imei','imei')) AS imei,
+              (SELECT GROUP_CONCAT(DISTINCT fv.value ORDER BY fv.id SEPARATOR ', ')
+                 FROM order_field_values fv
+                WHERE fv.order_id=o.id AND fv.is_deleted=0
+                  AND fv.label IN ('Ten tai khoan','Tên tài khoản','tai khoan','tài khoản','Tai khoan')) AS tai_khoan
+         FROM orders o
+        WHERE o.assigned_staff_id=? AND o.is_deleted=0
+          AND o.debt_carried_at IS NULL AND o.status='done'
+          AND o.completed_at >= ? AND o.completed_at < ?
+        ORDER BY o.completed_at ASC, o.id ASC`,
+      [staffId, fromStart, toEnd]
+    );
+
+    const rows = orders.map(o => ({
+      order_id:   o.id,
+      code:       o.code,
+      date:       o.completed_at,
+      service:    o.service_name || '',
+      bien_so:    o.bien_so || '',
+      imei:       o.imei || '',
+      tai_khoan:  o.tai_khoan || '',
+      revenue:    Number(o.total_amount) || 0,
+      wage:       Number(o.wage_amount) || 0,
+      commission: Number(o.commission_amount) || 0,
+      row_type:   'order',
+    }));
+
+    // Hoa hong rieng (order_staff_commissions)
+    const [scRows] = await db.query(
+      `SELECT sc.id, sc.order_id, sc.amount, sc.note, sc.approved_at,
+              o.code,
+              (SELECT GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ')
+                 FROM order_lines ol LEFT JOIN order_templates t ON t.id=ol.template_id
+                WHERE ol.order_id=o.id AND ol.is_deleted=0) AS service_name
+         FROM order_staff_commissions sc
+         JOIN orders o ON o.id=sc.order_id
+        WHERE sc.staff_id=? AND sc.is_deleted=0
+          AND sc.carried_at IS NULL
+          AND sc.approved_at >= ? AND sc.approved_at < ?
+        ORDER BY sc.approved_at ASC`,
+      [staffId, fromStart, toEnd]
+    );
+
+    for (const sc of scRows) {
+      rows.push({
+        order_id:  sc.order_id,
+        code:      sc.code,
+        date:      sc.approved_at,
+        service:   sc.service_name || '',
+        bien_so: '', imei: '', tai_khoan: '',
+        revenue:   0,
+        wage:      0,
+        commission: Number(sc.amount) || 0,
+        row_type:  'commission',
+      });
+    }
+    rows.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    // No ky truoc
+    const [[debtRow]] = await db.query(
+      `SELECT COALESCE(SUM(remaining_debt),0) AS total FROM staff_payslips
+        WHERE staff_id=? AND is_deleted=0 AND remaining_debt>0 AND debt_absorbed=0`, [staffId]
+    );
+
+    // Ung luong chua ket
+    const [advances] = await db.query(
+      `SELECT id, amount, note, created_at
+         FROM staff_salary_advances
+        WHERE staff_id=? AND is_deleted=0 AND carried_at IS NULL AND remittance_id IS NULL
+        ORDER BY created_at ASC`,
+      [staffId]
+    );
+
+    const totalWage     = rows.reduce((s, r) => s + (r.wage || 0) + (r.commission || 0), 0);
+    const totalAdvances = advances.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+
+    // Khoản cộng/trừ nháp đã lưu
+    const [draftAdj] = await db.query(
+      `SELECT type, label, amount, sort_order FROM staff_payroll_adjustments
+        WHERE staff_id=? AND is_deleted=0
+        ORDER BY sort_order ASC, id ASC`,
+      [staffId]
+    );
+
+    res.json({
+      from_date:         fromDate,
+      to_date:           toDate,
+      rows,
+      total_wage:        totalWage,
+      carried_debt:      Number(debtRow.total) || 0,
+      advances,
+      total_advances:    totalAdvances,
+      draft_adjustments: draftAdj,
+    });
+  } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------
+// GET /api/kithuat/salary-stats  — KTV xem tong hop so lieu luong
+// ----------------------------------------------------------
+router.get('/salary-stats', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user?.sub);
+
+    const [[slipStats]] = await db.query(
+      `SELECT COALESCE(SUM(paid_amount), 0) AS total_received
+         FROM staff_payslips
+        WHERE staff_id=? AND finalized_at IS NOT NULL AND is_deleted=0`,
+      [staffId]
+    );
+
+    const [[pendingWork]] = await db.query(
+      `SELECT
+         COALESCE(SUM(wage_amount), 0) AS pending_wage,
+         COALESCE(SUM(CASE WHEN tech_commission_approved_at IS NOT NULL
+                           THEN tech_commission_amount ELSE 0 END), 0) AS pending_commission
+         FROM orders
+        WHERE assigned_staff_id=? AND status='done'
+          AND debt_carried_at IS NULL AND is_deleted=0`,
+      [staffId]
+    );
+
+    const [[scCommRow]] = await db.query(
+      `SELECT COALESCE(SUM(amount), 0) AS sc_commission
+         FROM order_staff_commissions
+        WHERE staff_id=? AND is_deleted=0 AND carried_at IS NULL AND approved_at IS NOT NULL`,
+      [staffId]
+    );
+
+    const [[holding]] = await db.query(
+      `SELECT COALESCE(SUM(amount), 0) AS holding_amount
+         FROM collections
+        WHERE staff_id=? AND remitted=0 AND is_deleted=0`,
+      [staffId]
+    );
+
+    const [[advances]] = await db.query(
+      `SELECT COALESCE(SUM(amount), 0) AS pending_advances
+         FROM staff_salary_advances
+        WHERE staff_id=? AND carried_at IS NULL AND remittance_id IS NULL AND is_deleted=0`,
+      [staffId]
+    );
+
+    const [[lastSlip]] = await db.query(
+      `SELECT gross_amount, paid_amount, remaining_debt, from_date, to_date
+         FROM staff_payslips
+        WHERE staff_id=? AND finalized_at IS NOT NULL AND is_deleted=0
+        ORDER BY to_date DESC, id DESC LIMIT 1`,
+      [staffId]
+    );
+
+    const [avgRows] = await db.query(
+      `SELECT gross_amount FROM staff_payslips
+        WHERE staff_id=? AND finalized_at IS NOT NULL AND is_deleted=0
+        ORDER BY to_date DESC, id DESC LIMIT 6`,
+      [staffId]
+    );
+    const avgGross = avgRows.length
+      ? Math.round(avgRows.reduce((s, r) => s + (Number(r.gross_amount) || 0), 0) / avgRows.length)
+      : 0;
+
+    res.json({
+      total_received:      Number(slipStats.total_received)        || 0,
+      pending_wage:        Number(pendingWork.pending_wage)         || 0,
+      pending_commission:  (Number(pendingWork.pending_commission) || 0) + (Number(scCommRow.sc_commission) || 0),
+      holding_amount:      Number(holding.holding_amount)           || 0,
+      pending_advances:    Number(advances.pending_advances)        || 0,
+      last_payslip:        lastSlip || null,
+      avg_gross:           avgGross,
+    });
+  } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------
+// GET /api/kithuat/my-payslips  — KTV xem danh sach phieu luong cua minh
+// ----------------------------------------------------------
+router.get('/my-payslips', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user?.sub);
+    const [rows] = await db.query(
+      `SELECT sp.id, sp.from_date, sp.to_date, sp.base_salary,
+              sp.carried_debt, sp.total_wage, sp.total_extras, sp.total_deductions,
+              sp.total_advances, sp.advances_json,
+              sp.gross_amount, sp.note, sp.finalized_at, sp.paid_amount,
+              sp.paid_at, sp.paid_note, sp.remaining_debt,
+              sp.extras_json, sp.deductions_json, sp.rows_json,
+              f.full_name AS finalized_by_name, p.full_name AS paid_by_name
+         FROM staff_payslips sp
+         LEFT JOIN staff f ON f.id=sp.finalized_by
+         LEFT JOIN staff p ON p.id=sp.paid_by
+        WHERE sp.staff_id=? AND sp.is_deleted=0 AND sp.finalized_at IS NOT NULL
+        ORDER BY sp.to_date DESC, sp.id DESC`,
+      [staffId]
+    );
+    res.json({ items: rows });
+  } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------
+// GET /api/kithuat/my-payslips/:sid  — KTV xem chi tiet 1 phieu
+// ----------------------------------------------------------
+router.get('/my-payslips/:sid', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user?.sub);
+    const slipId  = Number(req.params.sid);
+    const [[slip]] = await db.query(
+      `SELECT sp.*, s.full_name AS staff_name, s.username AS staff_username,
+              f.full_name AS finalized_by_name, p.full_name AS paid_by_name
+         FROM staff_payslips sp
+         JOIN staff s ON s.id=sp.staff_id
+         LEFT JOIN staff f ON f.id=sp.finalized_by
+         LEFT JOIN staff p ON p.id=sp.paid_by
+        WHERE sp.id=? AND sp.staff_id=? AND sp.is_deleted=0 AND sp.finalized_at IS NOT NULL`,
+      [slipId, staffId]
+    );
+    if (!slip) return res.status(404).json({ error: 'Không tìm thấy phiếu lương' });
+    res.json(slip);
   } catch (err) { next(err); }
 });
 

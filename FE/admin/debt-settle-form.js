@@ -282,7 +282,6 @@
       return `<tr>
         <td><b>${escape(g.label)}</b></td>
         <td class="num">${uniqueMap.size}</td>
-        <td class="num">${g.entries.length}</td>
         <td class="num" style="color:#dc2626;font-weight:600">${fmtVnd(groupDebt)}</td>
       </tr>`;
     }).join('');
@@ -300,14 +299,12 @@
       <thead><tr>
         <th>Nhóm nhiệm vụ</th>
         <th class="num" style="width:80px">Số đơn</th>
-        <th class="num" style="width:80px">Số dòng</th>
         <th class="num" style="width:150px">Còn nợ (nhóm)</th>
       </tr></thead>
       <tbody>${summaryRows}</tbody>
       <tfoot><tr style="font-weight:700;background:#f1f5f9">
         <td>Tổng (${allUniqueRemain.size} đơn distinct)</td>
         <td class="num">${allUniqueRemain.size}</td>
-        <td class="num">${groupList.reduce((s, g) => s + g.entries.length, 0)}</td>
         <td class="num" style="color:#dc2626">${fmtVnd(grandDebt)}</td>
       </tr></tfoot>
     </table>`;
@@ -475,7 +472,7 @@
     $('quotePaper').innerHTML = `
       <div class="quote-header">
         <div class="quote-brand">
-          <div class="logo">VG</div>
+          <img src="/uploads/LOGO TRANG.jpg" alt="logo" style="width:56px;height:56px;object-fit:contain;border-radius:4px;background:#f8fafc">
           <div>
             <div class="brand-name">CÔNG TY TNHH VIỄN THÔNG VINAGPS</div>
             <div class="brand-sub">190 TTH 21, P. Tân Thới Hiệp, Q.12, TP.HCM<br>ĐT: (028) 6682 5658 — DĐ: 0949.155.160</div>
@@ -494,12 +491,15 @@
 
       <div class="quote-section">
         <h3>1. Thông tin khách hàng</h3>
-        <div class="cust-info">
-          <div><b>Họ tên:</b> ${escape(cust.company_name || cust.full_name || '—')}</div>
-          <div><b>Mã KH:</b> ${escape(cust.code || '—')}</div>
-          <div><b>Điện thoại:</b> ${escape(cust.phone || '—')}</div>
-          <div><b>Địa chỉ:</b> ${escape(cust.address || '—')}</div>
-          ${cust.tax_code ? `<div><b>Mã số thuế:</b> ${escape(cust.tax_code)}</div>` : ''}
+        <div class="cust-display-box">
+          <span class="cust-display-name">${escape(cust.company_name || cust.full_name || '—')}</span>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 24px;margin-top:4px">
+            ${cust.company_name && cust.full_name ? `<div><b>Người liên hệ:</b> ${escape(cust.full_name)}</div>` : '<div></div>'}
+            <div><b>Mã KH:</b> ${escape(cust.code || '—')}</div>
+            <div><b>Điện thoại:</b> ${escape(cust.phone || '—')}</div>
+            ${cust.tax_code ? `<div><b>MST:</b> ${escape(cust.tax_code)}</div>` : '<div></div>'}
+            ${cust.address ? `<div style="grid-column:1/-1"><b>Địa chỉ:</b> ${escape(cust.address)}</div>` : ''}
+          </div>
         </div>
       </div>
 
@@ -543,9 +543,80 @@
     `;
 
     renderByMode(d);
+    renderCustEditPanel(cust);
     $('btnOpenConfirm').disabled = false;
     $('btnDownload').disabled = false;
     $('btnDownloadPdf').disabled = false;
+  }
+
+  // ─── Panel chỉnh sửa thông tin khách hàng ────────────────────────────────────
+
+  function renderCustEditPanel(cust) {
+    const sec = document.getElementById('custEditSection');
+    if (!sec) return;
+    sec.innerHTML = `
+      <div class="cust-edit-wrap">
+        <button type="button" class="cust-edit-toggle" id="custEditToggle">
+          ✏️ Chỉnh sửa thông tin khách hàng
+        </button>
+        <div class="cust-edit-body" id="custEditBody">
+          <div class="cust-edit-grid">
+            <div class="cust-edit-full">
+              <label class="form-label">Tên công ty</label>
+              <input class="form-control" id="ceCompanyName" type="text" placeholder="Để trống nếu là cá nhân" value="${escape(cust.company_name || '')}">
+            </div>
+            <div>
+              <label class="form-label">Họ và tên</label>
+              <input class="form-control" id="ceFullName" type="text" placeholder="Họ và tên liên hệ" value="${escape(cust.full_name || '')}">
+            </div>
+            <div>
+              <label class="form-label">Số điện thoại</label>
+              <input class="form-control" id="cePhone" type="text" placeholder="0xxxxxxxxx" value="${escape(cust.phone || '')}">
+            </div>
+            <div>
+              <label class="form-label">Mã số thuế</label>
+              <input class="form-control" id="ceTaxCode" type="text" placeholder="Mã số thuế (nếu có)" value="${escape(cust.tax_code || '')}">
+            </div>
+            <div class="cust-edit-full">
+              <label class="form-label">Địa chỉ</label>
+              <input class="form-control" id="ceAddress" type="text" placeholder="Địa chỉ đầy đủ" value="${escape(cust.address || '')}">
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button type="button" class="btn ghost" id="ceSaveBtn">Lưu thông tin</button>
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById('custEditToggle').onclick = () => {
+      document.getElementById('custEditBody').classList.toggle('open');
+    };
+    document.getElementById('ceSaveBtn').onclick = saveCustInfo;
+  }
+
+  async function saveCustInfo() {
+    const cid = state.cid;
+    if (!cid) return;
+    const body = {
+      company_name: document.getElementById('ceCompanyName').value.trim() || null,
+      full_name: document.getElementById('ceFullName').value.trim() || null,
+      phone: document.getElementById('cePhone').value.trim() || null,
+      tax_code: document.getElementById('ceTaxCode').value.trim() || null,
+      address: document.getElementById('ceAddress').value.trim() || null,
+    };
+    // Lọc bỏ key null để không ghi đè trường đang có nếu để trống
+    const payload = Object.fromEntries(Object.entries(body).filter(([, v]) => v !== null));
+    if (!Object.keys(payload).length) { ui.toast('Chưa nhập thông tin nào', 'error'); return; }
+    try {
+      ui.loading(true);
+      const res = await api.put(`/admin/customers/${cid}`, payload);
+      if (!res) return;
+      ui.toast('Đã lưu thông tin khách hàng', 'success');
+      // Tải lại để cập nhật hiển thị
+      await load();
+    } finally {
+      ui.loading(false);
+    }
   }
 
   // ─── Modal xác nhận tạo phiếu ────────────────────────────────────────────────
@@ -644,7 +715,7 @@
     const paper = $('quotePaper');
     try {
       ui.loading(true);
-      const canvas = await html2canvas(paper, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
+      const canvas = await html2canvas(paper, { backgroundColor: '#ffffff', scale: 2, useCORS: true, allowTaint: true });
       const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -661,32 +732,28 @@
   };
 
   $('btnDownloadPdf').onclick = async () => {
-    if (typeof html2canvas !== 'function' || typeof window.jspdf === 'undefined') {
+    if (typeof html2pdf === 'undefined') {
       return ui.toast('Thư viện chưa tải xong, thử lại sau giây lát', 'error');
     }
     const paper = $('quotePaper');
+    const c = state.data && state.data.customer;
+    const fname = `phieu-yeu-cau-${(c && c.code) || (c && c.id) || 'kh'}-${fmtDate(new Date()).replaceAll('/', '-')}.pdf`;
+    const btn = $('btnDownloadPdf');
+    btn.disabled = true;
     try {
       ui.loading(true);
-      const canvas = await html2canvas(paper, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
-      const imgData = canvas.toDataURL('image/png');
-      const { jsPDF } = window.jspdf;
-      const pdfW = 210;
-      const pdfH = Math.round((canvas.height / canvas.width) * pdfW);
-      const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-      const a4H = 297;
-      let yOffset = 0;
-      while (yOffset < pdfH) {
-        if (yOffset > 0) pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, -yOffset, pdfW, pdfH);
-        yOffset += a4H;
-      }
-      const c = state.data && state.data.customer;
-      const fname = `phieu-yeu-cau-${(c && c.code) || (c && c.id) || 'kh'}-${fmtDate(new Date()).replaceAll('/', '-')}.pdf`;
-      pdf.save(fname);
+      await html2pdf().set({
+        margin: [10, 10, 10, 10],
+        filename: fname,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#fff', logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      }).from(paper).save();
     } catch (err) {
       ui.toast('Lỗi tạo PDF: ' + err.message, 'error');
     } finally {
       ui.loading(false);
+      btn.disabled = false;
     }
   };
 

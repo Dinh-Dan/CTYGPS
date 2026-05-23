@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Phiếu lương</title>
+<link rel="stylesheet" href="/shared/css/style.css"/>
+<style>
+body{background:#cbd5e1;margin:0;font-family:system-ui,-apple-system,sans-serif;color:#1e293b}
+
+.pv-page{max-width:860px;margin:30px auto;padding:0 16px 60px}
+
+.pv-actions{
+  display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap;
+  background:#fff;padding:12px 20px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.pv-actions .spacer{flex:1}
+.pv-status-pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:999px}
+.pv-status-pill.paid  {background:#dcfce7;color:#166534}
+.pv-status-pill.debt  {background:#fef3c7;color:#92400e}
+.pv-status-pill.unpaid{background:#fee2e2;color:#991b1b}
+
+.pv-paper{
+  background:#fff;padding:40px 50px;
+  box-shadow:0 10px 25px rgba(0,0,0,.1);border-radius:2px;min-height:900px}
+
+.pv-header{
+  display:flex;justify-content:space-between;align-items:flex-start;
+  border-bottom:2px solid #0f172a;padding-bottom:14px;margin-bottom:24px}
+.pv-brand{display:flex;align-items:center;gap:12px}
+.pv-brand-name{font-size:20px;font-weight:800;color:#0f172a;letter-spacing:-.5px}
+.pv-brand-sub{font-size:11.5px;color:#64748b;margin-top:2px}
+.pv-doc-type{text-align:right}
+.pv-doc-type h1{font-size:22px;font-weight:800;color:#0f172a;margin:0 0 4px;letter-spacing:-.5px}
+.pv-doc-type p{font-size:12px;color:#64748b;margin:0;line-height:1.6}
+
+.pv-meta{display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;margin-bottom:24px}
+.pv-meta-item{}
+.pv-meta-item .lbl{font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+.pv-meta-item .val{font-size:13.5px;color:#0f172a;font-weight:600;margin-top:2px}
+
+.pv-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:20px}
+.pv-table th,.pv-table td{
+  border:1px solid #e2e8f0;padding:7px 10px;vertical-align:middle;text-align:left}
+.pv-table thead th{background:#f8fafc;font-weight:700;color:#475569;font-size:11px}
+.pv-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pv-table tfoot td{font-weight:700;background:#fef9c3}
+.pv-table .badge-comm{
+  font-size:10px;background:#ede9fe;color:#6d28d9;
+  padding:1px 5px;border-radius:3px;margin-left:4px}
+
+.pv-summary{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:24px}
+.pv-sum-table{flex:1;min-width:220px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
+.pv-sum-table table{width:100%;border-collapse:collapse;font-size:13px}
+.pv-sum-table td{padding:9px 14px;border-bottom:1px solid #f1f5f9}
+.pv-sum-table tr:last-child td{border-bottom:0}
+.pv-sum-table .lbl{color:#64748b}
+.pv-sum-table .val{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.pv-sum-table .total-row td{background:#16a34a;color:#fff;font-weight:800;font-size:16px}
+.pv-sum-table .adv-row td{background:#fffbeb;color:#92400e}
+.pv-sum-table .debt-row td{background:#fef2f2;color:#991b1b}
+
+.pv-adv-detail{margin-top:8px;font-size:12px;color:#64748b;padding-left:12px}
+.pv-adv-detail li{margin-bottom:3px}
+
+.pv-sign{
+  display:flex;justify-content:flex-end;margin-top:40px;padding-top:20px;
+  border-top:1px dashed #cbd5e1}
+.pv-sign-box{text-align:center;min-width:200px}
+.pv-sign-box .sign-lbl{font-size:12px;color:#64748b;font-weight:600;margin-bottom:60px}
+.pv-sign-box .sign-name{font-size:13px;font-weight:700;color:#0f172a}
+
+.pv-footer-note{
+  margin-top:24px;font-size:11.5px;color:#94a3b8;text-align:center;
+  border-top:1px solid #f1f5f9;padding-top:12px}
+
+@media print{
+  body{background:#fff}
+  .pv-actions{display:none}
+  .pv-page{margin:0;padding:0;max-width:100%}
+  .pv-paper{box-shadow:none;padding:24px 32px}
+}
+</style>
+</head>
+<body>
+<div class="pv-page">
+
+  <div class="pv-actions">
+    <a href="/admin/payroll.html" class="btn ghost" style="font-size:13px">← Bảng lương</a>
+    <div class="spacer"></div>
+    <span id="statusPill" class="pv-status-pill unpaid">Chưa phát</span>
+    <button class="btn ghost" onclick="window.print()" style="font-size:13px">🖨 In</button>
+    <button class="btn ghost" id="btnCopyLink" style="font-size:13px">🔗 Copy link</button>
+  </div>
+
+  <div class="pv-paper" id="pvPaper">
+
+    <div class="pv-header">
+      <div class="pv-brand">
+        <div>
+          <div class="pv-brand-name" id="brandName">VinaGPS</div>
+          <div class="pv-brand-sub">Hệ thống quản lý nội bộ</div>
+        </div>
+      </div>
+      <div class="pv-doc-type">
+        <h1>PHIẾU LƯƠNG</h1>
+        <p id="docPeriod">Kỳ lương: —</p>
+        <p id="docDate">Ngày chốt: —</p>
+      </div>
+    </div>
+
+    <div class="pv-meta" id="pvMeta"></div>
+
+    <table class="pv-table" id="pvTable">
+      <thead>
+        <tr>
+          <th style="width:30px">#</th>
+          <th style="width:65px">Ngày</th>
+          <th style="width:85px">Mã đơn</th>
+          <th>Dịch vụ</th>
+          <th>Tài khoản / Biển số</th>
+          <th class="num" style="width:100px">Tiền công</th>
+          <th style="width:140px">Ghi chú CK</th>
+        </tr>
+      </thead>
+      <tbody id="pvTbody"></tbody>
+      <tfoot id="pvTfoot"></tfoot>
+    </table>
+
+    <div class="pv-summary" id="pvSummary"></div>
+
+    <div class="pv-sign">
+      <div class="pv-sign-box">
+        <div class="sign-lbl">Người nhận lương<br>(Ký và ghi rõ họ tên)</div>
+        <div class="sign-name" id="signName"></div>
+      </div>
+    </div>
+
+    <div class="pv-footer-note">Phiếu lương này do hệ thống VinaGPS tạo tự động. Mọi thắc mắc liên hệ quản lý.</div>
+  </div>
+
+</div>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/admin/payslip-view.js"></script>
+</body>
+</html>

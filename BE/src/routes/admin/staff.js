@@ -13,10 +13,12 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../../db');
 const { requireRole } = require('../../middleware/auth');
+const notify = require('../../utils/notify');
 
 const router = express.Router();
 const ROLES = ['admin', 'kithuat', 'staff'];
 const adminOnly = requireRole('admin');
+const canManage = requireRole('admin', 'staff');
 
 function httpErr(status, message) {
   const e = new Error(message);
@@ -161,7 +163,7 @@ async function generateStaffUsername(role) {
 
 // ---- POST /api/admin/staff ------------------------------------
 // Body: { username, password, full_name, role, area, phone, cccd, email, avatar_url }
-router.post('/', adminOnly, async (req, res, next) => {
+router.post('/', canManage, async (req, res, next) => {
   try {
     const password = String(req.body.password || '');
     if (password.length < 4) throw httpErr(400, 'Mat khau toi thieu 4 ky tu');
@@ -194,7 +196,7 @@ router.post('/', adminOnly, async (req, res, next) => {
 });
 
 // ---- PUT /api/admin/staff/:id ---------------------------------
-router.put('/:id', adminOnly, async (req, res, next) => {
+router.put('/:id', canManage, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) {
@@ -245,7 +247,7 @@ router.put('/:id', adminOnly, async (req, res, next) => {
 });
 
 // ---- POST /api/admin/staff/:id/password -----------------------
-router.post('/:id/password', adminOnly, async (req, res, next) => {
+router.post('/:id/password', canManage, async (req, res, next) => {
   try {
     const password = String(req.body.password || '');
     if (password.length < 4) return res.status(400).json({ error: 'Mat khau toi thieu 4 ky tu' });
@@ -267,7 +269,7 @@ router.post('/:id/password', adminOnly, async (req, res, next) => {
 //  - holdings (staff_holdings.qty > 0)
 //  - release_pool item duoc cap cho rieng staff nay
 // Admin cuoi cung cung khong xoa duoc.
-router.delete('/:id', adminOnly, async (req, res, next) => {
+router.delete('/:id', canManage, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) {
@@ -329,6 +331,198 @@ router.delete('/:id', adminOnly, async (req, res, next) => {
       [id]
     );
     if (!result.affectedRows) return res.status(404).json({ error: 'Khong tim thay nhan vien' });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ==============================================================
+// Quan ly yeu cau ung luong tu KTV/staff (bang staff_advances)
+//
+// GET  /me/advances              -> staff xem yeu cau cua chinh minh
+// POST /me/advances              -> staff gui yeu cau moi
+// GET  /advances/pending         -> admin xem tat ca yeu cau dang cho (adminOnly)
+// PATCH /:id/advances/:aid/approve -> admin duyet -> tao staff_salary_advances
+// PATCH /:id/advances/:aid/reject  -> admin tu choi
+// ==============================================================
+
+router.get('/me/advances', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user && req.user.sub);
+    if (!staffId) return res.status(401).json({ error: 'Chua dang nhap' });
+    const status = req.query.status || null;
+    const where = ['sa.staff_id = ?', 'sa.is_deleted = 0'];
+    const args = [staffId];
+    if (status) { where.push('sa.status = ?'); args.push(status); }
+    const [rows] = await db.query(
+      `SELECT sa.id, sa.period, sa.amount, sa.note, sa.status,
+              sa.approved_at, sa.reject_reason, sa.created_at
+         FROM staff_advances sa
+        WHERE ${where.join(' AND ')}
+        ORDER BY sa.created_at DESC LIMIT 50`,
+      args
+    );
+    res.json({ items: rows.map(r => ({ ...r, amount: Number(r.amount) })) });
+  } catch (err) { next(err); }
+});
+
+router.post('/me/advances', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user && req.user.sub);
+    if (!staffId) return res.status(401).json({ error: 'Chua dang nhap' });
+    const period = String(req.body.period || '').trim();
+    const amount = Number(req.body.amount) || 0;
+    const note   = String(req.body.note || '').trim() || '';
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) return res.status(400).json({ error: 'Ky luong khong hop le (YYYY-MM)' });
+    if (amount <= 0) return res.status(400).json({ error: 'So tien phai > 0' });
+    const [ins] = await db.query(
+      `INSERT INTO staff_advances (staff_id, period, amount, note, created_by, status, created_at)
+       VALUES (?, ?, ?, ?, ?, 'pending', NOW())`,
+      [staffId, period, amount, note, staffId]
+    );
+
+    const [[staffRow]] = await db.query('SELECT full_name FROM staff WHERE id = ?', [staffId]);
+    const staffName = staffRow?.full_name || `#${staffId}`;
+    await notify.create(db, {
+      type: 'advance_request',
+      title: 'Yêu cầu ứng lương mới',
+      message: `${staffName} yêu cầu ứng ${amount.toLocaleString('vi-VN')}đ kỳ ${period}`,
+      link_url: '/admin/staff.html',
+      ref_staff_id: staffId,
+    });
+
+    res.json({ id: ins.insertId, ok: true });
+  } catch (err) { next(err); }
+});
+
+router.get('/advances/pending', adminOnly, async (req, res, next) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT sa.id, sa.staff_id, sa.period, sa.amount, sa.note, sa.created_at,
+              sa.deduct_from_collection,
+              s.full_name AS staff_name, s.username
+         FROM staff_advances sa
+         JOIN staff s ON s.id = sa.staff_id
+        WHERE sa.status = 'pending' AND sa.is_deleted = 0
+        ORDER BY sa.created_at ASC`
+    );
+    res.json({ items: rows.map(r => ({ ...r, amount: Number(r.amount) })) });
+  } catch (err) { next(err); }
+});
+
+router.patch('/:id/advances/:aid/approve', adminOnly, async (req, res, next) => {
+  const conn = await db.getConnection();
+  try {
+    const staffId = Number(req.params.id);
+    const advId   = Number(req.params.aid);
+    if (!staffId || !advId) { conn.release(); return res.status(400).json({ error: 'Tham so khong hop le' }); }
+
+    await conn.beginTransaction();
+    const [[adv]] = await conn.query(
+      `SELECT id, staff_id, amount, note, period, status, deduct_from_collection
+         FROM staff_advances WHERE id = ? AND staff_id = ? AND is_deleted = 0 FOR UPDATE`,
+      [advId, staffId]
+    );
+    if (!adv) { await conn.rollback(); return res.status(404).json({ error: 'Khong tim thay yeu cau' }); }
+    if (adv.status !== 'pending') { await conn.rollback(); return res.status(409).json({ error: 'Yeu cau da duoc xu ly' }); }
+
+    // Cap nhat trang thai yeu cau
+    await conn.query(
+      `UPDATE staff_advances SET status='approved', approved_by=?, approved_at=NOW() WHERE id=?`,
+      [req.user.sub, advId]
+    );
+
+    // Tao phieu ung luong chinh thuc.
+    // deduct_from_collection = 1: phieu nay se hien trong modal Duyet nop KTV
+    //   va duoc tru khi KTV nop tien thu ho (KHONG tao remittance ngay tai day).
+    // deduct_from_collection = 0: ung binh thuong — admin da dua tien mat,
+    //   sau xu ly qua payslip cuoi thang, KHONG hien o settle modal.
+    const ssaNote = adv.note || `Ứng lương kỳ ${adv.period}`;
+    const deductFlag = adv.deduct_from_collection ? 1 : 0;
+    const [ssaIns] = await conn.query(
+      `INSERT INTO staff_salary_advances (staff_id, amount, note, deduct_from_collection, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, NOW())`,
+      [staffId, adv.amount, ssaNote, deductFlag, req.user.sub]
+    );
+    const ssaId = ssaIns.insertId;
+
+    await conn.commit();
+
+    // Thong bao realtime cho KTV biet da duoc duyet
+    try {
+      if (global.io) {
+        global.io.to(`staff-${staffId}`).emit('advance:updated', {
+          advance_id: advId, status: 'approved',
+        });
+      }
+    } catch (_) {}
+
+    res.json({ ok: true, salary_advance_id: ssaId, deduct_from_collection: deductFlag });
+  } catch (err) {
+    try { await conn.rollback(); } catch (_) {}
+    next(err);
+  } finally { conn.release(); }
+});
+
+router.patch('/:id/advances/:aid/reject', adminOnly, async (req, res, next) => {
+  try {
+    const staffId = Number(req.params.id);
+    const advId   = Number(req.params.aid);
+    if (!staffId || !advId) return res.status(400).json({ error: 'Tham so khong hop le' });
+    const reason = String(req.body.reason || '').trim() || null;
+    const [[adv]] = await db.query(
+      `SELECT id, status FROM staff_advances WHERE id = ? AND staff_id = ? AND is_deleted = 0`,
+      [advId, staffId]
+    );
+    if (!adv) return res.status(404).json({ error: 'Khong tim thay yeu cau' });
+    if (adv.status !== 'pending') return res.status(409).json({ error: 'Yeu cau da duoc xu ly' });
+    await db.query(
+      `UPDATE staff_advances SET status='rejected', approved_by=?, approved_at=NOW(), reject_reason=? WHERE id=?`,
+      [req.user.sub, reason, advId]
+    );
+    try {
+      if (global.io) {
+        global.io.to(`staff-${staffId}`).emit('advance:updated', {
+          advance_id: advId, status: 'rejected', reason,
+        });
+      }
+    } catch (_) {}
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// GET /:id/advances — tat ca yeu cau ung cua 1 nhan vien (admin xem)
+router.get('/:id/advances', adminOnly, async (req, res, next) => {
+  try {
+    const staffId = Number(req.params.id);
+    const [rows] = await db.query(
+      `SELECT sa.id, sa.period, sa.amount, sa.note, sa.status,
+              sa.deduct_from_collection,
+              sa.approved_at, sa.reject_reason, sa.created_at,
+              c.full_name AS created_by_name,
+              a.full_name AS approved_by_name
+         FROM staff_advances sa
+         LEFT JOIN staff c ON c.id = sa.created_by
+         LEFT JOIN staff a ON a.id = sa.approved_by
+        WHERE sa.staff_id = ? AND sa.is_deleted = 0
+        ORDER BY sa.created_at DESC`,
+      [staffId]
+    );
+    res.json({ items: rows.map(r => ({ ...r, amount: Number(r.amount) })) });
+  } catch (err) { next(err); }
+});
+
+// DELETE /me/advances/:aid — staff rut yeu cau khi con pending
+router.delete('/me/advances/:aid', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user?.sub);
+    const advId   = Number(req.params.aid);
+    const [[adv]] = await db.query(
+      `SELECT id, status FROM staff_advances WHERE id=? AND staff_id=? AND is_deleted=0`,
+      [advId, staffId]
+    );
+    if (!adv) return res.status(404).json({ error: 'Không tìm thấy yêu cầu' });
+    if (adv.status !== 'pending') return res.status(409).json({ error: 'Chỉ có thể rút khi đang chờ duyệt' });
+    await db.query(`UPDATE staff_advances SET is_deleted=1 WHERE id=?`, [advId]);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

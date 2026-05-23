@@ -261,10 +261,14 @@
 <div id="modalAdvance" class="modal-bg">
   <div class="modal" style="max-width:400px">
     <div class="modal-head">
-      <h3>Tạo phiếu ứng lương</h3>
+      <h3 id="advModalTitle">Tạo phiếu ứng lương</h3>
       <button class="modal-close" id="modalAdvClose">×</button>
     </div>
     <div class="modal-body">
+      <div class="field" id="advPeriodRow" style="display:none">
+        <label>Kỳ lương *</label>
+        <input type="month" id="advPeriod" class="input"/>
+      </div>
       <div class="field">
         <label>Số tiền ứng *</label>
         <input type="text" id="advAmt" class="input" placeholder="0"

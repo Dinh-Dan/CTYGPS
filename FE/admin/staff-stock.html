@@ -44,6 +44,70 @@
   .grant-items input, .grant-items select, .grant-items textarea { padding:6px 9px; font-size:13px; width:100%; }
   .btn-x { background:#fee2e2; color:#991b1b; border:none; border-radius:6px; width:26px; height:26px; cursor:pointer; font-size:14px; line-height:1; }
   .btn-x:hover { background:#fca5a5; }
+  /* ===== KTV combobox ===== */
+  .ktv-combo { position:relative; }
+  .ktv-combo .ktv-inp { width:100%; padding-right:26px; box-sizing:border-box; }
+  .ktv-clear {
+    position:absolute; right:6px; top:50%; transform:translateY(-50%);
+    background:transparent; border:0; color:#94a3b8; cursor:pointer;
+    font-size:15px; line-height:1; padding:2px 4px; border-radius:3px; display:none;
+  }
+  .ktv-combo.has-val .ktv-clear { display:block; }
+  .ktv-clear:hover { background:#fee2e2; color:#991b1b; }
+
+  .ktv-dd {
+    position:fixed; z-index:9999; background:#fff;
+    border:1px solid #e2e8f0; border-radius:8px;
+    box-shadow:0 6px 20px rgba(0,0,0,.12); max-height:300px; overflow:auto; display:none;
+  }
+  .ktv-dd.on { display:block; }
+  .ktv-dd .opt {
+    display:flex; align-items:center; gap:10px;
+    padding:9px 12px; cursor:pointer; border-bottom:1px solid #f1f5f9; font-size:13px;
+  }
+  .ktv-dd .opt:last-child { border-bottom:0; }
+  .ktv-dd .opt:hover, .ktv-dd .opt.active { background:#f4f8ff; }
+  .ktv-dd-av {
+    width:36px; height:36px; border-radius:50%; background:#0ea5e9;
+    color:#fff; display:grid; place-items:center; font-weight:700; font-size:15px; flex-shrink:0;
+  }
+  .ktv-dd-name { font-weight:600; color:#0f172a; line-height:1.3; }
+  .ktv-dd-phone { font-size:11.5px; color:#64748b; margin-top:1px; }
+  .ktv-dd-empty { padding:10px 12px; color:#94a3b8; font-size:12px; font-style:italic; text-align:center; }
+
+  /* ===== Product combobox (grant rows) ===== */
+  .gprod-combo { position:relative; }
+  .gprod-combo .gprod-inp { width:100%; padding-right:22px; box-sizing:border-box; }
+  .gprod-clear {
+    position:absolute; right:5px; top:50%; transform:translateY(-50%);
+    background:transparent; border:0; color:#94a3b8; cursor:pointer;
+    font-size:13px; line-height:1; padding:2px 4px; border-radius:3px; display:none;
+  }
+  .gprod-combo.has-val .gprod-clear { display:block; }
+  .gprod-clear:hover { background:#fee2e2; color:#991b1b; }
+
+  .gprod-dd {
+    position:fixed; z-index:9999; background:#fff;
+    border:1px solid #e2e8f0; border-radius:8px;
+    box-shadow:0 6px 20px rgba(0,0,0,.12); max-height:320px; overflow:auto; display:none;
+  }
+  .gprod-dd.on { display:block; }
+  .gprod-dd .opt {
+    display:flex; align-items:center; gap:9px;
+    padding:7px 10px; font-size:12.5px; cursor:pointer;
+    border-bottom:1px solid #f1f5f9; line-height:1.3;
+  }
+  .gprod-dd .opt:last-child { border-bottom:0; }
+  .gprod-dd .opt:hover, .gprod-dd .opt.active { background:#f4f8ff; }
+  .gprod-dd-img { width:36px; height:36px; object-fit:cover; border-radius:5px; border:1px solid #e2e8f0; flex-shrink:0; }
+  .gprod-dd-no-img { width:36px; height:36px; border-radius:5px; border:1px solid #e2e8f0; background:#f1f5f9; display:grid; place-items:center; font-size:16px; flex-shrink:0; }
+  .gprod-dd-info { flex:1; min-width:0; }
+  .gprod-dd-nm { font-weight:500; color:#0f172a; }
+  .gprod-dd-code { color:#94a3b8; font-size:10.5px; font-family:monospace; }
+  .gprod-dd-bottom { margin-top:3px; }
+  .gprod-dd-stock { font-size:10.5px; padding:1px 7px; border-radius:999px; background:#dcfce7; color:#166534; font-weight:600; }
+  .gprod-dd-stock.out { background:#fee2e2; color:#991b1b; }
+  .gprod-empty { padding:10px 12px; color:#94a3b8; font-size:12px; font-style:italic; text-align:center; }
 
   /* ===== History ===== */
   .history-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; margin-bottom:8px; }
@@ -88,7 +152,11 @@
             <h3>Phát hàng từ kho công ty</h3>
             <div class="field">
               <label>Chọn KTV nhận hàng *</label>
-              <select id="grantStaff" class="select" style="max-width:320px"></select>
+              <div class="ktv-combo" id="ktvComboWrap" style="max-width:320px">
+                <input type="text" class="input ktv-inp" id="ktvComboInput" placeholder="— Tìm KTV —" autocomplete="off">
+                <button type="button" class="ktv-clear" id="ktvComboClear" tabindex="-1">×</button>
+                <div class="ktv-dd" id="ktvComboDd"></div>
+              </div>
             </div>
             <table class="grant-items">
               <thead>

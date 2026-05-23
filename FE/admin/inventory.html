@@ -3,28 +3,151 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Kho thiết bị – Admin VinaGPS</title>
+<title>Tổng quan kho – Admin VinaGPS</title>
 <link rel="stylesheet" href="/shared/css/style.css" />
 <style>
+  /* ===== TABS ===== */
   .inv-tabs{
-    display:flex;gap:4px;border-bottom:1px solid #e2e8f0;margin-bottom:8px;
-    flex-shrink:0;
+    display:flex;gap:4px;border-bottom:1px solid #e2e8f0;margin-bottom:10px;
+    flex-shrink:0;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;
   }
   .inv-tab{
     padding:7px 14px;background:transparent;border:none;cursor:pointer;
     font-size:13px;color:#475569;font-weight:500;
-    border-bottom:2px solid transparent;margin-bottom:-1px;
+    border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;
   }
   .inv-tab:hover{ color:#1e40af; }
   .inv-tab.active{ color:#1e40af;border-bottom-color:#1e40af;font-weight:600; }
-  .inv-tab .badge{
-    display:inline-block;background:#dbeafe;color:#1e40af;
-    border-radius:10px;padding:1px 7px;font-size:11px;margin-left:5px;
-  }
 
   .inv-pane{ display:none;flex:1;min-height:0;flex-direction:column; }
   .inv-pane.active{ display:flex; }
 
+  /* ===== STOCK PANE LAYOUT ===== */
+  .inv-stock-layout{
+    display:flex;gap:14px;flex:1;min-height:0;overflow:hidden;
+  }
+
+  /* Sidebar */
+  .inv-filter-sidebar{
+    width:220px;flex-shrink:0;display:flex;flex-direction:column;gap:10px;
+    overflow-y:auto;
+  }
+  .inv-filter-panel{
+    background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .inv-filter-head{
+    display:flex;justify-content:space-between;align-items:center;
+    font-size:13px;font-weight:600;color:#0f172a;margin-bottom:2px;
+  }
+  .inv-filter-head button{
+    background:none;border:none;cursor:pointer;color:#2563eb;font-size:12px;padding:0;
+  }
+  .inv-filter-panel .field{ margin:0; }
+  .inv-filter-panel .field label{ font-size:11.5px;color:#64748b;display:block;margin-bottom:4px; }
+  .inv-filter-panel .input,
+  .inv-filter-panel .select{ padding:7px 10px;font-size:13px; }
+
+  .inv-qty-row{ display:grid;grid-template-columns:1fr 1fr;gap:8px; }
+
+  .inv-cat-list{
+    background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;
+  }
+  .inv-cat-list-title{
+    font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;
+    letter-spacing:.4px;margin-bottom:10px;
+  }
+  .inv-cat-item{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:5px 8px;border-radius:6px;cursor:pointer;font-size:13px;color:#334155;
+    margin-bottom:2px;transition:background .15s;
+  }
+  .inv-cat-item:hover{ background:#f1f5f9; }
+  .inv-cat-item.active{ background:#dbeafe;color:#1e40af;font-weight:600; }
+  .inv-cat-item .cnt{
+    font-size:11.5px;background:#f1f5f9;color:#64748b;border-radius:10px;
+    padding:1px 7px;font-weight:500;
+  }
+  .inv-cat-item.active .cnt{ background:#bfdbfe;color:#1e40af; }
+
+  /* Main area */
+  .inv-main-area{
+    flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;
+  }
+  .inv-table-header{
+    display:flex;justify-content:space-between;align-items:center;
+    margin-bottom:10px;flex-shrink:0;flex-wrap:wrap;gap:8px;
+  }
+  .inv-table-header h3{
+    font-size:14px;font-weight:700;color:#0f172a;margin:0;
+  }
+  .inv-table-actions{ display:flex;gap:8px;align-items:center; }
+
+  .inv-pager-bar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:8px 0;flex-shrink:0;flex-wrap:wrap;gap:8px;
+  }
+  .inv-per-page{ display:flex;align-items:center;gap:6px;font-size:13px;color:#64748b; }
+  .inv-per-page select{ padding:5px 8px;font-size:12.5px;border:1px solid #e2e8f0;border-radius:6px; }
+
+  /* Product cell */
+  .prod-cell{ display:flex;align-items:center;gap:10px; }
+  .prod-thumb{
+    width:38px;height:38px;border-radius:8px;object-fit:cover;
+    background:#f1f5f9;flex-shrink:0;
+  }
+  .prod-thumb-fb{
+    width:38px;height:38px;border-radius:8px;background:#e0e7ff;
+    display:inline-flex;align-items:center;justify-content:center;
+    color:#3730a3;font-weight:700;font-size:12px;flex-shrink:0;
+  }
+  .prod-info .prod-name{ font-size:13px;font-weight:600;color:#0f172a;line-height:1.3; }
+  .prod-info .prod-desc{ font-size:11.5px;color:#94a3b8;margin-top:1px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px; }
+
+  /* Category pill */
+  .cat-pill{
+    display:inline-block;padding:2px 9px;border-radius:20px;font-size:11.5px;
+    font-weight:500;white-space:nowrap;
+  }
+
+  /* Stock dot */
+  .stock-dot{
+    display:inline-block;width:7px;height:7px;border-radius:50%;
+    vertical-align:middle;margin-left:3px;flex-shrink:0;
+  }
+  .stock-dot.ok  { background:#22c55e; }
+  .stock-dot.low { background:#f59e0b; }
+  .stock-dot.out { background:#94a3b8; }
+  .stock-val{ display:flex;align-items:center;gap:4px;flex-wrap:wrap; }
+
+  /* Action icon buttons */
+  .icon-btn{
+    width:30px;height:30px;border-radius:7px;border:1px solid #e2e8f0;
+    background:#fff;cursor:pointer;display:inline-flex;align-items:center;
+    justify-content:center;font-size:14px;color:#475569;transition:all .15s;
+    flex-shrink:0;
+  }
+  .icon-btn:hover{ background:#f1f5f9;border-color:#cbd5e1;color:#0f172a; }
+
+  /* Topnav search */
+  .inv-nav-search{
+    flex:1;max-width:420px;margin:0 16px;display:flex;align-items:center;
+    border:1px solid #e2e8f0;border-radius:9px;background:#f8fafc;
+    padding:0 12px;gap:8px;
+  }
+  .inv-nav-search input{
+    flex:1;border:none;background:transparent;font-size:13px;padding:8px 0;
+    outline:none;color:#0f172a;
+  }
+  .inv-nav-search input::placeholder{ color:#94a3b8; }
+  .inv-nav-search .nav-search-icon{ color:#94a3b8;font-size:14px; }
+  .inv-nav-search kbd{
+    font-size:11px;background:#e2e8f0;border-radius:4px;padding:1px 5px;
+    color:#64748b;font-family:inherit;flex-shrink:0;
+  }
+
+  /* Filters bar (non-stock tabs) */
   .filters-bar{
     display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;
     background:#fff;padding:7px 10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px;
@@ -35,23 +158,14 @@
   .filters-bar .field .input,
   .filters-bar .field .select{ padding:7px 10px;font-size:13px; }
 
+  /* Pill colors */
   .pill.green{ background:#dcfce7;color:#15803d; }
   .pill.amber{ background:#fef3c7;color:#92400e; }
   .pill.gray{ background:#f1f5f9;color:#475569; }
   .pill.red{ background:#fee2e2;color:#991b1b; }
   .pill.blue{ background:#dbeafe;color:#1e40af; }
 
-  .product-thumb{
-    width:36px;height:36px;border-radius:6px;object-fit:cover;
-    background:#f1f5f9;display:inline-block;vertical-align:middle;
-  }
-  .product-thumb-fallback{
-    width:36px;height:36px;border-radius:6px;background:#e0e7ff;
-    display:inline-flex;align-items:center;justify-content:center;
-    color:#3730a3;font-weight:700;font-size:11px;
-  }
-
-  /* Phieu line items table */
+  /* Phieu line items */
   .lines-table{ width:100%;border-collapse:collapse;font-size:13px; }
   .lines-table th{ background:#f8fafc;color:#475569;font-weight:600;padding:6px 8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px; }
   .lines-table td{ padding:6px 8px;border-bottom:1px solid #f1f5f9;vertical-align:middle; }
@@ -82,6 +196,131 @@
   .stocktake-status-draft{ background:#fef3c7;color:#92400e; }
   .stocktake-status-finished{ background:#dcfce7;color:#15803d; }
   .stocktake-status-cancelled{ background:#fee2e2;color:#991b1b; }
+
+  /* ===== MODAL CÂN KHO ===== */
+  .adj-modal{ max-width:440px; }
+  .adj-body{ padding:18px 20px;display:flex;flex-direction:column;gap:14px; }
+
+  .adj-dir-toggle{ display:grid;grid-template-columns:1fr 1fr;gap:8px; }
+  .adj-dir-btn{
+    display:flex;align-items:center;justify-content:center;gap:7px;
+    padding:10px 14px;border-radius:10px;border:2px solid #e2e8f0;
+    background:#f8fafc;cursor:pointer;font-size:13.5px;font-weight:600;
+    color:#64748b;transition:all .18s;
+  }
+  .adj-dir-btn:hover{ border-color:#cbd5e1;background:#f1f5f9; }
+  .adj-dir-btn.active.adj-plus{ background:#f0fdf4;border-color:#86efac;color:#15803d; }
+  .adj-dir-btn.active.adj-minus{ background:#fef2f2;border-color:#fca5a5;color:#dc2626; }
+
+  .adj-flow-row{ display:flex;align-items:center;gap:10px; }
+  .adj-flow-card{
+    flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;
+    padding:12px;text-align:center;transition:background .18s,border-color .18s;
+  }
+  .adj-flow-lbl{ font-size:10.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px; }
+  .adj-flow-num{ font-size:28px;font-weight:800;color:#0f172a;line-height:1; }
+  .adj-flow-arrow{ color:#94a3b8;flex-shrink:0; }
+  .adj-flow-result-card.plus{ background:#f0fdf4;border-color:#86efac; }
+  .adj-flow-result-card.minus{ background:#fff7ed;border-color:#fed7aa; }
+  .adj-flow-result-card.neg{ background:#fef2f2;border-color:#fca5a5; }
+  .adj-flow-result-card.plus .adj-flow-num{ color:#15803d; }
+  .adj-flow-result-card.minus .adj-flow-num{ color:#c2410c; }
+  .adj-flow-result-card.neg .adj-flow-num{ color:#dc2626; }
+
+  .adj-qty-section{ display:flex;flex-direction:column;gap:7px; }
+  .adj-qty-label{ font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.3px; }
+  .adj-qty-stepper{
+    display:flex;align-items:stretch;border:2px solid #e2e8f0;
+    border-radius:10px;overflow:hidden;background:#fff;
+  }
+  .adj-step-btn{
+    width:54px;border:none;background:#f8fafc;cursor:pointer;
+    font-size:22px;font-weight:600;color:#64748b;
+    transition:background .15s,color .15s;flex-shrink:0;
+  }
+  .adj-step-down:hover{ background:#fef2f2;color:#dc2626; }
+  .adj-step-up:hover{ background:#f0fdf4;color:#15803d; }
+  #adj_qty{
+    flex:1;border:none;border-left:2px solid #e2e8f0;border-right:2px solid #e2e8f0;
+    font-size:26px;font-weight:800;text-align:center;color:#0f172a;
+    background:#fff;box-shadow:none;outline:none;padding:10px 0;
+  }
+  #adj_qty::-webkit-inner-spin-button,
+  #adj_qty::-webkit-outer-spin-button{ -webkit-appearance:none;margin:0; }
+
+  .adj-preview-badge{
+    display:flex;align-items:center;padding:9px 14px;border-radius:8px;
+    border:1px solid #e2e8f0;background:#f8fafc;font-size:13px;font-weight:600;
+    color:#64748b;transition:all .18s;
+  }
+  .adj-preview-badge::before{ content:'→';margin-right:8px;opacity:.6; }
+  .adj-preview-badge.plus{ background:#f0fdf4;border-color:#bbf7d0;color:#166534; }
+  .adj-preview-badge.minus{ background:#fff7ed;border-color:#fed7aa;color:#9a3412; }
+  .adj-preview-badge.neg{ background:#fef2f2;border-color:#fecaca;color:#991b1b; }
+
+  .adj-submit-btn.plus-mode{ background:#15803d; }
+  .adj-submit-btn.plus-mode:hover{ background:#166534; }
+  .adj-submit-btn.minus-mode{ background:#dc2626; }
+  .adj-submit-btn.minus-mode:hover{ background:#b91c1c; }
+
+  /* ===== TAB PANE HEADER + FILTER CARD (dùng chung 4 tab còn lại) ===== */
+  .tab-ph{
+    display:flex;justify-content:space-between;align-items:flex-end;
+    margin-bottom:12px;flex-shrink:0;flex-wrap:wrap;gap:8px;
+  }
+  .tab-ph-left .tab-ph-title{ font-size:14px;font-weight:700;color:#0f172a;margin:0 0 2px; }
+  .tab-ph-left .tab-ph-sub{ font-size:12px;color:#64748b; }
+
+  .tab-fc{
+    background:#fff;border:1px solid #e2e8f0;border-radius:10px;
+    padding:12px 14px;display:flex;gap:10px;align-items:flex-end;
+    flex-wrap:wrap;margin-bottom:12px;flex-shrink:0;
+  }
+  .tab-fc .field{ margin:0; }
+  .tab-fc .field label{ font-size:11.5px;color:#64748b;display:block;margin-bottom:3px; }
+  .tab-fc .input,.tab-fc .select{ padding:7px 10px;font-size:13px; }
+  .tab-fc .field.grow{ flex:1;min-width:180px; }
+  .tab-fc .field.w160{ flex:0 0 160px; }
+  .tab-fc .field.w130{ flex:0 0 130px; }
+
+  .tab-pager{
+    display:flex;align-items:center;justify-content:flex-end;
+    padding:6px 0;flex-shrink:0;
+  }
+
+  /* Info banner cải tiến */
+  .info-banner{
+    background:#eff6ff;border:1px solid #bfdbfe;border-left:4px solid #3b82f6;
+    border-radius:8px;padding:10px 14px;margin-bottom:12px;
+    color:#1e3a8a;font-size:12.5px;line-height:1.6;flex-shrink:0;
+    display:flex;gap:10px;align-items:flex-start;
+  }
+  .info-banner-icon{ font-size:16px;flex-shrink:0;margin-top:1px; }
+  .info-banner b{ color:#1d4ed8; }
+
+  /* Holdings: highlight dòng quá lâu */
+  .days-warn{ color:#dc2626;font-weight:700; }
+  .days-ok  { color:#64748b; }
+
+  /* ===== MOBILE ===== */
+  @media(max-width:900px){
+    .topnav-btn-lbl{ display:none; }
+    .inv-nav-search{ display:none; }
+    .inv-stock-layout{ flex-direction:column; }
+    .inv-filter-sidebar{ width:100%; }
+    .filters-bar{ gap:6px; }
+    .filters-bar .field{ flex:1 1 calc(50% - 3px) !important;min-width:0; }
+    .filters-bar .field:first-child{ flex:1 1 100% !important; }
+    .filters-bar > .btn{ flex:1 1 100%;justify-content:center; }
+    .lines-table-scroll{ overflow-x:auto;-webkit-overflow-scrolling:touch; }
+    .lines-table{ min-width:560px; }
+    .adj-step-btn{ width:46px; }
+    #adj_qty{ font-size:22px; }
+    #stAddRow{ flex-wrap:wrap; }
+    #stAddRow .field{ flex:1 1 100%; }
+    .receipt-detail-meta{ grid-template-columns:1fr; }
+    .prod-info .prod-desc{ max-width:140px; }
+  }
 </style>
 </head>
 <body>
@@ -89,29 +328,48 @@
   <aside class="sidebar" id="sidebar"></aside>
   <main class="main">
     <div class="topnav">
-      <div style="display:flex;flex-direction:column;justify-content:center;line-height:1.2">
-        <span style="font-size:16px;font-weight:700;color:#0f172a">Kho thiết bị</span>
-        <span style="font-size:11px;color:#64748b">Quản lý tồn kho theo số lượng + lịch sử nhập/xuất theo phiếu.</span>
+      <div style="display:flex;flex-direction:column;justify-content:center;line-height:1.2;flex-shrink:0">
+        <span style="font-size:16px;font-weight:700;color:#0f172a">Tổng quan kho</span>
+        <span style="font-size:11px;color:#64748b">Quản lý thiết bị theo số lượng + lịch sử nhập/xuất theo phiếu.</span>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;margin-left:auto;margin-right:12px">
-        <a href="/admin/staff-stock.html" target="_blank" class="btn ghost sm" style="font-size:12.5px">🎒 Kho cá nhân KTV</a>
-        <button class="btn ghost sm" id="btnManageSuppliers" style="font-size:12.5px">🏭 Quản lý NCC</button>
+      <div class="inv-nav-search">
+        <span class="nav-search-icon">🔍</span>
+        <input id="f_stock_q" type="text" placeholder="Tìm kiếm sản phẩm, mã TB...">
+        <kbd>⌘ K</kbd>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-right:12px;flex-shrink:0">
+        <a href="/admin/staff-stock.html" target="_blank" class="btn ghost sm" style="font-size:12.5px">🎒 <span class="topnav-btn-lbl">Kho cá nhân KTV</span></a>
+        <button class="btn ghost sm" id="btnManageSuppliers" style="font-size:12.5px">🏭 <span class="topnav-btn-lbl">Quản lý NCC</span></button>
       </div>
       <div class="row" id="topnav-user"></div>
     </div>
     <div class="content flex-page">
 
-      <div class="grid cols-4 mb-2" style="gap:8px">
-        <div class="stat" style="padding:8px 12px;gap:8px"><div class="icon" style="width:32px;height:32px;font-size:15px">📦</div>
-          <div><div class="label" style="font-size:11px">SP có tồn</div><div class="value" style="font-size:20px" id="st-products">0</div></div></div>
-        <div class="stat" style="padding:8px 12px;gap:8px"><div class="icon green" style="width:32px;height:32px;font-size:15px">✓</div>
-          <div><div class="label" style="font-size:11px">Tổng đơn vị tồn</div><div class="value" style="font-size:20px" id="st-units">0</div></div></div>
-        <div class="stat" style="padding:8px 12px;gap:8px"><div class="icon blue" style="width:32px;height:32px;font-size:15px">🛠</div>
-          <div><div class="label" style="font-size:11px">KTV đang giữ</div><div class="value" style="font-size:20px" id="st-held">0</div></div></div>
-        <div class="stat" style="padding:8px 12px;gap:8px"><div class="icon amber" style="width:32px;height:32px;font-size:15px">⚠</div>
-          <div><div class="label" style="font-size:11px">Sắp hết (&lt;5)</div><div class="value" style="font-size:20px" id="st-low">0</div></div></div>
+      <!-- Stats row -->
+      <div id="inv-stats-row" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px;flex-shrink:0">
+        <div class="stat" style="padding:10px 14px;gap:10px">
+          <div class="icon" style="width:36px;height:36px;font-size:16px;flex-shrink:0">📦</div>
+          <div><div class="label" style="font-size:11px">SP có tồn</div><div class="value" style="font-size:22px" id="st-products">0</div><div style="font-size:11px;color:#94a3b8">mặt hàng</div></div>
+        </div>
+        <div class="stat" style="padding:10px 14px;gap:10px">
+          <div class="icon green" style="width:36px;height:36px;font-size:16px;flex-shrink:0">✓</div>
+          <div><div class="label" style="font-size:11px">Tổng tồn kho</div><div class="value" style="font-size:22px" id="st-units">0</div><div style="font-size:11px;color:#94a3b8">thiết bị</div></div>
+        </div>
+        <div class="stat" style="padding:10px 14px;gap:10px">
+          <div class="icon blue" style="width:36px;height:36px;font-size:16px;flex-shrink:0">🛠</div>
+          <div><div class="label" style="font-size:11px">KTV đang giữ</div><div class="value" style="font-size:22px" id="st-held">0</div><div style="font-size:11px;color:#94a3b8">thiết bị</div></div>
+        </div>
+        <div class="stat" style="padding:10px 14px;gap:10px">
+          <div class="icon amber" style="width:36px;height:36px;font-size:16px;flex-shrink:0">⚠</div>
+          <div><div class="label" style="font-size:11px">Sắp hết (&lt;5)</div><div class="value" style="font-size:22px" id="st-low">0</div><div style="font-size:11px;color:#94a3b8">mặt hàng</div></div>
+        </div>
+        <div class="stat" style="padding:10px 14px;gap:10px">
+          <div class="icon" style="width:36px;height:36px;font-size:16px;flex-shrink:0;background:#dcfce7;color:#166534">💰</div>
+          <div><div class="label" style="font-size:11px">Tổng giá trị tồn</div><div class="value" style="font-size:16px;color:#166534" id="st-value">0đ</div><div style="font-size:11px;color:#94a3b8">giá gốc</div></div>
+        </div>
       </div>
 
+      <!-- Tabs -->
       <div class="inv-tabs">
         <button class="inv-tab active" data-tab="stock">Tồn kho</button>
         <button class="inv-tab" data-tab="receipts-in">Phiếu nhập</button>
@@ -122,115 +380,173 @@
 
       <!-- Tab 1: Tồn kho -->
       <div class="inv-pane active" data-pane="stock">
-        <div class="filters-bar">
-          <div class="field" style="flex:1;min-width:180px;margin:0">
-            <label>Tìm kiếm</label>
-            <input class="input" id="f_stock_q" placeholder="Mã hoặc tên SP...">
+        <div class="inv-stock-layout">
+
+          <!-- Sidebar lọc -->
+          <aside class="inv-filter-sidebar">
+            <div class="inv-filter-panel">
+              <div class="inv-filter-head">
+                <span>Bộ lọc nhanh</span>
+                <button id="btnResetFilter">Đặt lại</button>
+              </div>
+              <div class="field">
+                <label>Danh mục</label>
+                <select class="select" id="f_stock_cat">
+                  <option value="">Tất cả</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Trạng thái tồn</label>
+                <select class="select" id="f_stock_state">
+                  <option value="">Tất cả</option>
+                  <option value="available">Còn hàng</option>
+                  <option value="low">Sắp hết (&lt;5)</option>
+                  <option value="out">Hết hàng</option>
+                </select>
+              </div>
+              <div class="inv-qty-row">
+                <div class="field">
+                  <label>Tồn từ</label>
+                  <input class="input" id="f_stock_qty_min" type="number" min="0" placeholder="0">
+                </div>
+                <div class="field">
+                  <label>Tồn đến</label>
+                  <input class="input" id="f_stock_qty_max" type="number" min="0" placeholder="∞">
+                </div>
+              </div>
+              <button class="btn" id="btnApplyFilter" style="width:100%;justify-content:center">🔍 Áp dụng bộ lọc</button>
+            </div>
+
+            <div class="inv-cat-list">
+              <div class="inv-cat-list-title">Danh mục</div>
+              <div id="inv-cat-list"></div>
+            </div>
+          </aside>
+
+          <!-- Bảng chính -->
+          <div class="inv-main-area">
+            <div class="inv-table-header">
+              <h3>Danh sách sản phẩm</h3>
+              <div class="inv-table-actions">
+                <button class="btn ghost sm" id="btnExportCsv" style="font-size:12.5px">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                  Xuất Excel
+                </button>
+                <a href="/admin/products.html" class="btn sm" style="font-size:12.5px">+ Thêm sản phẩm</a>
+              </div>
+            </div>
+            <div class="table-wrap" style="flex:1">
+              <table class="data" id="tbl-stock">
+                <thead>
+                  <tr>
+                    <th>Sản phẩm</th>
+                    <th style="width:130px">Danh mục</th>
+                    <th style="width:110px">Giá gốc</th>
+                    <th style="width:80px">Tồn</th>
+                    <th style="width:80px">KTV giữ</th>
+                    <th style="width:80px">Bán 30d</th>
+                    <th style="width:80px">Hành động</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-stock"></tbody>
+              </table>
+            </div>
+            <div class="inv-pager-bar">
+              <div class="inv-per-page">
+                Hiển thị
+                <select id="stockPerPage">
+                  <option value="10">10 / trang</option>
+                  <option value="20" selected>20 / trang</option>
+                  <option value="50">50 / trang</option>
+                </select>
+              </div>
+              <div class="pager">
+                <button id="stockPrev">« Trước</button>
+                <span id="stockPageInfo">Trang 1</span>
+                <button id="stockNext">Sau »</button>
+              </div>
+            </div>
           </div>
-          <div class="field" style="flex:0 0 170px;margin:0">
-            <label>Danh mục</label>
-            <select class="select" id="f_stock_cat">
-              <option value="">Tất cả</option>
-            </select>
-          </div>
-          <div class="field" style="flex:0 0 170px;margin:0">
-            <label>Trạng thái tồn</label>
-            <select class="select" id="f_stock_state">
-              <option value="">Tất cả</option>
-              <option value="available">Còn hàng</option>
-              <option value="low">Sắp hết (&lt;5)</option>
-              <option value="out">Hết hàng</option>
-            </select>
-          </div>
-          <div class="field" style="flex:0 0 110px;margin:0">
-            <label>Tồn từ</label>
-            <input class="input" id="f_stock_qty_min" type="number" min="0" placeholder="0">
-          </div>
-          <div class="field" style="flex:0 0 110px;margin:0">
-            <label>Tồn đến</label>
-            <input class="input" id="f_stock_qty_max" type="number" min="0" placeholder="∞">
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table class="data" id="tbl-stock">
-            <thead>
-              <tr>
-                <th style="width:60px">Ảnh</th>
-                <th style="width:110px">Mã TB</th>
-                <th>Tên sản phẩm</th>
-                <th style="width:140px">Danh mục</th>
-                <th style="width:120px">Giá gốc</th>
-                <th style="width:80px">Tồn</th>
-                <th style="width:80px">KTV giữ</th>
-                <th style="width:90px">Bán 30d</th>
-                <th style="width:160px">Hành động</th>
-              </tr>
-            </thead>
-            <tbody id="tbody-stock"></tbody>
-          </table>
-        </div>
-        <div class="pager">
-          <button id="stockPrev">« Trước</button>
-          <span id="stockPageInfo">Trang 1</span>
-          <button id="stockNext">Sau »</button>
+
         </div>
       </div>
 
       <!-- Tab 2: Phiếu nhập -->
       <div class="inv-pane" data-pane="receipts-in">
-        <div class="filters-bar">
-          <div class="field" style="flex:1;min-width:200px">
-            <label>Tìm theo mã / ghi chú</label>
-            <input class="input" id="f_in_q">
+        <div class="tab-ph">
+          <div class="tab-ph-left">
+            <p class="tab-ph-title">Danh sách phiếu nhập</p>
+            <p class="tab-ph-sub">Nhập từ NCC, cân kho +, hủy đơn hoàn kho, KTV trả</p>
           </div>
-          <div class="field" style="flex:0 0 180px">
+          <button class="btn sm" id="btnNewReceiptIn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:4px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Tạo phiếu nhập
+          </button>
+        </div>
+        <div class="tab-fc">
+          <div class="field grow">
+            <label>Tìm mã phiếu / ghi chú</label>
+            <input class="input" id="f_in_q" placeholder="PN-250101-001...">
+          </div>
+          <div class="field w160">
             <label>Lý do</label>
             <select class="select" id="f_in_reason">
-              <option value="">Tất cả</option>
+              <option value="">Tất cả lý do</option>
               <option value="import_supplier">Nhập từ NCC</option>
               <option value="adjust_plus">Cân kho +</option>
               <option value="order_cancel_return">Hủy đơn hoàn kho</option>
               <option value="technician_return">KTV trả</option>
             </select>
           </div>
-          <div class="field"><label>Từ ngày</label><input type="date" class="input" id="f_in_from"></div>
-          <div class="field"><label>Đến ngày</label><input type="date" class="input" id="f_in_to"></div>
-          <button class="btn" id="btnNewReceiptIn">+ Tạo phiếu nhập</button>
+          <div class="field w130"><label>Từ ngày</label><input type="date" class="input" id="f_in_from"></div>
+          <div class="field w130"><label>Đến ngày</label><input type="date" class="input" id="f_in_to"></div>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap" style="flex:1">
           <table class="data" id="tbl-in">
             <thead>
               <tr>
                 <th style="width:130px">Mã phiếu</th>
-                <th style="width:140px">Ngày</th>
-                <th style="width:140px">Lý do</th>
-                <th>Items</th>
+                <th style="width:140px">Ngày tạo</th>
+                <th style="width:150px">Lý do</th>
+                <th>Sản phẩm</th>
                 <th style="width:120px">Người tạo</th>
-                <th style="width:80px">SL</th>
+                <th style="width:60px">SL</th>
                 <th style="width:100px">Trạng thái</th>
               </tr>
             </thead>
             <tbody id="tbody-in"></tbody>
           </table>
         </div>
-        <div class="pager">
-          <button id="inPrev">« Trước</button>
-          <span id="inPageInfo">Trang 1</span>
-          <button id="inNext">Sau »</button>
+        <div class="tab-pager">
+          <div class="pager">
+            <button id="inPrev">« Trước</button>
+            <span id="inPageInfo">Trang 1</span>
+            <button id="inNext">Sau »</button>
+          </div>
         </div>
       </div>
 
       <!-- Tab 3: Phiếu xuất -->
       <div class="inv-pane" data-pane="receipts-out">
-        <div class="filters-bar">
-          <div class="field" style="flex:1;min-width:200px">
-            <label>Tìm theo mã / ghi chú</label>
-            <input class="input" id="f_out_q">
+        <div class="tab-ph">
+          <div class="tab-ph-left">
+            <p class="tab-ph-title">Danh sách phiếu xuất</p>
+            <p class="tab-ph-sub">Trả NCC, cân kho −, xuất theo đơn/KTV, lắp đặt, hỏng</p>
           </div>
-          <div class="field" style="flex:0 0 200px">
+          <button class="btn sm" id="btnNewReceiptOut">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:4px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Tạo phiếu xuất
+          </button>
+        </div>
+        <div class="tab-fc">
+          <div class="field grow">
+            <label>Tìm mã phiếu / ghi chú</label>
+            <input class="input" id="f_out_q" placeholder="PX-250101-001...">
+          </div>
+          <div class="field w160">
             <label>Lý do</label>
             <select class="select" id="f_out_reason">
-              <option value="">Tất cả</option>
+              <option value="">Tất cả lý do</option>
               <option value="return_supplier">Trả NCC</option>
               <option value="adjust_minus">Cân kho −</option>
               <option value="order_release">Xuất cho đơn</option>
@@ -240,56 +556,98 @@
               <option value="damaged">Hỏng</option>
             </select>
           </div>
-          <div class="field"><label>Từ ngày</label><input type="date" class="input" id="f_out_from"></div>
-          <div class="field"><label>Đến ngày</label><input type="date" class="input" id="f_out_to"></div>
-          <button class="btn" id="btnNewReceiptOut">+ Tạo phiếu xuất</button>
+          <div class="field w130"><label>Từ ngày</label><input type="date" class="input" id="f_out_from"></div>
+          <div class="field w130"><label>Đến ngày</label><input type="date" class="input" id="f_out_to"></div>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap" style="flex:1">
           <table class="data" id="tbl-out">
             <thead>
               <tr>
                 <th style="width:130px">Mã phiếu</th>
-                <th style="width:140px">Ngày</th>
-                <th style="width:160px">Lý do</th>
-                <th>Items</th>
+                <th style="width:140px">Ngày tạo</th>
+                <th style="width:150px">Lý do</th>
+                <th>Sản phẩm</th>
                 <th style="width:120px">Người tạo</th>
-                <th style="width:80px">SL</th>
+                <th style="width:60px">SL</th>
                 <th style="width:100px">Trạng thái</th>
               </tr>
             </thead>
             <tbody id="tbody-out"></tbody>
           </table>
         </div>
-        <div class="pager">
-          <button id="outPrev">« Trước</button>
-          <span id="outPageInfo">Trang 1</span>
-          <button id="outNext">Sau »</button>
+        <div class="tab-pager">
+          <div class="pager">
+            <button id="outPrev">« Trước</button>
+            <span id="outPageInfo">Trang 1</span>
+            <button id="outNext">Sau »</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 4: KTV đang giữ -->
+      <div class="inv-pane" data-pane="holdings">
+        <div class="tab-ph">
+          <div class="tab-ph-left">
+            <p class="tab-ph-title">Thiết bị KTV đang giữ</p>
+            <p class="tab-ph-sub">Thiết bị đã xuất cho KTV nhưng chưa lắp đặt hoặc trả kho</p>
+          </div>
+        </div>
+        <div class="tab-fc">
+          <div class="field grow">
+            <label>Tìm KTV hoặc sản phẩm</label>
+            <input class="input" id="f_hold_q" placeholder="Tên KTV, mã thiết bị...">
+          </div>
+        </div>
+        <div class="table-wrap" style="flex:1">
+          <table class="data" id="tbl-hold">
+            <thead>
+              <tr>
+                <th style="width:180px">KTV</th>
+                <th style="width:100px">Mã TB</th>
+                <th>Sản phẩm</th>
+                <th style="width:70px">SL</th>
+                <th style="width:150px">Ngày nhận đầu</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-hold"></tbody>
+          </table>
         </div>
       </div>
 
       <!-- Tab 5: Kiểm kê -->
       <div class="inv-pane" data-pane="stocktakes">
-        <div class="help-banner">
-          <b>Kiểm kê hàng loạt:</b> mở 1 phiên → chọn các SP cần đếm → nhập số đếm thực tế → bấm <b>Hoàn tất</b>.
-          Hệ thống tự so sánh với tồn hệ thống và sinh phiếu cân kho (+/−) cho từng SP chênh lệch.
-          Mọi phiếu sinh ra đều gắn ngược về phiên này để truy vết.
-          Phiếu cân kho từ kiểm kê <b>không huỷ trực tiếp được</b> — phải mở phiên kiểm kê khác để bù.
+        <div class="info-banner">
+          <span class="info-banner-icon">ℹ️</span>
+          <span>
+            <b>Kiểm kê hàng loạt:</b> Mở 1 phiên → chọn SP cần đếm → nhập số thực tế → bấm <b>Hoàn tất</b>.
+            Hệ thống tự so sánh với tồn HT và sinh phiếu cân kho (+/−) cho từng SP chênh lệch.
+            Phiếu sinh từ kiểm kê <b>không huỷ trực tiếp</b> — cần mở phiên mới để bù.
+          </span>
         </div>
-        <div class="filters-bar">
-          <div class="field" style="flex:0 0 180px">
+        <div class="tab-ph">
+          <div class="tab-ph-left">
+            <p class="tab-ph-title">Danh sách phiên kiểm kê</p>
+            <p class="tab-ph-sub">Mỗi phiên ghi nhận kết quả đếm thực tế và sinh phiếu chênh lệch</p>
+          </div>
+          <button class="btn sm" id="btnNewStocktake">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:4px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Mở phiên mới
+          </button>
+        </div>
+        <div class="tab-fc">
+          <div class="field w160">
             <label>Trạng thái</label>
             <select class="select" id="f_st_status">
               <option value="">Tất cả</option>
-              <option value="draft">Đang đếm</option>
-              <option value="finished">Đã chốt</option>
-              <option value="cancelled">Đã huỷ</option>
+              <option value="draft">🟡 Đang đếm</option>
+              <option value="finished">🟢 Đã chốt</option>
+              <option value="cancelled">🔴 Đã huỷ</option>
             </select>
           </div>
-          <div class="field"><label>Từ ngày</label><input type="date" class="input" id="f_st_from"></div>
-          <div class="field"><label>Đến ngày</label><input type="date" class="input" id="f_st_to"></div>
-          <button class="btn" id="btnNewStocktake">+ Mở phiên kiểm kê mới</button>
+          <div class="field w130"><label>Từ ngày</label><input type="date" class="input" id="f_st_from"></div>
+          <div class="field w130"><label>Đến ngày</label><input type="date" class="input" id="f_st_to"></div>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap" style="flex:1">
           <table class="data" id="tbl-st">
             <thead>
               <tr>
@@ -297,8 +655,8 @@
                 <th style="width:140px">Bắt đầu</th>
                 <th style="width:140px">Kết thúc</th>
                 <th style="width:160px">Người mở</th>
-                <th style="width:90px">Số dòng</th>
-                <th style="width:130px">Tổng chênh lệch</th>
+                <th style="width:80px">Số dòng</th>
+                <th style="width:120px">Chênh lệch</th>
                 <th style="width:110px">Trạng thái</th>
                 <th>Ghi chú</th>
               </tr>
@@ -306,35 +664,12 @@
             <tbody id="tbody-st"></tbody>
           </table>
         </div>
-        <div class="pager">
-          <button id="stPrev">« Trước</button>
-          <span id="stPageInfo">Trang 1</span>
-          <button id="stNext">Sau »</button>
-        </div>
-      </div>
-
-      <!-- Tab 4: KTV đang giữ -->
-      <div class="inv-pane" data-pane="holdings">
-        <div class="filters-bar">
-          <div class="field" style="flex:1;min-width:240px">
-            <label>Tìm KTV / SP</label>
-            <input class="input" id="f_hold_q">
+        <div class="tab-pager">
+          <div class="pager">
+            <button id="stPrev">« Trước</button>
+            <span id="stPageInfo">Trang 1</span>
+            <button id="stNext">Sau »</button>
           </div>
-        </div>
-        <div class="table-wrap">
-          <table class="data" id="tbl-hold">
-            <thead>
-              <tr>
-                <th style="width:200px">KTV</th>
-                <th style="width:110px">Mã TB</th>
-                <th>Sản phẩm</th>
-                <th style="width:80px">Số lượng</th>
-                <th style="width:160px">Ngày nhận đầu</th>
-                <th style="width:90px">Số ngày</th>
-              </tr>
-            </thead>
-            <tbody id="tbody-hold"></tbody>
-          </table>
         </div>
       </div>
 
@@ -368,8 +703,8 @@
           <label>Ghi chú</label>
           <textarea id="r_reason_text" class="textarea" placeholder="Mô tả thêm về phiếu này..." rows="2"></textarea>
         </div>
-
         <h4 style="margin:14px 0 6px">Danh sách sản phẩm</h4>
+        <div class="lines-table-scroll">
         <table class="lines-table" id="r_lines_table">
           <thead>
             <tr>
@@ -383,6 +718,7 @@
           </thead>
           <tbody id="r_lines_body"></tbody>
         </table>
+        </div>
         <button type="button" class="btn ghost sm" id="btnAddLine" style="margin-top:8px">+ Thêm dòng</button>
       </div>
       <div class="modal-foot">
@@ -437,19 +773,15 @@
     </div>
     <div class="modal-body">
       <div class="receipt-detail-meta" id="stMeta"></div>
-
       <div class="field" id="stNoteField">
         <label>Ghi chú phiên</label>
         <textarea id="st_note" class="textarea" rows="2" placeholder="Lý do kiểm kê, người đếm thực tế..."></textarea>
       </div>
-
       <div id="stWarning" style="display:none;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:10px 12px;margin:8px 0;color:#92400e;font-size:13px"></div>
-
       <h4 style="margin:14px 0 6px;display:flex;justify-content:space-between;align-items:center">
         <span>Sản phẩm kiểm kê</span>
         <span id="stLineCount" class="text-muted" style="font-size:12px;font-weight:400"></span>
       </h4>
-
       <div id="stAddRow" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:8px">
         <div class="field" style="flex:1;margin:0">
           <label style="font-size:11.5px">Thêm SP vào phiên</label>
@@ -459,7 +791,7 @@
         </div>
         <button type="button" class="btn ghost sm" id="btnStAddProduct">+ Thêm</button>
       </div>
-
+      <div class="lines-table-scroll">
       <table class="lines-table" id="stLinesTable">
         <thead>
           <tr>
@@ -475,6 +807,7 @@
         </thead>
         <tbody id="stLinesBody"></tbody>
       </table>
+      </div>
     </div>
     <div class="modal-foot">
       <button type="button" class="btn ghost" id="stCancelBtn">Đóng</button>
@@ -482,6 +815,76 @@
       <button type="button" class="btn ghost" id="btnStSaveDraft" style="display:none">💾 Lưu nháp</button>
       <button type="button" class="btn" id="btnStFinish" style="display:none">✓ Hoàn tất phiên</button>
     </div>
+  </div>
+</div>
+
+<!-- Modal: Cân kho nhanh -->
+<div id="adjustModal" class="modal-bg">
+  <div class="modal adj-modal">
+    <div class="modal-head">
+      <div>
+        <div style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Điều chỉnh tồn kho</div>
+        <h3 id="adjTitle" style="margin:0">Cân kho</h3>
+      </div>
+      <button type="button" class="modal-close" id="adjClose" aria-label="Đóng">×</button>
+    </div>
+    <form id="adjFrm" style="display:contents">
+      <div class="modal-body adj-body">
+        <input type="hidden" id="adj_product_id">
+
+        <!-- Direction toggle -->
+        <div class="adj-dir-toggle">
+          <button type="button" id="adjBtnPlus" class="adj-dir-btn adj-plus active">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Nhập thêm
+          </button>
+          <button type="button" id="adjBtnMinus" class="adj-dir-btn adj-minus">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14"/></svg>
+            Xuất bớt
+          </button>
+        </div>
+
+        <!-- Stock flow -->
+        <div class="adj-flow-row">
+          <div class="adj-flow-card">
+            <div class="adj-flow-lbl">Tồn hiện tại</div>
+            <div class="adj-flow-num" id="adjCurrentQty">—</div>
+          </div>
+          <div class="adj-flow-arrow">
+            <svg width="18" height="18" fill="none" stroke="#94a3b8" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </div>
+          <div class="adj-flow-card adj-flow-result-card" id="adjResultCard">
+            <div class="adj-flow-lbl">Sau điều chỉnh</div>
+            <div class="adj-flow-num" id="adjResultQty">—</div>
+          </div>
+        </div>
+
+        <!-- Quantity stepper -->
+        <div class="adj-qty-section">
+          <div class="adj-qty-label">Số lượng điều chỉnh</div>
+          <div class="adj-qty-stepper">
+            <button type="button" class="adj-step-btn adj-step-down" id="adjStepDown">−</button>
+            <input type="number" id="adj_qty" min="1" value="1" required step="1">
+            <button type="button" class="adj-step-btn adj-step-up" id="adjStepUp">+</button>
+          </div>
+        </div>
+
+        <!-- Preview badge -->
+        <div class="adj-preview-badge plus" id="adjPreview">
+          <span id="adjPreviewLabel">Thêm +1 vào kho</span>
+        </div>
+
+        <!-- Note -->
+        <div class="field" style="margin-bottom:0">
+          <label>Ghi chú</label>
+          <textarea id="adj_note" class="textarea" rows="2" placeholder="Lý do điều chỉnh kho..."></textarea>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="adjCancel">Hủy</button>
+        <button type="submit" class="btn adj-submit-btn plus-mode" id="adjSubmit">Lưu điều chỉnh</button>
+      </div>
+    </form>
   </div>
 </div>
 

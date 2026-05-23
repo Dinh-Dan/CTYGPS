@@ -68,9 +68,8 @@ router.get('/summary', async (req, res, next) => {
           AND MONTH(created_at) = MONTH(NOW())`
     );
 
-    // Qua han: dem khach/dai ly co don cu nhat > credit_term_days (mac dinh 0 -> ngay khi co no la qua han)
-    // De don gian: dem so doi tuong co (opening_balance > 0 hoac don chua ket > 0) AND ngay no >= 7 ngay
-    const [overdueRows] = await db.query(
+    // So doi tuong dang no (khach le + dai ly)
+    const [debtorRows] = await db.query(
       `SELECT COUNT(DISTINCT customer_id) AS cnt FROM (
          SELECT id AS customer_id FROM customers
           WHERE is_deleted = 0 AND opening_balance > 0
@@ -79,15 +78,26 @@ router.get('/summary', async (req, res, next) => {
           WHERE o.is_deleted = 0
             AND o.debt_carried_at IS NULL
             AND ${DEBT_WHERE}
-            AND DATEDIFF(NOW(), COALESCE(o.confirmed_at, NOW())) >= 7
+         UNION
+         SELECT pr.customer_id FROM payment_requests pr
+          WHERE pr.status IN ('pending','partially_paid') AND pr.remaining > 0 AND pr.is_deleted = 0
        ) t`
+    );
+
+    // So don chua thanh toan (status=done, chua paid, chua ket)
+    const [unpaidOrderRows] = await db.query(
+      `SELECT COUNT(*) AS cnt FROM orders o
+        WHERE o.is_deleted = 0
+          AND o.debt_carried_at IS NULL
+          AND ${DEBT_WHERE}`
     );
 
     res.json({
       total_receivable: totalReceivable,
       staff_holding:    Number(staffSum[0].total),
       collected_this_month: Number(monthSum[0].total),
-      overdue_customer_count: Number(overdueRows[0].cnt),
+      debtor_count:     Number(debtorRows[0].cnt),
+      unpaid_order_count: Number(unpaidOrderRows[0].cnt),
     });
   } catch (err) { next(err); }
 });
@@ -117,6 +127,7 @@ router.get('/', async (req, res, next) => {
     const [rows] = await db.query(
       `SELECT
          c.id, c.code, c.full_name, c.phone, c.type, c.company_name,
+         c.avatar_url,
          c.credit_term_days, c.debt_limit,
          c.opening_balance,
          COALESCE(d.order_debt, 0)        AS order_debt,
@@ -167,6 +178,7 @@ router.get('/', async (req, res, next) => {
         phone: r.phone,
         type: r.type,
         company_name: r.company_name,
+        avatar_url: r.avatar_url || null,
         credit_term_days: Number(r.credit_term_days) || 0,
         debt_limit: Number(r.debt_limit) || 0,
         opening_balance: opening,
@@ -203,6 +215,7 @@ router.get('/staff', async (req, res, next) => {
     const [rows] = await db.query(
       `SELECT
          s.id, s.username, s.full_name, s.phone, s.area,
+         s.avatar_url,
          s.opening_balance,
          COALESCE(c.holding_amount, 0)    AS holding_amount,
          COALESCE(c.collection_count, 0)  AS collection_count,
@@ -233,6 +246,7 @@ router.get('/staff', async (req, res, next) => {
         name: r.full_name,
         phone: r.phone,
         area: r.area,
+        avatar_url: r.avatar_url || null,
         opening_balance: opening,
         holding_amount: holding,
         total_amount: opening + holding,        // tong phai nop = ky truoc + dang giu
@@ -251,6 +265,7 @@ router.get('/staff', async (req, res, next) => {
 router.get('/staff/:tech_id', async (req, res, next) => {
   try {
     const techId = Number(req.params.tech_id);
+    if (!techId || !Number.isInteger(techId)) return res.status(400).json({ error: 'tech_id khong hop le' });
     const [staffRows] = await db.query(
       `SELECT id, username, full_name, phone, area, opening_balance
          FROM staff WHERE id = ? AND role = 'kithuat' AND is_deleted = 0`,
@@ -262,9 +277,11 @@ router.get('/staff/:tech_id', async (req, res, next) => {
     const [cols] = await db.query(
       `SELECT col.id, col.amount, col.collected_at, col.method,
               o.id AS order_id, o.code AS order_code, o.confirmed_at,
-              o.service_kind
+              o.total_amount AS order_total,
+              cu.full_name AS customer_name
          FROM collections col
          LEFT JOIN orders o ON o.id = col.order_id
+         LEFT JOIN customers cu ON cu.id = o.customer_id
         WHERE col.staff_id = ? AND col.remitted = 0 AND col.is_deleted = 0
         ORDER BY col.collected_at ASC`,
       [techId]
@@ -279,10 +296,10 @@ router.get('/staff/:tech_id', async (req, res, next) => {
       const placeholders = orderIds.map(() => '?').join(',');
       const [items] = await db.query(
         `SELECT oi.order_id, p.name AS product_name, oi.qty, oi.unit_price,
-                oi.vehicle_plate, oi.imei
+                oi.vehicle_plate, oi.imei, oi.subscription_account
            FROM order_items oi
            LEFT JOIN products p ON p.id = oi.product_id
-          WHERE oi.order_id IN (${placeholders}) AND oi.is_deleted = 0`,
+          WHERE oi.order_id IN (${placeholders})`,
         orderIds
       );
       for (const it of items) {
@@ -293,6 +310,7 @@ router.get('/staff/:tech_id', async (req, res, next) => {
           unit_price: Number(it.unit_price),
           vehicle_plate: it.vehicle_plate || null,
           imei: it.imei || null,
+          subscription_account: it.subscription_account || null,
         });
       }
     }
@@ -305,6 +323,15 @@ router.get('/staff/:tech_id', async (req, res, next) => {
       [techId]
     );
 
+    const [advances] = await db.query(
+      `SELECT id, amount, note, created_at
+         FROM staff_salary_advances
+        WHERE staff_id = ? AND deduct_from_collection = 1
+          AND carried_at IS NULL AND remittance_id IS NULL AND is_deleted = 0
+        ORDER BY created_at ASC`,
+      [techId]
+    );
+
     res.json({
       staff: {
         id: s.id, username: s.username, name: s.full_name,
@@ -313,6 +340,12 @@ router.get('/staff/:tech_id', async (req, res, next) => {
       opening_balance: opening,
       holding_amount: holdingAmount,
       total_to_collect: opening + holdingAmount,
+      pending_advances: advances.map(a => ({
+        id: a.id,
+        amount: Number(a.amount),
+        note: a.note,
+        created_at: a.created_at,
+      })),
       collections: cols.map(c => ({
         id: c.id,
         amount: Number(c.amount),
@@ -321,7 +354,8 @@ router.get('/staff/:tech_id', async (req, res, next) => {
         order_id: c.order_id,
         order_code: c.order_code,
         confirmed_at: c.confirmed_at,
-        service_kind: c.service_kind,
+        order_total: Number(c.order_total) || 0,
+        customer_name: c.customer_name || null,
         items: itemsByOrder[c.order_id] || [],
       })),
       history: history.map(h => ({
@@ -343,12 +377,15 @@ router.post('/staff/:tech_id/settle', adminOnly, async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const techId = Number(req.params.tech_id);
+    if (!techId || !Number.isInteger(techId)) { conn.release(); return res.status(400).json({ error: 'tech_id khong hop le' }); }
     const method = (req.body.method === 'transfer') ? 'transfer' : 'cash';
     const note = String(req.body.note || '').trim() || null;
     const receiptUrl = String(req.body.receipt_url || '').trim() || null;
-    // amount_paid = so KTV thuc nop. Mac dinh = total_to_collect (nop du).
     const amountPaidRaw = req.body.amount_paid;
     const hasAmount = amountPaidRaw !== undefined && amountPaidRaw !== null && amountPaidRaw !== '';
+    // Danh sach ID phieu ung luong muon tru vao lan nop nay
+    const rawAdvanceIds = Array.isArray(req.body.advance_ids) ? req.body.advance_ids : [];
+    const advanceIds = rawAdvanceIds.map(Number).filter(n => Number.isInteger(n) && n > 0);
 
     await conn.beginTransaction();
     const [staffRows] = await conn.query(
@@ -375,28 +412,61 @@ router.post('/staff/:tech_id/settle', adminOnly, async (req, res, next) => {
       return res.status(400).json({ error: 'KTV khong co khoan can nop' });
     }
 
-    const amountPaid = hasAmount ? Math.max(0, Number(amountPaidRaw) || 0) : totalToCollect;
-    if (amountPaid <= 0) {
+    // Validate phieu ung duoc chon: phai cua dung KTV, chua ket vao payslip va chua remit
+    let selectedAdvances = [];
+    if (advanceIds.length) {
+      const placeholders = advanceIds.map(() => '?').join(',');
+      const [advRows] = await conn.query(
+        `SELECT id, amount, note, created_at
+           FROM staff_salary_advances
+          WHERE id IN (${placeholders})
+            AND staff_id = ? AND deduct_from_collection = 1
+            AND carried_at IS NULL AND remittance_id IS NULL AND is_deleted = 0`,
+        [...advanceIds, techId]
+      );
+      if (advRows.length !== advanceIds.length) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Co phieu ung khong hop le, da duoc xu ly, hoac khong phai loai tru tien thu ho' });
+      }
+      selectedAdvances = advRows;
+    }
+
+    const advancesTotal = selectedAdvances.reduce((s, a) => s + Number(a.amount), 0);
+    // effectiveTotal = so tien KTV can nop tien mat sau khi tru phieu ung
+    const effectiveTotal = totalToCollect - advancesTotal;
+
+    const amountPaid = hasAmount ? Math.max(0, Number(amountPaidRaw) || 0) : effectiveTotal;
+    if (amountPaid <= 0 && effectiveTotal > 0) {
       await conn.rollback();
       return res.status(400).json({ error: 'So tien nop phai > 0' });
     }
-    if (amountPaid > totalToCollect * 1.1) {
-      await conn.rollback();
-      return res.status(400).json({
-        error: `So tien nop (${amountPaid}) vuot tong phai nop (${totalToCollect}) qua nhieu`,
-      });
-    }
-    const remaining = totalToCollect - amountPaid; // co the < 0 neu nop du
+
+    const remaining = effectiveTotal - amountPaid; // < 0 neu nop du
+
+    const advancesJson = selectedAdvances.length
+      ? JSON.stringify(selectedAdvances.map(a => ({ id: a.id, amount: Number(a.amount), note: a.note, created_at: a.created_at })))
+      : null;
 
     // Tao remittance approved
     const [insRes] = await conn.query(
       `INSERT INTO remittances
          (staff_id, amount, total_holding, remaining, method, receipt_url, note,
-          approved_by, approved_at, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'approved')`,
-      [techId, amountPaid, totalToCollect, remaining, method, receiptUrl, note, req.user.sub]
+          approved_by, approved_at, status, advances_deducted_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'approved', ?)`,
+      [techId, amountPaid, totalToCollect, remaining, method, receiptUrl, note, req.user.sub, advancesJson]
     );
     const remittanceId = insRes.insertId;
+
+    // Danh dau phieu ung da tat toan qua remittance nay
+    if (selectedAdvances.length) {
+      const placeholders = selectedAdvances.map(() => '?').join(',');
+      await conn.query(
+        `UPDATE staff_salary_advances
+            SET remittance_id = ?, remitted_at = NOW()
+          WHERE id IN (${placeholders})`,
+        [remittanceId, ...selectedAdvances.map(a => a.id)]
+      );
+    }
 
     // Gan TAT CA collections dang giu vao remittance (mark remitted)
     let affectedOrderIds = [];
@@ -409,7 +479,7 @@ router.post('/staff/:tech_id/settle', adminOnly, async (req, res, next) => {
       affectedOrderIds = [...new Set(collections.map(c => c.order_id))];
     }
 
-    // Cap nhat opening_balance moi cua KTV = remaining
+    // Cap nhat opening_balance moi cua KTV = phan con thieu (co the am neu nop du)
     await conn.query(
       `UPDATE staff SET opening_balance = ? WHERE id = ?`,
       [remaining, techId]
@@ -422,6 +492,8 @@ router.post('/staff/:tech_id/settle', adminOnly, async (req, res, next) => {
     res.json({
       remittance_id: remittanceId,
       total_holding: totalToCollect,
+      advances_total: advancesTotal,
+      effective_total: effectiveTotal,
       amount_paid: amountPaid,
       remaining,
       count: collections.length,

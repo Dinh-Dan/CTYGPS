@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const path = require('path');
+const fs = require('fs');
 const http = require('http');
 const express = require('express');
 const cors = require('cors');
@@ -46,6 +47,19 @@ app.use('/api/admin', adminRoutes);
 // /api/customer dung chung cho khach le (role=customer) va dai ly (role=daily).
 app.use('/api/customer', customerRoutes);
 app.use('/api/kithuat', kithuatRoutes);
+
+// Clean URL: /admin/customers → /admin/customers.html
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api') || path.extname(req.path)) return next();
+  const candidates = [
+    path.join(FE_DIR, req.path + '.html'),
+    path.join(FE_DIR, req.path, 'index.html'),
+  ];
+  for (const f of candidates) {
+    if (fs.existsSync(f)) return res.sendFile(f);
+  }
+  next();
+});
 
 // 404 cho API
 app.use('/api', (req, res) => {

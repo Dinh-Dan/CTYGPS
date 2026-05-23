@@ -35,6 +35,12 @@
     return `<span class="pill ${cls}">${lbl}</span>`;
   }
 
+  function typeBadge(deduct) {
+    return deduct
+      ? `<span class="adv-type-badge adv-type-collection">⬇ Trừ tiền thu hộ</span>`
+      : `<span class="adv-type-badge adv-type-salary">📋 Trừ lương cuối kỳ</span>`;
+  }
+
   async function loadList() {
     const wrap = $('advList');
     wrap.innerHTML = '<div class="empty-adv">Đang tải...</div>';
@@ -55,6 +61,7 @@
         <div class="adv-top">
           <span class="adv-amount">${fmt.format(a.amount)}đ</span>
           ${statusPill(a.status)}
+          ${typeBadge(a.deduct_from_collection)}
           <span class="adv-period">Kỳ ${escape(a.period)}</span>
         </div>
         <div class="adv-meta">
@@ -68,19 +75,23 @@
   }
 
   async function submitAdvance() {
-    const period = $('advPeriod').value;
-    const amount = Number($('advAmount').value);
-    const note   = $('advNote').value.trim();
+    const period             = $('advPeriod').value;
+    const amount             = Money.get($('advAmount'));
+    const note               = $('advNote').value.trim();
+    const deductFromCollection = $('advDeductCollection').checked ? 1 : 0;
     if (!period) { ui.toast('Chọn kỳ lương', 'warning'); return; }
     if (!amount || amount <= 0) { ui.toast('Nhập số tiền ứng', 'warning'); return; }
     $('btnSubmitAdv').disabled = true;
-    const ok = await api.post('/kithuat/advances', { period, amount, note }, {
-      successMessage: 'Đã gửi yêu cầu, chờ admin duyệt',
+    const ok = await api.post('/kithuat/advances', { period, amount, note, deduct_from_collection: deductFromCollection }, {
+      successMessage: deductFromCollection
+        ? 'Đã gửi yêu cầu ứng tiền thu hộ, chờ admin duyệt'
+        : 'Đã gửi yêu cầu ứng lương, chờ admin duyệt',
     }).catch(() => null);
     $('btnSubmitAdv').disabled = false;
     if (!ok) return;
     $('advAmount').value = '';
     $('advNote').value = '';
+    $('advDeductCollection').checked = false;
     loadList();
   }
 

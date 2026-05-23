@@ -6,16 +6,19 @@
 <title>Sản phẩm – Admin VinaGPS</title>
 <link rel="stylesheet" href="/shared/css/style.css" />
 <style>
+  /* ---- Bảng sản phẩm ---- */
   .product-thumb{
-    width:40px;height:40px;border-radius:6px;object-fit:cover;
+    width:44px;height:44px;border-radius:8px;object-fit:cover;
     background:#f1f5f9;display:inline-block;vertical-align:middle;
+    border:1px solid #e2e8f0;
   }
   .product-thumb-fallback{
-    width:40px;height:40px;border-radius:6px;background:#e0e7ff;
+    width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,#e0e7ff,#c7d2fe);
     display:inline-flex;align-items:center;justify-content:center;
-    color:#3730a3;font-weight:700;font-size:12px;
+    color:#4338ca;font-weight:700;font-size:14px;border:1px solid #c7d2fe;
   }
 
+  /* ---- Toolbar filter ---- */
   .filters-bar{
     display:flex;gap:10px;align-items:center;flex-wrap:wrap;
     background:#fff;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:14px;
@@ -25,41 +28,88 @@
   .filters-bar .field .input,
   .filters-bar .field .select{ padding:7px 10px;font-size:13px; }
 
-  /* Dynamic rows */
+  /* ---- Modal sản phẩm ---- */
+  .modal-section{
+    background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;
+    padding:16px;margin-bottom:16px;
+  }
+  .modal-section-title{
+    font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+    color:#64748b;margin:0 0 14px;display:flex;align-items:center;gap:6px;
+  }
+  .modal-section-title::before{
+    content:'';display:inline-block;width:3px;height:14px;
+    background:var(--primary);border-radius:2px;
+  }
+
+  /* ---- Upload ảnh ---- */
+  .img-upload-zone{
+    border:2px dashed #cbd5e1;border-radius:12px;background:#fff;
+    padding:20px 16px;display:flex;flex-direction:column;align-items:center;
+    gap:10px;cursor:pointer;transition:border-color .15s,background .15s;
+    position:relative;
+  }
+  .img-upload-zone:hover{ border-color:var(--primary);background:#f0f6ff; }
+  .img-upload-zone.has-image{ border-style:solid;border-color:#c7d2fe; }
+  .img-upload-zone input[type="file"]{
+    position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;
+  }
+  .img-upload-zone img.preview{
+    width:130px;height:130px;border-radius:10px;object-fit:cover;
+    border:2px solid #e2e8f0;
+  }
+  .img-upload-zone .upload-placeholder{
+    display:flex;flex-direction:column;align-items:center;gap:6px;
+    color:#94a3b8;pointer-events:none;
+  }
+  .img-upload-zone .upload-placeholder .icon{ font-size:36px; }
+  .img-upload-zone .upload-placeholder span{ font-size:12px;text-align:center; }
+  .img-upload-caption{ font-size:11px;color:#94a3b8;text-align:center;margin-top:2px; }
+
+  /* ---- Dynamic rows (attrs) ---- */
   .dyn-row{
     display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;
+    background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;
   }
   .dyn-row .field{ margin:0; }
   .dyn-row .dyn-label{ flex:1; }
   .dyn-row .dyn-value{ flex:1.3; }
   .dyn-row .btn-del{
-    background:#fee2e2;color:#991b1b;border:1px solid #fecaca;
-    border-radius:8px;padding:8px 12px;cursor:pointer;font-weight:700;
-    height:38px;
+    background:transparent;color:#94a3b8;border:1px solid #e2e8f0;
+    border-radius:6px;padding:6px 10px;cursor:pointer;font-size:14px;height:36px;
+    transition:.15s;flex-shrink:0;
   }
-  .dyn-row .btn-del:hover{ background:#fecaca; }
+  .dyn-row .btn-del:hover{ background:#fee2e2;color:#dc2626;border-color:#fecaca; }
 
-  /* Image picker */
-  .image-pick{
-    display:flex;flex-direction:column;align-items:center;gap:8px;
-    border:2px dashed #cbd5e1;border-radius:12px;padding:14px;
-    background:#f8fafc;
+  /* ---- Modal quản lý danh mục ---- */
+  .cat-add-row{
+    display:flex;gap:8px;align-items:center;
+    padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;
+    margin-bottom:14px;
   }
-  .image-pick img.preview{
-    width:160px;height:160px;border-radius:10px;object-fit:cover;
-    background:#fff;border:1px solid #e2e8f0;
-  }
-  .image-pick .placeholder{
-    width:160px;height:160px;border-radius:10px;background:#fff;
-    border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;
-    color:#94a3b8;font-size:42px;
-  }
+  .cat-add-row .input{ flex:1;margin:0; }
 
-  .section-h{
-    font-size:14px;font-weight:600;color:#334155;
-    margin:18px 0 8px;padding-bottom:6px;border-bottom:1px solid #e2e8f0;
+  .cat-list{ display:flex;flex-direction:column;gap:6px; }
+  .cat-item{
+    display:flex;align-items:center;gap:10px;padding:10px 12px;
+    background:#fff;border:1px solid #e2e8f0;border-radius:8px;
+    transition:border-color .15s;
   }
-  .section-h .help{ font-weight:400;font-size:12px;color:#64748b;margin-left:8px; }
+  .cat-item:hover{ border-color:#c7d2fe; }
+  .cat-item.editing{ border-color:var(--primary);background:#f0f6ff; }
+  .cat-item-name{ flex:1;font-size:14px;font-weight:500;color:#1e293b; }
+  .cat-item-count{
+    font-size:12px;color:#64748b;background:#f1f5f9;
+    padding:2px 8px;border-radius:999px;white-space:nowrap;
+  }
+  .cat-item-actions{ display:flex;gap:6px;flex-shrink:0; }
+  .cat-item input.cat-edit-input{
+    flex:1;border:1px solid var(--primary);border-radius:6px;
+    padding:5px 10px;font-size:14px;outline:none;
+  }
+  .cat-empty{
+    text-align:center;padding:32px 16px;color:#94a3b8;font-size:14px;
+  }
 </style>
 </head>
 <body>
@@ -72,6 +122,7 @@
     <div class="content flex-page">
       <div class="toolbar">
         <button class="btn" id="btnAdd">+ Thêm sản phẩm</button>
+        <button class="btn ghost" id="btnManageCat" title="Quản lý danh mục sản phẩm">🗂 Danh mục</button>
         <input id="search" class="input" placeholder="🔍 Tìm theo mã hoặc tên sản phẩm..." style="flex:2;min-width:220px">
         <select class="select" id="f_category" style="flex:1;min-width:200px">
           <option value="">Tất cả danh mục</option>
@@ -83,11 +134,12 @@
           <thead>
             <tr>
               <th style="width:60px">Ảnh</th>
-              <th>Tên sản phẩm</th>
-              <th>Mô tả</th>
+              <th>Sản phẩm</th>
               <th style="width:160px">Danh mục</th>
               <th style="width:100px">Bảo hành</th>
-              <th style="width:140px">Giá gốc</th>
+              <th style="width:130px">Giá bán lẻ</th>
+              <th style="width:130px">Đại lý</th>
+              <th style="width:130px">Bán sỉ</th>
               <th style="width:220px">Hành động</th>
             </tr>
           </thead>
@@ -104,9 +156,11 @@
   </main>
 </div>
 
-<!-- Modal them/sua san pham -->
+<!-- ================================================================
+     Modal thêm sản phẩm
+================================================================ -->
 <div id="modal" class="modal-bg">
-  <div class="modal" style="max-width:880px">
+  <div class="modal" style="max-width:860px">
     <div class="modal-head">
       <h3 id="modalTitle">Thêm sản phẩm</h3>
       <button type="button" class="modal-close" id="modalClose" aria-label="Đóng">×</button>
@@ -115,92 +169,121 @@
       <div class="modal-body">
         <input type="hidden" id="f_id">
 
-        <div class="row" style="align-items:flex-start;gap:24px">
-          <div style="flex:0 0 200px">
-            <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:#334155">Ảnh sản phẩm</label>
-            <div class="image-pick">
-              <img id="f_image_preview" class="preview hide">
-              <div id="f_image_placeholder" class="placeholder">📷</div>
-              <input type="file" id="f_image_file" accept="image/*">
+        <!-- Khối 1: Ảnh + Thông tin cơ bản -->
+        <div class="row" style="align-items:flex-start;gap:20px;margin-bottom:0">
+
+          <!-- Ảnh -->
+          <div style="flex:0 0 180px">
+            <div class="modal-section-title" style="margin-bottom:10px">Ảnh sản phẩm</div>
+            <div class="img-upload-zone" id="uploadZone">
+              <img id="f_image_preview" class="preview" style="display:none" alt="">
+              <div id="f_image_placeholder" class="upload-placeholder">
+                <span class="icon">📷</span>
+                <span>Bấm hoặc kéo thả<br>ảnh vào đây</span>
+              </div>
+              <input type="file" id="f_image_file" accept="image/*" title="">
               <input type="hidden" id="f_image_url">
               <input type="hidden" id="f_thumbnail_url">
-              <button type="button" id="f_image_clear" class="btn ghost sm">Xóa ảnh</button>
             </div>
-            <p class="help" style="text-align:center;margin-top:6px">Thumbnail tự sinh (300x300)</p>
+            <button type="button" id="f_image_clear" class="btn ghost sm block" style="margin-top:8px;font-size:12px">Xóa ảnh</button>
+            <p style="font-size:11px;color:#94a3b8;text-align:center;margin:4px 0 0">Thumbnail 300px tự sinh</p>
           </div>
 
+          <!-- Thông tin cơ bản -->
           <div style="flex:1;min-width:0">
-            <div class="grid cols-2">
-              <div class="field"><label>Mã thiết bị *</label>
-                <input type="text" id="f_code" class="input" required placeholder="VD: VT-01">
-              </div>
-              <div class="field"><label>Bảo hành (tháng)</label>
-                <input type="number" id="f_warranty" class="input" min="0" step="1" value="12">
-              </div>
-            </div>
-
-            <div class="field"><label>Tên sản phẩm *</label>
-              <input type="text" id="f_name" class="input" required placeholder="Tên hiển thị">
-            </div>
-
-            <div class="grid cols-2">
-              <div class="field">
-                <label>Danh mục</label>
-                <div class="row" style="gap:6px">
-                  <select id="f_category_id" class="select" style="flex:1">
-                    <option value="">— Chưa phân loại —</option>
-                  </select>
-                  <button type="button" class="btn ghost sm" id="btnAddCat" title="Thêm danh mục mới">+</button>
+            <div class="modal-section">
+              <div class="modal-section-title">Thông tin cơ bản</div>
+              <div class="grid cols-2" style="gap:12px">
+                <div class="field" style="margin:0">
+                  <label>Mã thiết bị *</label>
+                  <input type="text" id="f_code" class="input" required placeholder="VD: VT-01">
+                </div>
+                <div class="field" style="margin:0">
+                  <label>Bảo hành (tháng)</label>
+                  <input type="number" id="f_warranty" class="input" min="0" step="1" value="12">
                 </div>
               </div>
-              <div class="field"><label>Giá gốc / vốn (VND) *</label>
-                <input type="text" id="f_cost_price" class="input money-input" inputmode="numeric" required>
+              <div class="field" style="margin-top:10px;margin-bottom:0">
+                <label>Tên sản phẩm *</label>
+                <input type="text" id="f_name" class="input" required placeholder="Tên hiển thị đầy đủ">
               </div>
             </div>
 
-            <div class="field"><label>Mô tả</label>
-              <textarea id="f_description" class="textarea" rows="3"></textarea>
+            <div class="modal-section" style="margin-bottom:0">
+              <div class="modal-section-title">Phân loại & Giá vốn</div>
+              <div class="grid cols-2" style="gap:12px">
+                <div class="field" style="margin:0">
+                  <label>Danh mục</label>
+                  <div class="row" style="gap:6px;flex-wrap:nowrap">
+                    <select id="f_category_id" class="select" style="flex:1">
+                      <option value="">— Chưa phân loại —</option>
+                    </select>
+                    <button type="button" class="btn ghost sm" id="btnAddCat" title="Quản lý danh mục" style="flex-shrink:0">🗂</button>
+                  </div>
+                </div>
+                <div class="field" style="margin:0">
+                  <label>Giá gốc / vốn (VND)</label>
+                  <input type="text" id="f_cost_price" class="input money-input" inputmode="numeric" placeholder="0">
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div class="section-h" style="display:none">Các mức giá bán</div>
-        <div id="prices_rows" style="display:none"></div>
-        <button type="button" class="btn ghost sm" id="btnAddPrice" style="display:none">+ Thêm mức giá</button>
+        <!-- Mô tả -->
+        <div class="modal-section" style="margin-top:16px">
+          <div class="modal-section-title">Mô tả sản phẩm</div>
+          <textarea id="f_description" class="textarea" rows="3" placeholder="Mô tả ngắn về sản phẩm (không bắt buộc)"></textarea>
+        </div>
 
-        <p class="help" style="margin:8px 0 16px;color:#64748b">💡 Sau khi tạo, bạn sẽ chuyển sang trang chỉnh sửa để nhập bảng giá theo từng mức (Bán lẻ, Bán sỉ, Đại lý…) và các nội dung khác.</p>
+        <!-- Thông tin thêm (attrs) -->
+        <div class="modal-section" style="margin-bottom:0">
+          <div class="modal-section-title">
+            Thông số kỹ thuật
+            <span style="font-weight:400;font-size:11px;color:#94a3b8;margin-left:4px">VD: Nguồn, Pin, Kích thước…</span>
+          </div>
+          <div id="attrs_rows"></div>
+          <button type="button" class="btn ghost sm" id="btnAddAttr" style="margin-top:4px">+ Thêm thông số</button>
+        </div>
 
-        <div class="section-h">Thông tin thêm <span class="help">VD: Nguồn, Pin, Kích thước...</span></div>
-        <div id="attrs_rows"></div>
-        <button type="button" class="btn ghost sm" id="btnAddAttr">+ Thêm thông tin</button>
+        <p class="help" style="margin:14px 0 0;color:#64748b;font-size:12px">
+          💡 Sau khi tạo, bạn sẽ chuyển sang trang chỉnh sửa để thiết lập bảng giá, ảnh bổ sung và nội dung khác.
+        </p>
       </div>
       <div class="modal-foot">
         <button type="button" class="btn ghost" id="btnCancel">Hủy</button>
-        <button type="submit" class="btn" id="btnSave">Lưu</button>
+        <button type="submit" class="btn" id="btnSave">Tạo sản phẩm</button>
       </div>
     </form>
   </div>
 </div>
 
-<!-- Modal them danh muc nho -->
-<div id="catModal" class="modal-bg">
-  <div class="modal" style="max-width:420px">
+<!-- ================================================================
+     Modal quản lý danh mục (CRUD đầy đủ)
+================================================================ -->
+<div id="catManageModal" class="modal-bg">
+  <div class="modal" style="max-width:520px">
     <div class="modal-head">
-      <h3>Thêm danh mục</h3>
-      <button type="button" class="modal-close" id="catClose" aria-label="Đóng">×</button>
+      <h3>Quản lý danh mục</h3>
+      <button type="button" class="modal-close" id="catManageClose" aria-label="Đóng">×</button>
     </div>
-    <form id="catForm" style="display:contents">
-      <div class="modal-body">
-        <div class="field">
-          <label>Tên danh mục *</label>
-          <input type="text" id="cat_name" class="input" required placeholder="VD: Thiết bị định vị">
+    <div class="modal-body">
+      <!-- Thêm mới -->
+      <form id="catAddForm">
+        <div class="cat-add-row">
+          <input type="text" id="cat_name_new" class="input" placeholder="Nhập tên danh mục mới…" required>
+          <button type="submit" class="btn sm">+ Thêm</button>
         </div>
+      </form>
+
+      <!-- Danh sách -->
+      <div id="catList">
+        <div class="cat-empty">Đang tải…</div>
       </div>
-      <div class="modal-foot">
-        <button type="button" class="btn ghost" id="catCancel">Hủy</button>
-        <button type="submit" class="btn">Tạo</button>
-      </div>
-    </form>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="catManageDone">Đóng</button>
+    </div>
   </div>
 </div>
 

@@ -47,6 +47,21 @@ function httpErr(status, message, opts) {
   return e;
 }
 
+const fmtVnd = n => new Intl.NumberFormat('vi-VN').format(Number(n) || 0);
+
+async function appendOrderNote(dbOrConn, orderId, note, req) {
+  const actor = req?.user?.username || 'hệ thống';
+  const d = new Date();
+  const ts = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  const line = `[${ts} - ${actor}] ${note}`;
+  try {
+    await dbOrConn.query(
+      `UPDATE orders SET progress_note = CONCAT(COALESCE(progress_note, ''), ?, '\n') WHERE id = ?`,
+      [line, orderId]
+    );
+  } catch (_) {}
+}
+
 // Tra ve danh sach SP thieu giua nhu cau cua don va kho ca nhan KTV.
 // Tra ve [] neu du; tra ve [{product_id, product_name, need, have}] neu thieu.
 async function getStaffHoldingsLack(conn, orderId, staffId) {
@@ -577,6 +592,7 @@ router.get('/', async (req, res, next) => {
               o.subtotal, o.total_amount, o.paid_amount, o.wage_amount,
               o.due_at, o.completed_at, o.created_at, o.debt_carried_at,
               c.full_name AS customer_name, c.phone AS customer_phone,
+              c.avatar_url AS customer_avatar_url,
               s.full_name AS staff_name,
               (SELECT GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ')
                  FROM order_lines ol
@@ -672,13 +688,15 @@ router.get('/my-staff-commission-requests', async (req, res, next) => {
 // Phai dat TRUOC /:id.
 router.get('/staff-commission-requests', adminOnly, async (req, res, next) => {
   try {
-    const page  = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit = Math.min(100, parseInt(req.query.limit) || 50);
-    const offset = (page - 1) * limit;
+    const page    = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit   = Math.min(200, parseInt(req.query.limit) || 50);
+    const offset  = (page - 1) * limit;
+    const showAll = req.query.all === '1';
+    const approvedFilter = showAll ? '' : 'AND sc.approved_at IS NULL';
 
     const [rows] = await db.query(
       `SELECT sc.id, sc.order_id, sc.amount, sc.note,
-              sc.requested_at,
+              sc.requested_at, sc.approved_at,
               o.code       AS order_code,
               s.full_name  AS staff_name,
               s.role       AS staff_role,
@@ -688,8 +706,9 @@ router.get('/staff-commission-requests', adminOnly, async (req, res, next) => {
          JOIN orders o ON o.id = sc.order_id AND o.is_deleted = 0
          LEFT JOIN staff     s ON s.id = sc.staff_id
          LEFT JOIN customers c ON c.id = o.customer_id
-        WHERE sc.approved_at IS NULL AND sc.is_deleted = 0
+        WHERE sc.is_deleted = 0
           AND sc.requested_at IS NOT NULL
+          ${approvedFilter}
         ORDER BY sc.requested_at ASC
         LIMIT ? OFFSET ?`,
       [limit, offset]
@@ -697,8 +716,9 @@ router.get('/staff-commission-requests', adminOnly, async (req, res, next) => {
     const [[{ total }]] = await db.query(
       `SELECT COUNT(*) AS total FROM order_staff_commissions sc
          JOIN orders o ON o.id = sc.order_id AND o.is_deleted = 0
-        WHERE sc.approved_at IS NULL AND sc.is_deleted = 0
-          AND sc.requested_at IS NOT NULL`
+        WHERE sc.is_deleted = 0
+          AND sc.requested_at IS NOT NULL
+          ${approvedFilter}`
     );
     res.json({ items: rows, total, page, limit });
   } catch (err) { next(err); }
@@ -708,15 +728,18 @@ router.get('/staff-commission-requests', adminOnly, async (req, res, next) => {
 // Phai dat TRUOC /:id de Express khong nham 'commission-requests' la id.
 router.get('/commission-requests', adminOnly, async (req, res, next) => {
   try {
-    const page  = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit = Math.min(100, parseInt(req.query.limit) || 50);
-    const offset = (page - 1) * limit;
+    const page    = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit   = Math.min(200, parseInt(req.query.limit) || 50);
+    const offset  = (page - 1) * limit;
+    const showAll = req.query.all === '1';
+    const approvedFilter = showAll ? '' : 'AND o.tech_commission_approved_at IS NULL';
 
     const [rows] = await db.query(
       `SELECT o.id, o.code, o.created_at, o.completed_at,
               o.tech_commission_amount,
               o.tech_commission_note,
               o.tech_commission_requested_at,
+              o.tech_commission_approved_at,
               s.full_name  AS staff_name,
               c.full_name  AS customer_name,
               c.phone      AS customer_phone
@@ -724,19 +747,41 @@ router.get('/commission-requests', adminOnly, async (req, res, next) => {
          LEFT JOIN staff     s ON s.id = o.assigned_staff_id
          LEFT JOIN customers c ON c.id = o.customer_id
         WHERE o.tech_commission_requested_at IS NOT NULL
-          AND o.tech_commission_approved_at  IS NULL
+          ${approvedFilter}
           AND o.is_deleted = 0
         ORDER BY o.tech_commission_requested_at ASC
         LIMIT ? OFFSET ?`,
       [limit, offset]
     );
     const [[{ total }]] = await db.query(
-      `SELECT COUNT(*) AS total FROM orders
-        WHERE tech_commission_requested_at IS NOT NULL
-          AND tech_commission_approved_at  IS NULL
-          AND is_deleted = 0`
+      `SELECT COUNT(*) AS total FROM orders o
+        WHERE o.tech_commission_requested_at IS NOT NULL
+          ${approvedFilter}
+          AND o.is_deleted = 0`
     );
     res.json({ items: rows, total, page, limit });
+  } catch (err) { next(err); }
+});
+
+// ============================================================
+// STATS — counts by status
+// ============================================================
+router.get('/stats', async (_req, res, next) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT status, COUNT(*) AS cnt FROM orders WHERE is_deleted = 0 GROUP BY status`
+    );
+    const map = {};
+    let total = 0;
+    for (const r of rows) { map[r.status] = Number(r.cnt); total += Number(r.cnt); }
+    res.json({
+      total,
+      pending:     map.pending     || 0,
+      confirmed:   map.confirmed   || 0,
+      in_progress: map.in_progress || 0,
+      done:        map.done        || 0,
+      cancelled:   map.cancelled   || 0,
+    });
   } catch (err) { next(err); }
 });
 
@@ -855,6 +900,7 @@ router.post('/', async (req, res, next) => {
     await recalcPaymentStatus(conn, orderId);
 
     await conn.commit();
+    await appendOrderNote(conn, orderId, 'Tạo đơn', req);
 
     res.status(201).json({ id: orderId, code });
   } catch (err) {
@@ -916,6 +962,7 @@ router.put('/:id', async (req, res, next) => {
       await recalcPaymentStatus(conn, id);
     }
     await conn.commit();
+    await appendOrderNote(conn, id, 'Cập nhật thông tin đơn', req);
     res.json({ ok: true });
   } catch (err) {
     try { await conn.rollback(); } catch (_) {}
@@ -1052,6 +1099,7 @@ router.put('/:id/lines', async (req, res, next) => {
     await recalcOrderTotal(conn, id);
     await recalcPaymentStatus(conn, id);
     await conn.commit();
+    await appendOrderNote(conn, id, 'Cập nhật nội dung dòng công việc', req);
     res.json({ ok: true });
   } catch (err) {
     try { await conn.rollback(); } catch (_) {}
@@ -1107,6 +1155,7 @@ router.post('/:id/approve', async (req, res, next) => {
     }
 
     await conn.query(`UPDATE orders SET status = 'confirmed' WHERE id = ?`, [id]);
+    await appendOrderNote(conn, id, 'Duyệt đơn (pending → confirmed)', req);
     res.json({ ok: true, status: 'confirmed' });
   } catch (err) { next(err); } finally { conn.release(); }
 });
@@ -1141,6 +1190,7 @@ router.post('/:id/transition', async (req, res, next) => {
     // status doi -> recalc payment_status (vd: done + thieu tien -> 'customer_owes')
     await recalcPaymentStatus(conn, id);
     await conn.commit();
+    await appendOrderNote(conn, id, `Chuyển trạng thái → ${target}`, req);
     res.json({ ok: true, status: target });
   } catch (err) {
     try { await conn.rollback(); } catch (_) {}
@@ -1210,6 +1260,7 @@ router.patch('/:id/tech-commission', adminOnly, async (req, res, next) => {
       [amount, note, approver, id]
     );
     if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay don' });
+    await appendOrderNote(db, id, `Duyệt hoa hồng KTV ${fmtVnd(amount)}đ`, req);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -1230,6 +1281,7 @@ router.delete('/:id/tech-commission', adminOnly, async (req, res, next) => {
       [id]
     );
     if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay don' });
+    await appendOrderNote(db, id, 'Từ chối / huỷ hoa hồng KTV', req);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -1270,6 +1322,8 @@ router.post('/:id/staff-commissions', adminOnly, async (req, res, next) => {
        VALUES (?, ?, ?, ?, NOW(), ?)`,
       [orderId, staffId, amount, note, approver]
     );
+    const [[sn]] = await db.query(`SELECT full_name FROM staff WHERE id = ?`, [staffId]);
+    await appendOrderNote(db, orderId, `Thêm hoa hồng nhân viên ${sn?.full_name || staffId}: ${fmtVnd(amount)}đ`, req);
     res.status(201).json({ id: ins.insertId });
   } catch (err) { next(err); }
 });
@@ -1308,6 +1362,7 @@ router.patch('/:id/staff-commissions/:cid', adminOnly, async (req, res, next) =>
       params
     );
     if (!r.affectedRows) throw httpErr(404, 'Khong tim thay dong hoa hong');
+    await appendOrderNote(db, orderId, `Duyệt hoa hồng nhân viên: ${fmtVnd(amount)}đ`, req);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -1322,6 +1377,7 @@ router.delete('/:id/staff-commissions/:cid', adminOnly, async (req, res, next) =
       [cid, orderId]
     );
     if (!r.affectedRows) throw httpErr(404, 'Khong tim thay dong hoa hong');
+    await appendOrderNote(db, orderId, 'Xoá hoa hồng nhân viên', req);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -1431,7 +1487,7 @@ async function _assignStaff(conn, orderId, staffId, wage, force) {
 router.get('/:id/suggested-staff', async (req, res, next) => {
   try {
     const [rows] = await db.query(
-      `SELECT s.id, s.full_name, s.area, s.online_status,
+      `SELECT s.id, s.full_name, s.area, s.online_status, s.avatar_url,
               COALESCE(t.active_count, 0) AS active_count
          FROM staff s
          LEFT JOIN (
@@ -1442,7 +1498,7 @@ router.get('/:id/suggested-staff', async (req, res, next) => {
               AND is_deleted = 0
             GROUP BY assigned_staff_id
          ) t ON t.assigned_staff_id = s.id
-         WHERE s.is_deleted = 0
+         WHERE s.is_deleted = 0 AND s.role = 'kithuat'
         ORDER BY active_count ASC, s.full_name ASC`
     );
     res.json({ items: rows });
@@ -1463,6 +1519,8 @@ router.post('/:id/assign-staff', async (req, res, next) => {
     await conn.beginTransaction();
     await _assignStaff(conn, id, staffId, wage, force);
     await conn.commit();
+    const [[sn]] = await conn.query(`SELECT full_name FROM staff WHERE id = ?`, [staffId]);
+    await appendOrderNote(conn, id, `Gán KTV: ${sn?.full_name || staffId}`, req);
     res.json({ ok: true });
   } catch (err) {
     try { await conn.rollback(); } catch (_) {}
@@ -1485,6 +1543,8 @@ router.patch('/:id/reassign-staff', async (req, res, next) => {
     await conn.beginTransaction();
     await _assignStaff(conn, id, staffId, wage, force);
     await conn.commit();
+    const [[sn]] = await conn.query(`SELECT full_name FROM staff WHERE id = ?`, [staffId]);
+    await appendOrderNote(conn, id, `Gán lại KTV: ${sn?.full_name || staffId}`, req);
     res.json({ ok: true });
   } catch (err) {
     try { await conn.rollback(); } catch (_) {}
@@ -1510,12 +1570,13 @@ router.post('/:id/cancel', async (req, res, next) => {
     // BX-02: chi cancel duoc khi don con o pending/confirmed; in_progress/done
     // phai dung luong refund + return-stock chinh thuc.
     if (!['pending', 'confirmed'].includes(rows[0].status)) {
-      throw httpErr(409, 'Don da bat dau thi cong, vui long dung luong hoan tien + tra hang');
+      throw httpErr(409, 'Đơn đã bắt đầu thi công, vui lòng dùng luồng hoàn tiền + trả hàng');
     }
 
     await conn.beginTransaction();
     await conn.query(`UPDATE orders SET status = 'cancelled' WHERE id = ?`, [id]);
     await conn.commit();
+    await appendOrderNote(conn, id, 'Huỷ đơn', req);
     res.json({ ok: true });
   } catch (err) {
     try { await conn.rollback(); } catch (_) {}
@@ -1536,9 +1597,12 @@ router.delete('/:id', async (req, res, next) => {
     // BX-03: cam xoa don da co payment confirmed (paid_amount > 0)
     // tru khi force=1 (admin xac nhan da hoan tien thu cong).
     const [ords] = await db.query(
-      `SELECT id, paid_amount FROM orders WHERE id = ? AND is_deleted = 0`, [id]
+      `SELECT id, status, paid_amount FROM orders WHERE id = ? AND is_deleted = 0`, [id]
     );
     if (!ords.length) return res.status(404).json({ error: 'Khong tim thay don' });
+    if (ords[0].status === 'done') {
+      return res.status(409).json({ error: 'Don da hoan thanh, khong the xoa' });
+    }
     if (Number(ords[0].paid_amount) > 0 && req.query.force !== '1') {
       return res.status(409).json({
         error: 'Don da co thu tien, vui long hoan tien truoc khi xoa (hoac them ?force=1 neu da xu ly thu cong)',
@@ -1607,6 +1671,8 @@ router.post('/:id/mark-paid', adminOnly, async (req, res, next) => {
     }
     await recalcPaymentStatus(conn, id);
     await conn.commit();
+    const methodLabel = { cash: 'Tiền mặt', transfer: 'Chuyển khoản', debt: 'Công nợ' }[method] || method;
+    await appendOrderNote(conn, id, `Ghi nhận thu ${fmtVnd(amount)}đ (${methodLabel})`, req);
     res.json({ ok: true, paid_added: amount });
   } catch (err) {
     try { await conn.rollback(); } catch (_) {}
@@ -1619,7 +1685,7 @@ router.post('/:id/mark-paid', adminOnly, async (req, res, next) => {
 router.get('/:id/admin-pending', async (req, res, next) => {
   try {
     const [rows] = await db.query(
-      `SELECT id, amount, method, note, confirmed, confirmed_at, created_at
+      `SELECT id, amount, note, confirmed, confirmed_at, paid_at AS created_at
          FROM order_payments
         WHERE order_id = ? AND source = 'admin_pending' AND is_deleted = 0
         ORDER BY id DESC`, [Number(req.params.id)]
@@ -1652,6 +1718,7 @@ router.post('/:id/confirm-admin-pending/:paymentId', adminOnly, async (req, res,
     );
     await recalcPaymentStatus(conn, id);
     await conn.commit();
+    await appendOrderNote(conn, id, `Xác nhận nhận ${fmtVnd(rows[0].amount)}đ từ khách`, req);
     res.json({ ok: true });
   } catch (err) {
     try { await conn.rollback(); } catch (_) {}
@@ -1708,6 +1775,45 @@ router.post('/:id/confirm-staff-collection/:collectionId', adminOnly, async (req
 });
 
 // ============================================================
+// PAYMENT HISTORY — lich su thanh toan tong hop
+// ============================================================
+router.get('/:id/payment-history', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+
+    // Thanh toan truc tiep (da xac nhan)
+    const [direct] = await db.query(
+      `SELECT op.id, op.source, op.amount, op.note, op.paid_at,
+              s.full_name AS staff_name
+         FROM order_payments op
+         LEFT JOIN staff s ON s.id = op.staff_id
+        WHERE op.order_id = ? AND op.is_deleted = 0 AND op.confirmed = 1
+        ORDER BY op.paid_at ASC`,
+      [id]
+    );
+
+    // Thanh toan qua phieu yeu cau (1 row moi phieu YC-)
+    const [viaPR] = await db.query(
+      `SELECT pr.id, pr.code AS request_code, pr.status AS request_status,
+              pr.paid_at, pr.created_at, pri.amount,
+              s.full_name AS created_by_name
+         FROM payment_request_items pri
+         JOIN payment_requests pr ON pr.id = pri.request_id
+         LEFT JOIN staff s ON s.id = pr.created_by
+        WHERE pri.target_type = 'order' AND pri.target_id = ?
+          AND pr.is_deleted = 0
+        ORDER BY pr.created_at ASC`,
+      [id]
+    );
+
+    res.json({
+      direct: direct.map(r => ({ ...r, amount: Number(r.amount) })),
+      via_request: viaPR.map(r => ({ ...r, amount: Number(r.amount) })),
+    });
+  } catch (err) { next(err); }
+});
+
+// ============================================================
 // PHOTOS — anh tu do gan vao don (khong gan step)
 // ============================================================
 // Body: { url, caption? }
@@ -1737,6 +1843,5 @@ router.delete('/:id/photos/:photoId', async (req, res, next) => {
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
-
 
 module.exports = router;

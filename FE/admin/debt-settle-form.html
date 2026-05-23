@@ -544,6 +544,66 @@
       }
     }
 
+    /* Customer info display box (inside quote paper) */
+    .cust-display-box {
+      border: 1px solid #cbd5e1;
+      padding: 12px 16px;
+      font-size: 14px;
+      line-height: 1.9;
+    }
+    .cust-display-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: #0f172a;
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 2px;
+    }
+    .cust-display-box b { font-weight: 600; color: #0f172a }
+
+    /* Edit panel (ngoài quote paper, ẩn khi in) */
+    .cust-edit-wrap {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.05);
+    }
+    .cust-edit-toggle {
+      width: 100%;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      color: #334155;
+      text-align: left;
+    }
+    .cust-edit-toggle:hover { background: #f8fafc }
+    .cust-edit-body {
+      padding: 16px 20px;
+      border-top: 1px solid #e2e8f0;
+      display: none;
+    }
+    .cust-edit-body.open { display: block }
+    .cust-edit-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px 20px;
+      margin-bottom: 14px;
+    }
+    .cust-edit-full { grid-column: 1 / -1 }
+    @media (max-width:600px) {
+      .cust-edit-grid { grid-template-columns: 1fr }
+      .cust-edit-full { grid-column: 1 }
+    }
+    @media print { .cust-edit-wrap { display: none !important } }
+
     @media (max-width:680px) {
       .quote-paper {
         padding: 20px
@@ -586,6 +646,7 @@
       </div>
       <button class="btn" id="btnOpenConfirm" disabled>Tạo Phiếu Yêu Cầu</button>
     </div>
+    <div id="custEditSection"></div>
     <div class="quote-paper" id="quotePaper">
       <div class="empty">Đang tải...</div>
     </div>
@@ -627,7 +688,7 @@
   <script src="/shared/js/order-quick-view.js"></script>
   <script src="/shared/js/imgbb.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="/admin/debt-settle-form.js"></script>
 </body>
 

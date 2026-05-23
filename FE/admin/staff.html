@@ -6,135 +6,205 @@
 <title>Nhân viên – Admin VinaGPS</title>
 <link rel="stylesheet" href="/shared/css/style.css" />
 <style>
-  .ktv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px}
-  .ktv-card{position:relative;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:var(--shadow);transition:.15s}
-  .ktv-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-1px)}
-  .ktv-card .role-tag{position:absolute;top:10px;right:10px;font-size:11px}
-  .ktv-head{display:flex;align-items:center;gap:12px;padding-right:70px}
-  .ktv-avatar{width:48px;height:48px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:18px;font-weight:700;flex-shrink:0;object-fit:cover}
-  .ktv-name{font-size:15px;font-weight:700;line-height:1.25}
-  .ktv-username{color:var(--muted);font-size:12px;margin-top:2px}
-  .ktv-meta{display:flex;gap:10px;flex-wrap:wrap;font-size:12.5px;color:#475569}
-  .ktv-meta span{display:inline-flex;align-items:center;gap:4px}
-  .ktv-meta b{color:var(--text);font-weight:600}
-  .ktv-stats{display:flex;gap:8px;padding:8px 0;border-top:1px dashed var(--border);border-bottom:1px dashed var(--border)}
-  .ktv-stats .stat{flex:1;text-align:center;padding:2px 4px;border-radius:6px}
-  .ktv-stats .stat-num{font-size:18px;font-weight:700;color:var(--primary);display:block;line-height:1.1}
-  .ktv-stats .stat-lbl{font-size:11.5px;color:var(--muted);display:block;margin-top:2px}
-  .ktv-stats .stat.zero .stat-num{color:#cbd5e1}
-  .ktv-stats .stat.warn{background:#fff7ed}
-  .ktv-stats .stat.warn .stat-num{color:#ea580c}
-  .ktv-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-  .ktv-actions .btn{justify-content:center;font-size:12.5px}
-  .ktv-actions .full{grid-column:1 / -1}
-  .online-dot{width:8px;height:8px;border-radius:50%;background:#16a34a;display:inline-block;margin-right:4px;box-shadow:0 0 0 2px #dcfce7}
-  .online-dot.off{background:#94a3b8;box-shadow:0 0 0 2px #f1f5f9}
-  .filter-task-row{padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:#f8fafc;cursor:pointer;transition:.1s}
-  .filter-task-row:hover{background:#e0f2fe;border-color:var(--primary)}
-  .filter-task-row.disabled{opacity:.5;cursor:not-allowed}
+/* ===== STATS ROW ===== */
+.staff-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}
+@media(max-width:1200px){.staff-stats{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:700px){.staff-stats{grid-template-columns:repeat(2,1fr)}}
+.sstat{background:#fff;border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 4px rgba(15,23,42,.07);border:1px solid #f1f5f9}
+.sstat-icon{width:44px;height:44px;border-radius:10px;display:grid;place-items:center;font-size:20px;flex-shrink:0}
+.sstat-num{font-size:26px;font-weight:700;color:#0f172a;line-height:1}
+.sstat-lbl{font-size:12px;color:#64748b;margin-top:3px}
+.sstat-sub{font-size:11px;color:#94a3b8;margin-top:2px}
 
-  /* ===== Modal cap san pham ===== */
-  #issueModal .modal{max-width:1080px;width:calc(100vw - 24px);height:88vh;display:flex;flex-direction:column}
-  #issueModal .modal-head{background:linear-gradient(135deg,#0ea5e9 0%,#2563eb 100%);color:#fff;border-bottom:0}
-  #issueModal .modal-head h3{color:#fff}
-  #issueModal .modal-head .modal-close{color:#fff;opacity:.9}
-  #issueModal .modal-head .modal-close:hover{opacity:1}
-  #issueModal .modal-body{padding:0;overflow:hidden;display:flex;flex-direction:column;flex:1;background:#f1f5f9}
+/* ===== PAGE LAYOUT ===== */
+.staff-layout{display:grid;grid-template-columns:1fr 290px;gap:16px;align-items:start}
+@media(max-width:1100px){.staff-layout{grid-template-columns:1fr}}
 
-  .iss-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;flex:1;min-height:0}
-  .iss-pane{display:flex;flex-direction:column;min-height:0;background:#fff}
-  .iss-pane + .iss-pane{border-left:1px solid var(--border)}
-  .iss-pane-head{padding:12px 16px;border-bottom:1px solid var(--border);background:#f8fafc;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .iss-pane-head h4{margin:0;font-size:14px;font-weight:700;color:#0f172a;display:flex;align-items:center;gap:8px}
-  .iss-pane-head .badge{background:#fee2e2;color:#991b1b;font-size:11px;padding:2px 9px;border-radius:999px;font-weight:700}
-  .iss-pane-body{padding:14px 16px;overflow-y:auto;flex:1}
+/* ===== LIST HEADER ===== */
+.list-hdr{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.list-hdr h3{font-size:15px;font-weight:700;flex:1;margin:0}
+.view-btns{display:flex;gap:4px}
+.vbtn{width:32px;height:32px;border:1px solid #e2e8f0;background:#fff;border-radius:6px;cursor:pointer;display:grid;place-items:center;color:#64748b;transition:.1s;font-size:13px;padding:0}
+.vbtn.on{background:#0f172a;color:#fff;border-color:#0f172a}
+.sort-sel{font-size:12.5px;padding:5px 10px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;color:#0f172a;cursor:pointer}
 
-  /* === Pane Tao moi - dang card === */
-  .iss-form-lines{display:flex;flex-direction:column;gap:10px}
-  .iss-create-row{border:1px solid var(--border);border-radius:8px;background:#fff;padding:10px 12px;display:flex;flex-direction:column;gap:8px;position:relative}
-  .iss-create-row:hover{border-color:#cbd5e1}
-  .iss-create-row .row-head{display:flex;align-items:center;gap:8px}
-  .iss-create-row .row-head .lbl{font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.3px;flex-shrink:0;width:80px}
-  .iss-prod-cell{position:relative;flex:1}
-  .iss-prod-cell input{width:100%;padding:9px 12px;font-size:13.5px}
-  .iss-prod-cell .stock-hint{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:#0ea5e9;font-weight:700;pointer-events:none;background:#e0f2fe;padding:2px 6px;border-radius:4px}
-  .iss-prod-cell .stock-hint.low{color:#dc2626;background:#fee2e2}
-  .iss-create-row .row-body{display:flex;gap:8px;align-items:stretch}
-  .iss-create-row .qty-wrap{display:flex;flex-direction:column;gap:4px;flex-shrink:0;width:80px}
-  .iss-create-row .qty-wrap .lbl{font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.3px}
-  .iss-create-row input.qty{width:100%;text-align:center;padding:8px;font-size:14px;font-weight:600}
-  .iss-create-row .imei-wrap{flex:1;display:flex;flex-direction:column;gap:4px}
-  .iss-create-row .imei-wrap .lbl{font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.3px}
-  .iss-create-row textarea.imei{width:100%;font-family:monospace;font-size:12.5px;resize:vertical;min-height:96px;max-height:240px;padding:8px 10px;line-height:1.5;display:block;flex:1}
-  .iss-create-row .rm{position:absolute;top:6px;right:6px;background:transparent;border:0;color:#94a3b8;font-size:18px;cursor:pointer;line-height:1;padding:4px 8px;border-radius:4px;z-index:2}
-  .iss-create-row .rm:hover{color:#dc2626;background:#fee2e2}
-  .iss-add-line{margin-top:8px;background:#f8fafc;color:#0f172a;border:1px dashed #cbd5e1;width:100%;justify-content:center}
-  .iss-add-line:hover{background:#e0f2fe;border-color:#0ea5e9;color:#0c4a6e}
+/* ===== CARD GRID ===== */
+.ktv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:12px}
+.ktv-list{display:flex;flex-direction:column;gap:8px}
 
-  .iss-form-foot{padding:10px 16px;border-top:1px solid var(--border);background:#fafbfc;display:flex;align-items:center;gap:10px;justify-content:space-between}
-  .iss-form-foot .summary{font-size:13px;color:#475569}
-  .iss-form-foot .summary b{color:#0f172a;font-size:15px}
+/* ===== CARD ===== */
+.ktv-card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(15,23,42,.07);border:1px solid #f1f5f9;transition:.15s;position:relative}
+.ktv-card:hover{box-shadow:0 4px 14px rgba(15,23,42,.11);transform:translateY(-1px)}
 
-  /* === Pane Lich su === */
-  .iss-filter{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
-  .iss-filter button{font-size:11.5px;padding:3px 9px;border-radius:999px;border:1px solid var(--border);background:#fff;cursor:pointer;color:#475569;transition:.1s}
-  .iss-filter button:hover{background:#f1f5f9}
-  .iss-filter button.on{background:#0f172a;color:#fff;border-color:#0f172a}
+.kc-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px}
+.kc-av{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-size:20px;font-weight:700;color:#fff;flex-shrink:0;object-fit:cover}
+.kc-info{flex:1;min-width:0}
+.kc-name{font-size:14px;font-weight:700;color:#0f172a;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kc-sub{display:flex;align-items:center;gap:5px;margin-top:3px;flex-wrap:wrap}
+.kc-user{font-size:12px;color:#94a3b8}
+.kc-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.kc-dot.on{background:#16a34a;box-shadow:0 0 0 2px #dcfce7}
+.kc-dot.off{background:#94a3b8;box-shadow:0 0 0 2px #f1f5f9}
+.kc-status{font-size:11px;color:#64748b}
+.kc-role{display:inline-block;margin-top:6px;font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px}
+.kc-role.ktv{background:#fef3c7;color:#92400e}
+.kc-role.nv{background:#dcfce7;color:#15803d}
+.kc-role.qt{background:#ede9fe;color:#6d28d9}
 
-  .iss-history{display:flex;flex-direction:column;gap:8px}
-  .iss-card{border:1px solid var(--border);border-radius:10px;background:#fff;overflow:hidden;transition:.15s;cursor:pointer;border-left:4px solid #cbd5e1}
-  .iss-card:hover{box-shadow:0 4px 10px rgba(15,23,42,.06);transform:translateY(-1px)}
-  .iss-card.open{box-shadow:0 4px 14px rgba(15,23,42,.08)}
-  .iss-card.draft{border-left-color:#f59e0b;background:#fffbeb}
-  .iss-card.approved{border-left-color:#10b981;background:#ecfdf5}
-  .iss-card.received{border-left-color:#059669}
-  .iss-card.rejected{border-left-color:#ef4444;opacity:.85}
-  .iss-card.cancelled{border-left-color:#94a3b8;opacity:.7}
-  .iss-card-head{padding:10px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .iss-card-head .code{font-weight:700;font-size:14px;color:#0f172a}
-  .iss-card-head .meta{font-size:12px;color:#64748b;margin-left:auto;text-align:right}
-  .iss-card-head .meta b{color:#0f172a;font-size:12.5px}
-  .iss-card-head .arrow{color:#94a3b8;transition:.15s;font-size:14px}
-  .iss-card.open .arrow{transform:rotate(180deg)}
-  .iss-card .iss-items{padding:0 12px 12px;display:none;border-top:1px solid #f1f5f9;background:rgba(255,255,255,.6)}
-  .iss-card.open .iss-items{display:block}
-  .iss-card table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
-  .iss-card th,.iss-card td{padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}
-  .iss-card th{background:#f8fafc;font-size:11px;font-weight:600;text-transform:uppercase;color:#64748b;letter-spacing:.3px}
-  .iss-card td.imei{font-family:monospace;font-size:11.5px;color:#475569}
-  .iss-card td input.qty{width:64px;text-align:center;padding:3px 6px;font-size:13px}
-  .iss-card .extra{margin-top:8px;font-size:13px;color:#475569}
-  .iss-card .extra b{color:#0f172a}
-  .iss-card .acts{display:flex;gap:6px;justify-content:flex-end;margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0}
-  .iss-low{color:#dc2626;font-weight:700}
-  .iss-ok{color:#16a34a;font-weight:600}
+.kc-stats{display:grid;grid-template-columns:1fr 1fr 1fr;text-align:center;padding:10px 0;border-top:1px solid #f8fafc;border-bottom:1px solid #f8fafc;margin-bottom:12px;gap:2px}
+.kc-stat-n{font-size:20px;font-weight:700;line-height:1.1}
+.kc-stat-n.dim{color:#cbd5e1}
+.kc-stat-n.hi{color:#ea580c}
+.kc-stat-l{font-size:11px;color:#64748b;margin-top:2px}
 
-  .pill.cap-draft{background:#fef3c7;color:#92400e}
-  .pill.cap-approved{background:#dcfce7;color:#15803d}
-  .pill.cap-received{background:#bbf7d0;color:#14532d}
-  .pill.cap-rejected{background:#fee2e2;color:#991b1b}
-  .pill.cap-cancelled{background:#f1f5f9;color:#475569}
-  .iss-photo{display:inline-block;border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-top:4px}
-  .iss-photo img{display:block;max-height:80px}
+.kc-acts{display:flex;gap:6px;justify-content:flex-end;align-items:center}
+.abt{width:32px;height:32px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:15px;color:#475569;text-decoration:none;transition:.1s;flex-shrink:0;padding:0;line-height:1}
+.abt:hover{background:#e0f2fe;border-color:#7dd3fc;color:#0369a1;text-decoration:none}
+.abt.danger:hover{background:#fee2e2;border-color:#fca5a5;color:#dc2626}
 
-  /* ===== Phieu ung luong ===== */
-  .adv-status-pending{background:#fef3c7;color:#92400e}
-  .adv-status-approved{background:#dcfce7;color:#166534}
-  .adv-status-rejected{background:#fee2e2;color:#991b1b}
-  .adv-row{border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:8px;background:#fafbfc}
-  .adv-row.pending{border-left:4px solid #f59e0b}
-  .adv-row.approved{border-left:4px solid #10b981}
-  .adv-row.rejected{border-left:4px solid #ef4444;opacity:.85}
-  .adv-row .adv-meta{font-size:12.5px;color:#64748b;margin-top:4px}
-  .adv-acts{display:flex;gap:6px;margin-top:8px;justify-content:flex-end}
-  .iss-empty{text-align:center;color:#94a3b8;padding:30px 16px;font-size:13px;font-style:italic;border:1px dashed #e2e8f0;border-radius:8px;background:#fafbfc}
+/* More dropdown */
+.more-dd{position:absolute;bottom:52px;right:12px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.13);z-index:200;min-width:172px;padding:5px 0;display:none}
+.more-dd.open{display:block}
+.dd-item{display:flex;align-items:center;gap:9px;padding:8px 14px;font-size:13px;color:#0f172a;cursor:pointer;border:0;background:0;width:100%;text-align:left;transition:.1s}
+.dd-item:hover{background:#f8fafc}
+.dd-item.red{color:#dc2626}
+.dd-item.red:hover{background:#fff5f5}
 
-  /* Mobile: stack 2 cot, modal vua sat man hinh, moi pane scroll rieng */
-  @media (max-width:880px){
-    .iss-grid{grid-template-columns:1fr;grid-template-rows:1fr 1fr}
-    .iss-pane + .iss-pane{border-left:0;border-top:1px solid var(--border)}
-    #issueModal .modal{height:95vh}
-  }
+/* List mode card override */
+.ktv-list .ktv-card{display:flex;align-items:center;gap:14px;padding:12px 16px;border-radius:8px}
+.ktv-list .kc-head{margin-bottom:0;flex:1}
+.ktv-list .kc-stats{border:0;padding:0;margin-bottom:0;gap:20px;min-width:180px}
+.ktv-list .kc-acts{gap:4px}
+.ktv-list .more-dd{bottom:44px}
+
+/* ===== SIDEBAR ===== */
+.staff-sidebar{display:flex;flex-direction:column;gap:12px}
+.sb-card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(15,23,42,.07);border:1px solid #f1f5f9}
+.sb-card h4{font-size:13px;font-weight:700;color:#0f172a;margin:0 0 12px}
+
+/* Donut */
+.donut-wrap{display:flex;flex-direction:column;align-items:center;gap:12px}
+.donut-ring{width:120px;height:120px;border-radius:50%;-webkit-mask:radial-gradient(farthest-side,transparent 57%,#000 58%);mask:radial-gradient(farthest-side,transparent 57%,#000 58%)}
+.donut-legend{width:100%;display:flex;flex-direction:column;gap:8px}
+.leg-item{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.leg-lbl{flex:1;color:#475569}
+.leg-cnt{font-weight:600;color:#0f172a}
+
+/* Activity */
+.act-hdr{display:flex;align-items:center;margin-bottom:10px}
+.act-hdr h4{margin:0;flex:1}
+.act-hdr a{font-size:12px;color:#0ea5e9;text-decoration:none}
+.act-hdr a:hover{text-decoration:underline}
+.act-item{display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid #f8fafc}
+.act-item:last-child{border-bottom:0;padding-bottom:0}
+.act-av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0}
+.act-body{flex:1;min-width:0}
+.act-text{font-size:12.5px;color:#0f172a;line-height:1.4}
+.act-time{font-size:11px;color:#94a3b8;margin-top:2px}
+.act-online-dot{width:7px;height:7px;border-radius:50%;background:#16a34a;margin-top:6px;flex-shrink:0}
+
+/* Quick actions */
+.qa-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.qa-btn{display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 6px;border-radius:10px;border:1px solid #e2e8f0;background:#fafbfc;cursor:pointer;transition:.1s;font-size:11.5px;color:#0f172a;font-weight:600;text-align:center;text-decoration:none}
+.qa-btn:hover{background:#f1f5f9;border-color:#cbd5e1;text-decoration:none;color:#0f172a}
+.qa-icon{width:36px;height:36px;border-radius:8px;display:grid;place-items:center;font-size:18px}
+
+/* ===== MODAL CAP SAN PHAM ===== */
+#issueModal .modal{max-width:1080px;width:calc(100vw - 24px);height:88vh;display:flex;flex-direction:column}
+#issueModal .modal-head{background:linear-gradient(135deg,#0ea5e9 0%,#2563eb 100%);color:#fff;border-bottom:0}
+#issueModal .modal-head h3{color:#fff}
+#issueModal .modal-head .modal-close{color:#fff;opacity:.9}
+#issueModal .modal-head .modal-close:hover{opacity:1}
+#issueModal .modal-body{padding:0;overflow:hidden;display:flex;flex-direction:column;flex:1;background:#f1f5f9}
+.iss-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;flex:1;min-height:0}
+.iss-pane{display:flex;flex-direction:column;min-height:0;background:#fff}
+.iss-pane+.iss-pane{border-left:1px solid var(--border)}
+.iss-pane-head{padding:12px 16px;border-bottom:1px solid var(--border);background:#f8fafc;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.iss-pane-head h4{margin:0;font-size:14px;font-weight:700;color:#0f172a;display:flex;align-items:center;gap:8px}
+.iss-pane-head .badge{background:#fee2e2;color:#991b1b;font-size:11px;padding:2px 9px;border-radius:999px;font-weight:700}
+.iss-pane-body{padding:14px 16px;overflow-y:auto;flex:1}
+.iss-form-lines{display:flex;flex-direction:column;gap:10px}
+.iss-create-row{border:1px solid var(--border);border-radius:8px;background:#fff;padding:10px 12px;display:flex;flex-direction:column;gap:8px;position:relative}
+.iss-create-row:hover{border-color:#cbd5e1}
+.iss-create-row .row-head{display:flex;align-items:center;gap:8px}
+.iss-create-row .row-head .lbl{font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.3px;flex-shrink:0;width:80px}
+.iss-prod-cell{position:relative;flex:1}
+.iss-prod-cell input{width:100%;padding:9px 12px;font-size:13.5px}
+.iss-prod-cell .stock-hint{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:#0ea5e9;font-weight:700;pointer-events:none;background:#e0f2fe;padding:2px 6px;border-radius:4px}
+.iss-prod-cell .stock-hint.low{color:#dc2626;background:#fee2e2}
+.iss-create-row .row-body{display:flex;gap:8px;align-items:stretch}
+.iss-create-row .qty-wrap{display:flex;flex-direction:column;gap:4px;flex-shrink:0;width:80px}
+.iss-create-row .qty-wrap .lbl{font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.3px}
+.iss-create-row input.qty{width:100%;text-align:center;padding:8px;font-size:14px;font-weight:600}
+.iss-create-row .imei-wrap{flex:1;display:flex;flex-direction:column;gap:4px}
+.iss-create-row .imei-wrap .lbl{font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.3px}
+.iss-create-row textarea.imei{width:100%;font-family:monospace;font-size:12.5px;resize:vertical;min-height:96px;max-height:240px;padding:8px 10px;line-height:1.5;display:block;flex:1}
+.iss-create-row .rm{position:absolute;top:6px;right:6px;background:transparent;border:0;color:#94a3b8;font-size:18px;cursor:pointer;line-height:1;padding:4px 8px;border-radius:4px;z-index:2}
+.iss-create-row .rm:hover{color:#dc2626;background:#fee2e2}
+.iss-add-line{margin-top:8px;background:#f8fafc;color:#0f172a;border:1px dashed #cbd5e1;width:100%;justify-content:center}
+.iss-add-line:hover{background:#e0f2fe;border-color:#0ea5e9;color:#0c4a6e}
+.iss-form-foot{padding:10px 16px;border-top:1px solid var(--border);background:#fafbfc;display:flex;align-items:center;gap:10px;justify-content:space-between}
+.iss-form-foot .summary{font-size:13px;color:#475569}
+.iss-form-foot .summary b{color:#0f172a;font-size:15px}
+.iss-filter{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
+.iss-filter button{font-size:11.5px;padding:3px 9px;border-radius:999px;border:1px solid var(--border);background:#fff;cursor:pointer;color:#475569;transition:.1s}
+.iss-filter button:hover{background:#f1f5f9}
+.iss-filter button.on{background:#0f172a;color:#fff;border-color:#0f172a}
+.iss-history{display:flex;flex-direction:column;gap:8px}
+.iss-card{border:1px solid var(--border);border-radius:10px;background:#fff;overflow:hidden;transition:.15s;cursor:pointer;border-left:4px solid #cbd5e1}
+.iss-card:hover{box-shadow:0 4px 10px rgba(15,23,42,.06);transform:translateY(-1px)}
+.iss-card.open{box-shadow:0 4px 14px rgba(15,23,42,.08)}
+.iss-card.draft{border-left-color:#f59e0b;background:#fffbeb}
+.iss-card.approved{border-left-color:#10b981;background:#ecfdf5}
+.iss-card.received{border-left-color:#059669}
+.iss-card.rejected{border-left-color:#ef4444;opacity:.85}
+.iss-card.cancelled{border-left-color:#94a3b8;opacity:.7}
+.iss-card-head{padding:10px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.iss-card-head .code{font-weight:700;font-size:14px;color:#0f172a}
+.iss-card-head .meta{font-size:12px;color:#64748b;margin-left:auto;text-align:right}
+.iss-card-head .meta b{color:#0f172a;font-size:12.5px}
+.iss-card-head .arrow{color:#94a3b8;transition:.15s;font-size:14px}
+.iss-card.open .arrow{transform:rotate(180deg)}
+.iss-card .iss-items{padding:0 12px 12px;display:none;border-top:1px solid #f1f5f9;background:rgba(255,255,255,.6)}
+.iss-card.open .iss-items{display:block}
+.iss-card table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+.iss-card th,.iss-card td{padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}
+.iss-card th{background:#f8fafc;font-size:11px;font-weight:600;text-transform:uppercase;color:#64748b;letter-spacing:.3px}
+.iss-card td.imei{font-family:monospace;font-size:11.5px;color:#475569}
+.iss-card td input.qty{width:64px;text-align:center;padding:3px 6px;font-size:13px}
+.iss-card .extra{margin-top:8px;font-size:13px;color:#475569}
+.iss-card .extra b{color:#0f172a}
+.iss-card .acts{display:flex;gap:6px;justify-content:flex-end;margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0}
+.iss-low{color:#dc2626;font-weight:700}
+.iss-ok{color:#16a34a;font-weight:600}
+.pill.cap-draft{background:#fef3c7;color:#92400e}
+.pill.cap-approved{background:#dcfce7;color:#15803d}
+.pill.cap-received{background:#bbf7d0;color:#14532d}
+.pill.cap-rejected{background:#fee2e2;color:#991b1b}
+.pill.cap-cancelled{background:#f1f5f9;color:#475569}
+.iss-photo{display:inline-block;border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-top:4px}
+.iss-photo img{display:block;max-height:80px}
+.iss-empty{text-align:center;color:#94a3b8;padding:30px 16px;font-size:13px;font-style:italic;border:1px dashed #e2e8f0;border-radius:8px;background:#fafbfc}
+@media(max-width:880px){
+  .iss-grid{grid-template-columns:1fr;grid-template-rows:1fr 1fr}
+  .iss-pane+.iss-pane{border-left:0;border-top:1px solid var(--border)}
+  #issueModal .modal{height:95vh}
+}
+
+/* ===== PHIEU UNG LUONG ===== */
+.adv-status-pending{background:#fef3c7;color:#92400e}
+.adv-status-approved{background:#dcfce7;color:#166534}
+.adv-status-rejected{background:#fee2e2;color:#991b1b}
+.adv-row{border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:8px;background:#fafbfc}
+.adv-row.pending{border-left:4px solid #f59e0b}
+.adv-row.approved{border-left:4px solid #10b981}
+.adv-row.rejected{border-left:4px solid #ef4444;opacity:.85}
+.adv-row .adv-meta{font-size:12.5px;color:#64748b;margin-top:4px}
+.adv-acts{display:flex;gap:6px;margin-top:8px;justify-content:flex-end}
+
+.filter-task-row{padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:#f8fafc;cursor:pointer;transition:.1s}
+.filter-task-row:hover{background:#e0f2fe;border-color:var(--primary)}
 </style>
 </head>
 <body>
@@ -146,6 +216,8 @@
       <div id="topnav-user" class="row" style="gap:10px"></div>
     </div>
     <div class="content">
+
+      <!-- Toolbar -->
       <div class="toolbar">
         <input type="text" id="searchBox" class="search-box" placeholder="Tìm theo tên, username, SĐT, khu vực...">
         <select id="filterRole" class="select" style="width:160px">
@@ -155,12 +227,123 @@
           <option value="admin">Quản trị</option>
         </select>
         <button class="btn" id="btnAdd">+ Thêm nhân sự</button>
-        <a href="/admin/staff-stock.html" target="_blank" class="btn ghost" id="btnStaffStock" style="font-size:12.5px">🎒 Kho cá nhân KTV</a>
+        <a href="/admin/staff-stock.html" target="_blank" class="btn ghost" id="btnStaffStock">🎒 Kho cá nhân KTV</a>
         <button class="btn ghost" id="btnMyAdvance" style="display:none">💰 Yêu cầu ứng lương</button>
-        <button class="btn ghost" id="btnPendingAdvances" style="display:none">📋 Xem yêu cầu ứng <span id="pendingBadge" class="badge" style="display:none;background:#dc2626;color:#fff;padding:1px 7px;border-radius:999px;font-size:11px;margin-left:4px"></span></button>
+        <button class="btn ghost" id="btnPendingAdvances" style="display:none">📋 Yêu cầu lương <span id="pendingBadge" class="badge" style="display:none;background:#dc2626;color:#fff;padding:1px 7px;border-radius:999px;font-size:11px;margin-left:4px"></span></button>
       </div>
-      <div id="ktvGrid" class="ktv-grid"></div>
-      <p id="emptyMsg" class="text-muted text-center mt-3 hide">Không có nhân viên nào.</p>
+
+      <!-- Stats row -->
+      <div class="staff-stats">
+        <div class="sstat">
+          <div class="sstat-icon" style="background:#eff6ff">👥</div>
+          <div>
+            <div class="sstat-num" id="statTotal">—</div>
+            <div class="sstat-lbl">Tổng nhân sự</div>
+            <div class="sstat-sub">Toàn hệ thống</div>
+          </div>
+        </div>
+        <div class="sstat">
+          <div class="sstat-icon" style="background:#f0fdf4">🟢</div>
+          <div>
+            <div class="sstat-num" id="statOnline">—</div>
+            <div class="sstat-lbl">Đang online</div>
+            <div class="sstat-sub" id="statOnlinePct">—</div>
+          </div>
+        </div>
+        <div class="sstat">
+          <div class="sstat-icon" style="background:#fff7ed">🔧</div>
+          <div>
+            <div class="sstat-num" id="statActive">—</div>
+            <div class="sstat-lbl">Đơn đang làm</div>
+            <div class="sstat-sub">Công việc</div>
+          </div>
+        </div>
+        <div class="sstat">
+          <div class="sstat-icon" style="background:#f0fdf4">✅</div>
+          <div>
+            <div class="sstat-num" id="statDone">—</div>
+            <div class="sstat-lbl">Đã hoàn thành</div>
+            <div class="sstat-sub">Đơn hoàn tất</div>
+          </div>
+        </div>
+        <div class="sstat">
+          <div class="sstat-icon" style="background:#fefce8">📦</div>
+          <div>
+            <div class="sstat-num" id="statHold">—</div>
+            <div class="sstat-lbl">Đang tạm giữ</div>
+            <div class="sstat-sub">Chờ xử lý</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main layout -->
+      <div class="staff-layout">
+
+        <!-- Left: staff list -->
+        <div>
+          <div class="list-hdr">
+            <h3>Danh sách nhân sự</h3>
+            <div class="view-btns">
+              <button class="vbtn on" id="vGrid" title="Dạng lưới">⊞</button>
+              <button class="vbtn" id="vList" title="Dạng danh sách">☰</button>
+            </div>
+            <select class="sort-sel" id="sortSel">
+              <option value="name">Sắp xếp: Tên A-Z</option>
+              <option value="online">Sắp xếp: Online trước</option>
+              <option value="active">Sắp xếp: Đang làm nhiều nhất</option>
+              <option value="hold">Sắp xếp: Tạm giữ nhiều nhất</option>
+            </select>
+          </div>
+          <div id="ktvGrid" class="ktv-grid"></div>
+          <p id="emptyMsg" class="text-muted text-center mt-3 hide">Không có nhân viên nào.</p>
+        </div>
+
+        <!-- Right: sidebar -->
+        <div class="staff-sidebar">
+
+          <!-- Phân bổ nhân sự -->
+          <div class="sb-card">
+            <h4>Phân bổ nhân sự</h4>
+            <div class="donut-wrap">
+              <div class="donut-ring" id="donutRing"></div>
+              <div class="donut-legend" id="donutLegend"></div>
+            </div>
+          </div>
+
+          <!-- Hoạt động gần đây -->
+          <div class="sb-card">
+            <div class="act-hdr">
+              <h4>Hoạt động gần đây</h4>
+              <a href="/admin/orders.html">Xem tất cả</a>
+            </div>
+            <div id="recentActivity"><div class="text-muted" style="font-size:13px;padding:8px 0">Đang tải...</div></div>
+          </div>
+
+          <!-- Thao tác nhanh -->
+          <div class="sb-card">
+            <h4>Thao tác nhanh</h4>
+            <div class="qa-grid">
+              <button class="qa-btn" id="qaAddStaff">
+                <div class="qa-icon" style="background:#dbeafe">👤</div>
+                Thêm nhân sự
+              </button>
+              <a href="/admin/orders.html" class="qa-btn">
+                <div class="qa-icon" style="background:#fef3c7">📋</div>
+                Phân đơn hàng
+              </a>
+              <a href="/admin/products.html" class="qa-btn">
+                <div class="qa-icon" style="background:#d1fae5">📦</div>
+                Thêm sản phẩm
+              </a>
+              <a href="/admin/payroll.html" class="qa-btn">
+                <div class="qa-icon" style="background:#fee2e2">📊</div>
+                Xuất báo cáo
+              </a>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- end .staff-layout -->
     </div>
   </main>
 </div>
@@ -239,7 +422,6 @@
     <div class="modal-body">
       <datalist id="issProdList"></datalist>
       <div class="iss-grid">
-        <!-- Pane trai: Tao phieu moi -->
         <div class="iss-pane">
           <div class="iss-pane-head">
             <h4>📝 Tạo phiếu mới</h4>
@@ -257,8 +439,6 @@
             <button type="button" class="btn primary" id="issSubmit">Tạo phiếu (chờ duyệt)</button>
           </div>
         </div>
-
-        <!-- Pane phai: Lich su -->
         <div class="iss-pane">
           <div class="iss-pane-head">
             <h4>📋 Lịch sử phiếu <span id="issDraftBadge" class="badge" style="display:none"></span></h4>
@@ -292,7 +472,7 @@
       </div>
       <div class="field">
         <label>Số tiền ứng *</label>
-        <input type="number" id="adv_amount" class="input" placeholder="VD: 2000000" min="1">
+        <input type="text" inputmode="numeric" id="adv_amount" class="input money-input" placeholder="VD: 2.000.000">
       </div>
       <div class="field">
         <label>Ghi chú</label>

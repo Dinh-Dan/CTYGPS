@@ -4,7 +4,7 @@
   const fmt = (n) => new Intl.NumberFormat('vi-VN').format(Number(n) || 0);
   const fmtDate = (d) => d ? new Date(d).toLocaleString('vi-VN', { hour12: false }) : '—';
 
-  const state = { staff: [], products: [], holdings: [], history: [], grantRows: [{ qty: 1 }] };
+  const state = { staff: [], products: [], holdings: [], history: [], grantRows: [{ qty: 1 }], grantStaffId: null };
 
   // ---- TABS ----
   document.querySelectorAll('.ss-tab').forEach(t => {
@@ -48,6 +48,167 @@
     const r = await api.get(url).catch(() => null);
     state.history = (r && r.items) || [];
     renderHistory();
+  }
+
+  // ---- KTV COMBOBOX ----
+  function setupKtvCombo() {
+    const wrap = $('ktvComboWrap');
+    const inp = $('ktvComboInput');
+    const dd = $('ktvComboDd');
+    const clearBtn = $('ktvComboClear');
+    let activeIdx = -1;
+
+    function filterStaff(q) {
+      const s = (q || '').trim().toLowerCase();
+      if (!s) return state.staff;
+      return state.staff.filter(x =>
+        (x.full_name || '').toLowerCase().includes(s) || (x.phone || '').includes(s)
+      );
+    }
+
+    function renderDd(items) {
+      if (!items.length) {
+        dd.innerHTML = '<div class="ktv-dd-empty">Không tìm thấy KTV</div>';
+        return;
+      }
+      dd.innerHTML = items.map((s, i) => {
+        const av = (s.full_name || '?').trim().charAt(0).toUpperCase();
+        return `<div class="opt${i === activeIdx ? ' active' : ''}" data-sid="${s.id}">
+          <div class="ktv-dd-av">${av}</div>
+          <div class="ktv-dd-text">
+            <div class="ktv-dd-name">${esc(s.full_name)}</div>
+            ${s.phone ? `<div class="ktv-dd-phone">${esc(s.phone)}</div>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+      dd.querySelectorAll('.opt').forEach(opt => {
+        opt.addEventListener('mousedown', e => { e.preventDefault(); pickKtv(Number(opt.dataset.sid)); });
+      });
+    }
+
+    function pickKtv(sid) {
+      const staff = state.staff.find(x => x.id === sid);
+      if (!staff) return;
+      state.grantStaffId = sid;
+      inp.value = staff.full_name;
+      wrap.classList.add('has-val');
+      dd.classList.remove('on');
+    }
+
+    function posDd() {
+      const r = inp.getBoundingClientRect();
+      dd.style.left = r.left + 'px';
+      dd.style.top = (r.bottom + 2) + 'px';
+      dd.style.width = Math.max(r.width, 280) + 'px';
+    }
+
+    inp.addEventListener('focus', () => {
+      activeIdx = -1; renderDd(filterStaff(inp.value)); posDd(); dd.classList.add('on');
+    });
+    inp.addEventListener('input', () => {
+      state.grantStaffId = null; wrap.classList.remove('has-val');
+      activeIdx = -1; renderDd(filterStaff(inp.value)); posDd(); dd.classList.add('on');
+    });
+    inp.addEventListener('blur', () => setTimeout(() => dd.classList.remove('on'), 150));
+    inp.addEventListener('keydown', e => {
+      const items = filterStaff(inp.value);
+      if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, items.length - 1); renderDd(items); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); renderDd(items); }
+      else if (e.key === 'Enter' && activeIdx >= 0) { e.preventDefault(); pickKtv(items[activeIdx].id); }
+      else if (e.key === 'Escape') dd.classList.remove('on');
+    });
+    clearBtn.addEventListener('click', () => {
+      state.grantStaffId = null; inp.value = ''; wrap.classList.remove('has-val'); inp.focus();
+    });
+
+    $('histStaff').innerHTML = '<option value="">Tất cả</option>' +
+      state.staff.map(s => `<option value="${s.id}">${esc(s.full_name)}</option>`).join('');
+  }
+
+  function resetKtvCombo() {
+    state.grantStaffId = null;
+    $('ktvComboInput').value = '';
+    $('ktvComboWrap').classList.remove('has-val');
+  }
+
+  // ---- PRODUCT COMBOBOX (grant rows) ----
+  function bindProdComboGrant(tr, idx) {
+    const combo = tr.querySelector('.gprod-combo');
+    if (!combo) return;
+    const inp = combo.querySelector('.gprod-inp');
+    const dd = combo.querySelector('.gprod-dd');
+    const clearBtn = combo.querySelector('.gprod-clear');
+    let activeIdx = -1;
+
+    function filterProds(q) {
+      const s = (q || '').trim().toLowerCase();
+      if (!s) return state.products.slice(0, 50);
+      return state.products.filter(p =>
+        (p.name || '').toLowerCase().includes(s) || (p.code || '').toLowerCase().includes(s)
+      ).slice(0, 50);
+    }
+
+    function renderDd(items) {
+      if (!items.length) {
+        dd.innerHTML = '<div class="gprod-empty">Không tìm thấy sản phẩm</div>';
+        return;
+      }
+      dd.innerHTML = items.map((p, i) => {
+        const stock = Number(p.stock_qty) || 0;
+        const img = p.thumbnail_url || p.image_url;
+        const imgHtml = img
+          ? `<img src="${esc(img)}" class="gprod-dd-img" onerror="this.style.display='none'">`
+          : `<span class="gprod-dd-no-img">📦</span>`;
+        const stockCls = stock === 0 ? 'gprod-dd-stock out' : 'gprod-dd-stock';
+        return `<div class="opt${i === activeIdx ? ' active' : ''}" data-pid="${p.id}">
+          ${imgHtml}
+          <div class="gprod-dd-info">
+            <div class="gprod-dd-nm">${esc(p.name)}${p.code ? `<span class="gprod-dd-code"> · ${esc(p.code)}</span>` : ''}</div>
+            <div class="gprod-dd-bottom">
+              <span class="${stockCls}">${stock === 0 ? 'Hết hàng' : `Còn ${stock} trong kho`}</span>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+      dd.querySelectorAll('.opt').forEach(opt => {
+        opt.addEventListener('mousedown', e => { e.preventDefault(); pickProd(Number(opt.dataset.pid)); });
+      });
+    }
+
+    function pickProd(pid) {
+      const prod = state.products.find(p => p.id === pid);
+      if (!prod) return;
+      state.grantRows[idx].product_id = pid;
+      inp.value = prod.name;
+      combo.classList.add('has-val');
+      dd.classList.remove('on');
+    }
+
+    function posDd() {
+      const r = inp.getBoundingClientRect();
+      dd.style.left = r.left + 'px';
+      dd.style.top = (r.bottom + 2) + 'px';
+      dd.style.width = Math.max(r.width, 340) + 'px';
+    }
+
+    inp.addEventListener('focus', () => {
+      activeIdx = -1; renderDd(filterProds(inp.value)); posDd(); dd.classList.add('on');
+    });
+    inp.addEventListener('input', () => {
+      state.grantRows[idx].product_id = null; combo.classList.remove('has-val');
+      activeIdx = -1; renderDd(filterProds(inp.value)); posDd(); dd.classList.add('on');
+    });
+    inp.addEventListener('blur', () => setTimeout(() => dd.classList.remove('on'), 150));
+    inp.addEventListener('keydown', e => {
+      const items = filterProds(inp.value);
+      if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, items.length - 1); renderDd(items); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); renderDd(items); }
+      else if (e.key === 'Enter' && activeIdx >= 0) { e.preventDefault(); pickProd(items[activeIdx].id); }
+      else if (e.key === 'Escape') dd.classList.remove('on');
+    });
+    clearBtn.addEventListener('click', () => {
+      state.grantRows[idx].product_id = null; inp.value = ''; combo.classList.remove('has-val'); inp.focus();
+    });
   }
 
   // ---- RENDER ----
@@ -163,44 +324,41 @@
           ${r.reason_text ? `<div class="hc-note">${esc(r.reason_text)}</div>` : ''}
         </div>`;
     }).join('');
-
     $box.querySelectorAll('.history-card').forEach((card, idx) => {
       card.addEventListener('click', () => openHistoryDetail(state.history[idx]));
     });
   }
 
-  function renderGrantStaffOptions() {
-    $('grantStaff').innerHTML = '<option value="">— Chọn KTV —</option>' +
-      state.staff.map(s => `<option value="${s.id}">${esc(s.full_name)}</option>`).join('');
-    $('histStaff').innerHTML = '<option value="">Tất cả</option>' +
-      state.staff.map(s => `<option value="${s.id}">${esc(s.full_name)}</option>`).join('');
-  }
-
   function renderGrantRows() {
     const $tb = $('grantItems');
     $tb.innerHTML = state.grantRows.map((r, i) => {
+      const pCur = state.products.find(p => p.id === r.product_id);
+      const pName = pCur ? pCur.name : '';
       const qty = r.qty != null ? r.qty : 1;
       return `
       <tr data-idx="${i}">
         <td>
-          <select class="select prod">
-            <option value="">— SP —</option>
-            ${state.products.map(p => `<option value="${p.id}" ${p.id === r.product_id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
-          </select>
+          <div class="gprod-combo${pName ? ' has-val' : ''}">
+            <input type="text" class="input gprod-inp" placeholder="Tìm sản phẩm..." value="${esc(pName)}" autocomplete="off">
+            <button type="button" class="gprod-clear" tabindex="-1">×</button>
+            <div class="gprod-dd"></div>
+          </div>
         </td>
         <td><input type="number" class="input qty" min="1" value="${qty}"></td>
-        <td><textarea class="input imei" rows="3" style="resize:vertical;min-height:64px;font-family:monospace;font-size:12px" placeholder="Mỗi dòng 1 IMEI (tuỳ chọn)">${esc(r.imei_list || '')}</textarea></td>
+        <td><textarea class="input imei" rows="3" lang="en" autocomplete="off" spellcheck="false" style="resize:vertical;min-height:64px;font-family:monospace;font-size:12px" placeholder="Mỗi dòng 1 IMEI (tuỳ chọn)">${esc(r.imei_list || '')}</textarea></td>
         <td><button class="btn-x" data-act="del">×</button></td>
       </tr>
     `}).join('');
     $tb.querySelectorAll('tr').forEach(tr => {
       const idx = Number(tr.dataset.idx);
-      // Khởi tạo qty mặc định ngay khi render để tránh undefined
       if (state.grantRows[idx].qty == null) state.grantRows[idx].qty = 1;
-      tr.querySelector('.prod').addEventListener('change', e => state.grantRows[idx].product_id = Number(e.target.value));
+      bindProdComboGrant(tr, idx);
       tr.querySelector('.qty').addEventListener('change', e => state.grantRows[idx].qty = Number(e.target.value) || 1);
       tr.querySelector('.qty').addEventListener('input',  e => state.grantRows[idx].qty = Number(e.target.value) || 1);
-      tr.querySelector('.imei').addEventListener('input', e => state.grantRows[idx].imei_list = e.target.value.trim());
+      const imeiEl = tr.querySelector('.imei');
+      imeiEl.addEventListener('compositionstart', e => e.preventDefault());
+      imeiEl.addEventListener('compositionend', e => { e.preventDefault(); imeiEl.blur(); imeiEl.focus(); });
+      imeiEl.addEventListener('input', e => state.grantRows[idx].imei_list = e.target.value.trim());
       tr.querySelector('[data-act=del]').addEventListener('click', () => {
         state.grantRows.splice(idx, 1);
         if (!state.grantRows.length) state.grantRows.push({ qty: 1 });
@@ -211,7 +369,7 @@
 
   // ---- ACTIONS ----
   async function submitGrant() {
-    const staffId = Number($('grantStaff').value);
+    const staffId = Number(state.grantStaffId);
     if (!staffId) { ui.toast('Chọn KTV', 'warning'); return; }
     const items = state.grantRows
       .filter(r => r.product_id && r.qty > 0)
@@ -224,7 +382,7 @@
       ui.toast('Đã phát', 'success');
       state.grantRows = [{ qty: 1 }];
       $('grantNote').value = '';
-      $('grantStaff').value = '';
+      resetKtvCombo();
       renderGrantRows();
       loadHoldings();
     }
@@ -234,7 +392,7 @@
   (async () => {
     adminShell.init('staff-stock');
     await Promise.all([loadStaff(), loadProducts()]);
-    renderGrantStaffOptions();
+    setupKtvCombo();
     renderGrantRows();
     loadHoldings();
 

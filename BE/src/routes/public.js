@@ -216,6 +216,8 @@ router.get('/invoice/:code', async (req, res, next) => {
               o.subtotal, o.total_amount, o.paid_amount,
               o.created_at, o.confirmed_at, o.completed_at,
               c.full_name AS customer_name, c.phone AS customer_phone,
+              c.company_name AS customer_company, c.tax_code AS customer_tax,
+              c.address AS customer_address, c.code AS customer_code,
               s.full_name AS staff_name
          FROM orders o
          LEFT JOIN customers c ON c.id = o.customer_id
@@ -285,7 +287,7 @@ router.get('/invoice/:code', async (req, res, next) => {
     // Cong ty + bank info tu app_settings
     const [settingRows] = await db.query(
       `SELECT \`key\`, \`value\` FROM app_settings
-        WHERE \`key\` LIKE 'company.%' OR \`key\` LIKE 'bank.%'`
+        WHERE \`key\` LIKE 'company.%' OR \`key\` LIKE 'bank.%' OR \`key\` LIKE 'qr.%' OR \`key\` LIKE 'assets.%'`
     );
     const settings = {};
     for (const r of settingRows) settings[r.key] = r.value || '';

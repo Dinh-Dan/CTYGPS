@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Lương & hoa hồng – VinaGPS</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  /* layout khoa chieu cao, chi tbody cuon */
+  .main{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  .page-body{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:16px}
+
+  /* filter bar */
+  .filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end;flex-shrink:0}
+  .filter-bar .field{margin:0}
+  .filter-bar .input,.filter-bar .select{height:36px}
+
+  /* tab bar chinh */
+  .tab-bar{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:0;flex-shrink:0}
+  .tab-btn{padding:8px 18px;font-size:13.5px;font-weight:600;color:#64748b;background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;white-space:nowrap}
+  .tab-btn.active{color:#2563eb;border-bottom-color:#2563eb}
+  .tab-btn .badge{display:inline-block;background:#e0e7ff;color:#3730a3;border-radius:999px;font-size:11px;font-weight:700;padding:0 6px;margin-left:5px;line-height:18px}
+  .tab-btn.active .badge{background:#2563eb;color:#fff}
+
+  /* panel */
+  .tab-panel{display:none;flex:1;overflow:hidden;flex-direction:column}
+  .tab-panel.active{display:flex}
+
+  /* table bảng đơn */
+  .table-wrap{flex:1;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:0 0 10px 10px;border-top:none}
+  table.summary{width:100%;border-collapse:collapse;font-size:13.5px;min-width:850px}
+  table.summary th,table.summary td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+  table.summary th{background:#f8fafc;font-weight:600;color:#475569;position:sticky;top:0;z-index:2}
+  table.summary td.num,table.summary th.num{text-align:right;font-variant-numeric:tabular-nums}
+  table.summary tfoot td{background:#f1f5f9;font-weight:700;border-top:2px solid #cbd5e1;position:sticky;bottom:0;z-index:1}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600}
+  .pill.pending{background:#fef3c7;color:#92400e}
+  .pill.confirmed{background:#dbeafe;color:#1e40af}
+  .pill.in_progress{background:#e0e7ff;color:#3730a3}
+  .pill.done{background:#dcfce7;color:#166534}
+  .pill.cancelled{background:#fee2e2;color:#991b1b}
+  .pill.comm-pending{background:#fef3c7;color:#92400e}
+  .pill.comm-approved{background:#ede9fe;color:#6d28d9}
+  .pill.comm-payslip{background:#dcfce7;color:#166534}
+  .empty{text-align:center;padding:30px;color:#64748b}
+
+  /* panel 3: ung luong — cuon ca phan noi dung */
+  #panelAdv{overflow-y:auto;padding:16px}
+  .adv-form-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px;box-shadow:var(--shadow)}
+  .adv-form-card h3{font-size:15px;font-weight:700;margin-bottom:14px;color:#0f172a}
+  .adv-list{display:flex;flex-direction:column;gap:10px}
+  .adv-row{border:1px solid var(--border);border-radius:8px;padding:12px 14px;background:#fff}
+  .adv-row.carried{border-left:4px solid #10b981;background:#f0fdf4;opacity:.85}
+  .adv-row.pending{border-left:4px solid #f59e0b;background:#fffbeb}
+  .adv-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+  .adv-amount{font-size:17px;font-weight:700;color:#0f172a}
+  .adv-meta{font-size:12.5px;color:#64748b}
+  .empty-adv{text-align:center;color:#94a3b8;padding:30px;font-size:13px;border:1px dashed #e2e8f0;border-radius:8px}
+
+  /* panel 4: phieu luong */
+  #panelSlips{overflow-y:auto;padding:16px}
+  .slip-table{width:100%;border-collapse:collapse;font-size:13.5px}
+  .slip-table th{background:#f8fafc;padding:8px 12px;text-align:left;font-weight:600;color:#475569;border-bottom:1px solid var(--border);white-space:nowrap}
+  .slip-table td{padding:9px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+  .slip-table tbody tr:hover{background:#f8fafc;cursor:pointer}
+  .slip-table .num{text-align:right;font-variant-numeric:tabular-nums}
+  .pill-paid{background:#dcfce7;color:#166534;padding:2px 9px;border-radius:6px;font-size:12px;font-weight:600;display:inline-block}
+  .pill-debt{background:#fef3c7;color:#92400e;padding:2px 9px;border-radius:6px;font-size:12px;font-weight:600;display:inline-block}
+  .pill-unpaid{background:#fee2e2;color:#991b1b;padding:2px 9px;border-radius:6px;font-size:12px;font-weight:600;display:inline-block}
+
+  /* modal phieu luong */
+  .pv-meta-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-bottom:16px}
+  .pv-meta-item{background:#f8fafc;border-radius:8px;padding:10px 14px}
+  .pv-meta-item .lbl{font-size:11px;color:#64748b;margin-bottom:2px}
+  .pv-meta-item .val{font-size:13.5px;font-weight:600}
+  .pv-tbl{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:16px}
+  .pv-tbl th{background:#f8fafc;padding:6px 10px;text-align:left;font-weight:600;color:#475569;border-bottom:2px solid var(--border)}
+  .pv-tbl td{padding:6px 10px;border-bottom:1px solid #f1f5f9}
+  .pv-tbl .num{text-align:right}
+  .badge-comm{display:inline-block;background:#ede9fe;color:#6d28d9;font-size:10px;padding:1px 5px;border-radius:4px;margin-left:4px}
+  .sum-wrap{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}
+  .sum-box{flex:1;min-width:190px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  .sum-box .sum-hd{padding:7px 14px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+  .sum-box table{width:100%;border-collapse:collapse}
+  .sum-box table td{padding:5px 14px;font-size:13px}
+  .sum-box table td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+  .sum-box .total-row td{font-weight:700;background:#f0fdf4;font-size:14px}
+  .sum-box .adv-row td{color:#b45309}
+  .sum-box .debt-row td{color:#0369a1}
+
+  @media(max-width:768px){
+    .filter-bar .input,.filter-bar .select{font-size:13px}
+    .tab-btn{padding:7px 12px;font-size:13px}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topnav"><h2 class="topnav-title">Lương & hoa hồng của tôi</h2></div>
+
+    <div class="page-body">
+
+      <!-- filter dùng chung (ẩn khi ở tab 3/4) -->
+      <div class="filter-bar" id="filterBar">
+        <div class="field" style="flex:1;min-width:180px">
+          <input id="fQ" class="input" type="search" placeholder="Mã đơn / tên khách / SĐT…">
+        </div>
+        <div class="field">
+          <select id="fStatus" class="select">
+            <option value="">Tất cả trạng thái</option>
+            <option value="pending">Chờ duyệt</option>
+            <option value="confirmed">Đã duyệt</option>
+            <option value="in_progress">Đang làm</option>
+            <option value="done">Hoàn thành</option>
+            <option value="cancelled">Đã huỷ</option>
+          </select>
+        </div>
+        <div class="field">
+          <input id="fFrom" class="input" type="date" title="Từ ngày">
+        </div>
+        <div class="field">
+          <input id="fTo" class="input" type="date" title="Đến ngày">
+        </div>
+        <div class="field" id="wrapFComm">
+          <select id="fComm" class="select">
+            <option value="">Tất cả hoa hồng</option>
+            <option value="approved">Đã duyệt</option>
+            <option value="requested">Chờ duyệt</option>
+            <option value="none">Chưa yêu cầu</option>
+          </select>
+        </div>
+        <button id="btnReset" class="btn ghost sm" type="button">Xoá lọc</button>
+      </div>
+
+      <!-- tab bar -->
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="assigned">📋 Đơn phụ trách <span class="badge" id="badgeAssigned">0</span></button>
+        <button class="tab-btn" data-tab="other">💜 Hoa hồng đơn khác <span class="badge" id="badgeOther">0</span></button>
+        <button class="tab-btn" data-tab="adv">💰 Ứng lương</button>
+        <button class="tab-btn" data-tab="slips">🗂 Phiếu lương</button>
+      </div>
+
+      <!-- tab 1: don phu trach -->
+      <div class="tab-panel active" id="panelAssigned">
+        <div class="table-wrap">
+          <table class="summary">
+            <thead>
+              <tr>
+                <th>Mã đơn</th>
+                <th>Ngày</th>
+                <th>Khách</th>
+                <th>Trạng thái</th>
+                <th class="num">Tổng đơn</th>
+                <th class="num">Đã thu</th>
+                <th class="num">Còn nợ</th>
+                <th class="num">Tiền công</th>
+                <th class="num">Hoa hồng</th>
+              </tr>
+            </thead>
+            <tbody id="tbody">
+              <tr><td colspan="9" class="empty">Đang tải…</td></tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="4">Tổng (<span id="kOrders">0</span> đơn)</td>
+                <td class="num" id="kTotal">0</td>
+                <td class="num" id="kPaid" style="color:#16a34a">0</td>
+                <td class="num" id="kDebt" style="color:#dc2626">0</td>
+                <td class="num" id="kWage" style="color:#0369a1">0</td>
+                <td class="num" id="kCommission" style="color:#7c3aed">0</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- tab 2: hoa hong don khac -->
+      <div class="tab-panel" id="panelOther">
+        <div class="table-wrap">
+          <table class="summary">
+            <thead>
+              <tr>
+                <th>Mã đơn</th>
+                <th>Ngày</th>
+                <th>Khách</th>
+                <th>Trạng thái</th>
+                <th>Phụ trách</th>
+                <th class="num">Tổng đơn</th>
+                <th class="num">Hoa hồng</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyComm">
+              <tr><td colspan="7" class="empty">Đang tải…</td></tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="6">Tổng (<span id="kCommOrders">0</span> đơn)</td>
+                <td class="num" id="kCommTotal" style="color:#7c3aed">0</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- tab 3: ung luong -->
+      <div class="tab-panel" id="panelAdv">
+
+        <div class="adv-form-card">
+          <h3>💰 Gửi yêu cầu ứng lương mới</h3>
+          <div class="grid cols-2">
+            <div class="field">
+              <label>Kỳ lương *</label>
+              <input type="month" id="advPeriod" class="input">
+            </div>
+            <div class="field">
+              <label>Số tiền ứng *</label>
+              <input type="text" inputmode="numeric" id="advAmount" class="input money-input" placeholder="VD: 2.000.000">
+            </div>
+          </div>
+          <div class="field">
+            <label>Ghi chú / Lý do</label>
+            <input type="text" id="advNote" class="input" placeholder="Lý do ứng…">
+          </div>
+          <div style="display:flex;justify-content:flex-end;margin-top:12px">
+            <button type="button" class="btn" id="btnSubmitAdv">Gửi yêu cầu</button>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <h3 style="font-size:15px;font-weight:700;margin:0">Lịch sử phiếu ứng</h3>
+        </div>
+        <div id="advList" class="adv-list">
+          <div class="empty-adv">Đang tải…</div>
+        </div>
+
+      </div><!-- /panelAdv -->
+
+      <!-- tab 4: phieu luong da chot -->
+      <div class="tab-panel" id="panelSlips">
+        <div class="table-wrap">
+          <table class="summary">
+            <thead>
+              <tr>
+                <th>Kỳ lương</th>
+                <th class="num">Tiền công</th>
+                <th class="num">Hoa hồng</th>
+                <th class="num">Thực nhận</th>
+                <th class="num">Đã phát</th>
+                <th>Trạng thái</th>
+                <th>Ngày chốt</th>
+              </tr>
+            </thead>
+            <tbody id="slipTbody">
+              <tr><td colspan="7" class="empty">Đang tải…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /page-body -->
+  </main>
+</div>
+
+<!-- Modal chi tiet phieu luong -->
+<div class="modal-overlay" id="slipModal" style="display:none">
+  <div class="modal" style="max-width:820px;width:96%">
+    <div class="modal-header">
+      <h3 id="slipModalTitle">Phiếu lương</h3>
+      <button class="modal-close" id="btnCloseSlipModal">×</button>
+    </div>
+    <div class="modal-body" id="slipModalBody"></div>
+    <div class="modal-footer">
+      <button class="btn ghost" id="btnCloseSlipModal2">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/admin-shell.js"></script>
+<script src="/admin/my-salary.js"></script>
+</body>
+</html>

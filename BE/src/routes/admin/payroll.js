@@ -15,8 +15,9 @@ const express = require('express');
 const db      = require('../../db');
 const { requireRole } = require('../../middleware/auth');
 
-const router   = express.Router({ mergeParams: true });
-const adminOnly = requireRole('admin');
+const router     = express.Router({ mergeParams: true });
+const adminOnly  = requireRole('admin');
+const canManage  = requireRole('admin', 'staff');
 
 function httpErr(status, msg) { const e = new Error(msg); e.status = status; return e; }
 
@@ -40,26 +41,13 @@ function shortPay(p) {
 }
 
 async function fetchOrders(conn, staffId, fromStart, toEnd, lock = false) {
-  const [rows] = await conn.query(
+  // Bước 1: Lấy danh sách đơn hàng cơ bản (không subquery lồng)
+  const [orders] = await conn.query(
     `SELECT o.id, o.code, o.completed_at,
             o.total_amount, o.wage_amount,
             CASE WHEN o.tech_commission_approved_at IS NOT NULL
                  THEN o.tech_commission_amount ELSE 0 END AS commission_amount,
-            (SELECT GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ')
-               FROM order_lines ol LEFT JOIN order_templates t ON t.id=ol.template_id
-              WHERE ol.order_id=o.id AND ol.is_deleted=0) AS service_name,
-            (SELECT GROUP_CONCAT(DISTINCT fv.value ORDER BY fv.id SEPARATOR ', ')
-               FROM order_field_values fv
-              WHERE fv.order_id=o.id AND fv.is_deleted=0
-                AND fv.label IN ('Bien so xe','Biển số xe')) AS bien_so,
-            (SELECT GROUP_CONCAT(DISTINCT fv.value ORDER BY fv.id SEPARATOR ', ')
-               FROM order_field_values fv
-              WHERE fv.order_id=o.id AND fv.is_deleted=0
-                AND fv.label IN ('IMEI','Imei','imei')) AS imei,
-            (SELECT GROUP_CONCAT(DISTINCT fv.value ORDER BY fv.id SEPARATOR ', ')
-               FROM order_field_values fv
-              WHERE fv.order_id=o.id AND fv.is_deleted=0
-                AND fv.label IN ('Ten tai khoan','Tên tài khoản','tai khoan','tài khoản','Tai khoan')) AS tai_khoan
+            o.tech_commission_note
        FROM orders o
       WHERE o.assigned_staff_id=? AND o.is_deleted=0
         AND o.debt_carried_at IS NULL
@@ -68,7 +56,58 @@ async function fetchOrders(conn, staffId, fromStart, toEnd, lock = false) {
       ORDER BY o.completed_at ASC, o.id ASC${lock ? ' FOR UPDATE' : ''}`,
     [staffId, fromStart, toEnd]
   );
-  return rows;
+  if (!orders.length) return orders;
+
+  const ids = orders.map(o => o.id);
+  const ph  = ids.map(() => '?').join(',');
+
+  // Bước 2: Lấy service_name qua JOIN (thay correlated subquery)
+  const [svcRows] = await conn.query(
+    `SELECT ol.order_id,
+            GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ') AS service_name
+       FROM order_lines ol
+       LEFT JOIN order_templates t ON t.id = ol.template_id
+      WHERE ol.order_id IN (${ph}) AND ol.is_deleted = 0
+      GROUP BY ol.order_id`, ids
+  );
+  const svcMap = new Map(svcRows.map(r => [r.order_id, r.service_name]));
+
+  // Bước 3: Lấy field values (bien_so, imei, tai_khoan) một lần
+  const [fvRows] = await conn.query(
+    `SELECT fv.order_id, fv.label, GROUP_CONCAT(DISTINCT fv.value ORDER BY fv.id SEPARATOR ', ') AS val
+       FROM order_field_values fv
+      WHERE fv.order_id IN (${ph}) AND fv.is_deleted = 0
+        AND fv.label IN ('Bien so xe','Biển số xe','IMEI','Imei','imei',
+                         'Ten tai khoan','Tên tài khoản','tai khoan','tài khoản','Tai khoan')
+      GROUP BY fv.order_id, fv.label`, ids
+  );
+
+  const bienSoMap  = new Map();
+  const imeiMap    = new Map();
+  const taiKhoanMap = new Map();
+  const BIEN_SO_LABELS  = new Set(['Bien so xe','Biển số xe']);
+  const IMEI_LABELS     = new Set(['IMEI','Imei','imei']);
+  const TAI_KHOAN_LABELS = new Set(['Ten tai khoan','Tên tài khoản','tai khoan','tài khoản','Tai khoan']);
+
+  for (const fv of fvRows) {
+    if (BIEN_SO_LABELS.has(fv.label)) {
+      bienSoMap.set(fv.order_id, [bienSoMap.get(fv.order_id), fv.val].filter(Boolean).join(', '));
+    } else if (IMEI_LABELS.has(fv.label)) {
+      imeiMap.set(fv.order_id, [imeiMap.get(fv.order_id), fv.val].filter(Boolean).join(', '));
+    } else if (TAI_KHOAN_LABELS.has(fv.label)) {
+      taiKhoanMap.set(fv.order_id, [taiKhoanMap.get(fv.order_id), fv.val].filter(Boolean).join(', '));
+    }
+  }
+
+  // Gắn dữ liệu vào từng order
+  for (const o of orders) {
+    o.service_name = svcMap.get(o.id) || '';
+    o.bien_so      = bienSoMap.get(o.id) || '';
+    o.imei         = imeiMap.get(o.id) || '';
+    o.tai_khoan    = taiKhoanMap.get(o.id) || '';
+  }
+
+  return orders;
 }
 
 async function fetchPayNotes(conn, orderIds) {
@@ -87,10 +126,7 @@ async function fetchPayNotes(conn, orderIds) {
 async function fetchCommissions(conn, staffId, fromStart, toEnd, lock = false) {
   const [rows] = await conn.query(
     `SELECT sc.id, sc.order_id, sc.amount, sc.note, sc.approved_at,
-            o.code, o.total_amount,
-            (SELECT GROUP_CONCAT(COALESCE(ol.custom_name,t.name) ORDER BY ol.seq SEPARATOR ' + ')
-               FROM order_lines ol LEFT JOIN order_templates t ON t.id=ol.template_id
-              WHERE ol.order_id=o.id AND ol.is_deleted=0) AS service_name
+            o.code, o.total_amount
        FROM order_staff_commissions sc
        JOIN orders o ON o.id=sc.order_id
       WHERE sc.staff_id=? AND sc.is_deleted=0 AND sc.carried_at IS NULL
@@ -98,15 +134,31 @@ async function fetchCommissions(conn, staffId, fromStart, toEnd, lock = false) {
       ORDER BY sc.approved_at ASC, sc.id ASC${lock ? ' FOR UPDATE' : ''}`,
     [staffId, fromStart, toEnd]
   );
+  if (!rows.length) return rows;
+
+  const ids = rows.map(r => r.order_id);
+  const ph  = ids.map(() => '?').join(',');
+  const [svcRows] = await conn.query(
+    `SELECT ol.order_id,
+            GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ') AS service_name
+       FROM order_lines ol
+       LEFT JOIN order_templates t ON t.id = ol.template_id
+      WHERE ol.order_id IN (${ph}) AND ol.is_deleted = 0
+      GROUP BY ol.order_id`, ids
+  );
+  const svcMap = new Map(svcRows.map(r => [r.order_id, r.service_name]));
+  for (const r of rows) r.service_name = svcMap.get(r.order_id) || '';
+
   return rows;
 }
 
-// Lay tong ung luong chua ket cua nhan vien
+// Lay tong ung luong da duoc duyet, chua ket phieu
 async function fetchPendingAdvances(conn, staffId) {
   const [rows] = await conn.query(
     `SELECT id, amount, note, created_at
        FROM staff_salary_advances
-      WHERE staff_id=? AND is_deleted=0 AND carried_at IS NULL
+      WHERE staff_id=? AND is_deleted=0 AND carried_at IS NULL AND remittance_id IS NULL
+        AND status='approved' AND deduct_from_collection = 0
       ORDER BY created_at ASC`,
     [staffId]
   );
@@ -114,29 +166,410 @@ async function fetchPendingAdvances(conn, staffId) {
 }
 
 function buildRows(orders, payMap) {
-  return orders.map(o => {
-    const notes = (payMap.get(o.id) || []).map(shortPay).filter(Boolean).join(', ');
-    return {
-      order_id:    o.id,
-      code:        o.code,
-      date:        o.completed_at,
-      service:     o.service_name || '',
-      bien_so:     o.bien_so || '',
-      imei:        o.imei || '',
-      tai_khoan:   o.tai_khoan || '',
-      revenue:     Number(o.total_amount) || 0,
-      wage:        (Number(o.wage_amount) || 0) + (Number(o.commission_amount) || 0),
-      pay_note:    notes,
-      row_type:    'order',
-    };
-  });
+  return orders.map(o => ({
+    order_id:   o.id,
+    code:       o.code,
+    date:       o.completed_at,
+    service:    o.service_name || '',
+    bien_so:    o.bien_so || '',
+    imei:       o.imei || '',
+    tai_khoan:  o.tai_khoan || '',
+    revenue:    Number(o.total_amount) || 0,
+    wage:       Number(o.wage_amount) || 0,
+    commission: Number(o.commission_amount) || 0,
+    pay_note:   (payMap.get(o.id) || []).map(shortPay).filter(Boolean).join(', '),
+    row_type:   'order',
+  }));
 }
+
+// ----------------------------------------------------------
+// GET /:id/summary  — tong hop du lieu luong cho trang payroll admin
+// ?q=&status=&date_from=&date_to=
+// Tra ve: items (don phu trach), commission_items (hoa hong don khac), totals
+// ----------------------------------------------------------
+router.get('/:id/summary', canManage, async (req, res, next) => {
+  try {
+    const staffId = Number(req.params.id);
+    const q      = req.query.q         ? String(req.query.q).trim()         : '';
+    const status = req.query.status    ? String(req.query.status).trim()    : '';
+    const from   = req.query.date_from ? String(req.query.date_from)        : '';
+    const to     = req.query.date_to   ? String(req.query.date_to)          : '';
+
+    // Tab 1: don hang phu trach, kem commission cua NV nay tren don do (neu co)
+    const where1 = ['o.assigned_staff_id = ?', 'o.is_deleted = 0'];
+    const args1  = [staffId, staffId]; // thu nhat cho JOIN sc.staff_id, thu hai cho assigned_staff_id
+    if (status) { where1.push('o.status = ?'); args1.push(status); }
+    if (from)   { where1.push('o.created_at >= ?'); args1.push(from); }
+    if (to)     { where1.push('o.created_at < DATE_ADD(?, INTERVAL 1 DAY)'); args1.push(to); }
+    if (q) {
+      where1.push('(o.code LIKE ? OR c.full_name LIKE ? OR c.phone LIKE ?)');
+      args1.push(`%${q}%`, `%${q}%`, `%${q}%`);
+    }
+
+    const [items] = await db.query(
+      `SELECT o.id, o.code,
+              COALESCE(o.completed_at, o.created_at) AS order_date,
+              o.status,
+              COALESCE(o.total_amount, 0) AS total_amount,
+              COALESCE(o.paid_amount,  0) AS paid_amount,
+              GREATEST(0, COALESCE(o.total_amount,0) - COALESCE(o.paid_amount,0)) AS debt_amount,
+              COALESCE(o.wage_amount,  0) AS wage_amount,
+              sc.amount       AS commission_amount,
+              sc.requested_at AS comm_requested_at,
+              sc.approved_at  AS comm_approved_at,
+              sc.payslip_id   AS comm_payslip_id,
+              c.full_name AS customer_name, c.phone AS customer_phone
+         FROM orders o
+         LEFT JOIN customers c ON c.id = o.customer_id
+         LEFT JOIN order_staff_commissions sc
+                ON sc.order_id = o.id AND sc.staff_id = ? AND sc.is_deleted = 0
+        WHERE ${where1.join(' AND ')}
+        ORDER BY COALESCE(o.completed_at, o.created_at) DESC, o.id DESC
+        LIMIT 500`,
+      args1
+    );
+
+    // Tab 2: hoa hong tren don khac (NV khong phai assigned_staff)
+    const where2 = ['sc.staff_id = ?', 'sc.is_deleted = 0',
+                    '(o.assigned_staff_id IS NULL OR o.assigned_staff_id != ?)'];
+    const args2  = [staffId, staffId];
+    if (from) { where2.push('COALESCE(o.completed_at, o.created_at) >= ?'); args2.push(from); }
+    if (to)   { where2.push('COALESCE(o.completed_at, o.created_at) < DATE_ADD(?, INTERVAL 1 DAY)'); args2.push(to); }
+    if (q) {
+      where2.push('(o.code LIKE ? OR c.full_name LIKE ? OR c.phone LIKE ?)');
+      args2.push(`%${q}%`, `%${q}%`, `%${q}%`);
+    }
+
+    const [commItems] = await db.query(
+      `SELECT sc.order_id, o.code,
+              COALESCE(o.completed_at, o.created_at) AS order_date,
+              o.status, COALESCE(o.total_amount, 0) AS total_amount,
+              s.full_name AS assigned_name,
+              sc.amount       AS staff_commission_amount,
+              sc.requested_at AS comm_requested_at,
+              sc.approved_at  AS comm_approved_at,
+              sc.payslip_id   AS comm_payslip_id,
+              c.full_name AS customer_name, c.phone AS customer_phone
+         FROM order_staff_commissions sc
+         JOIN orders o ON o.id = sc.order_id AND o.is_deleted = 0
+         LEFT JOIN customers c ON c.id = o.customer_id
+         LEFT JOIN staff s ON s.id = o.assigned_staff_id
+        WHERE ${where2.join(' AND ')}
+        ORDER BY COALESCE(sc.approved_at, sc.requested_at) DESC, sc.id DESC
+        LIMIT 500`,
+      args2
+    );
+
+    const toN = v => Number(v) || 0;
+    res.json({
+      items: items.map(o => ({
+        ...o,
+        total_amount:      toN(o.total_amount),
+        paid_amount:       toN(o.paid_amount),
+        debt_amount:       toN(o.debt_amount),
+        wage_amount:       toN(o.wage_amount),
+        commission_amount: toN(o.commission_amount),
+      })),
+      commission_items: commItems.map(o => ({
+        ...o,
+        total_amount:           toN(o.total_amount),
+        staff_commission_amount: toN(o.staff_commission_amount),
+      })),
+      totals: {
+        order_count:      items.length,
+        total_amount:     items.reduce((s,o) => s + toN(o.total_amount),      0),
+        total_paid:       items.reduce((s,o) => s + toN(o.paid_amount),       0),
+        total_debt:       items.reduce((s,o) => s + toN(o.debt_amount),       0),
+        total_wage:       items.reduce((s,o) => s + toN(o.wage_amount),       0),
+        total_commission: items.reduce((s,o) => s + toN(o.commission_amount), 0),
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------
+// GET /my-payslip/list  — nhan vien / admin tu xem phieu luong cua minh (dung req.user.sub)
+// ----------------------------------------------------------
+router.get('/my-payslip/list', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user?.sub);
+    const [rows] = await db.query(
+      `SELECT sp.id, sp.from_date, sp.to_date, sp.base_salary,
+              sp.carried_debt, sp.total_wage, sp.total_extras, sp.total_deductions,
+              sp.total_advances, sp.advances_json,
+              sp.gross_amount, sp.note, sp.finalized_at, sp.paid_amount,
+              sp.paid_at, sp.paid_note, sp.remaining_debt,
+              sp.extras_json, sp.deductions_json, sp.rows_json,
+              f.full_name AS finalized_by_name, p.full_name AS paid_by_name
+         FROM staff_payslips sp
+         LEFT JOIN staff f ON f.id=sp.finalized_by
+         LEFT JOIN staff p ON p.id=sp.paid_by
+        WHERE sp.staff_id=? AND sp.is_deleted=0 AND sp.finalized_at IS NOT NULL
+        ORDER BY sp.to_date DESC, sp.id DESC`,
+      [staffId]
+    );
+    res.json({ items: rows });
+  } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------
+// GET /my-current-period  — staff/admin xem ky hien tai (commission chua ket phieu)
+// ----------------------------------------------------------
+router.get('/my-current-period', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user?.sub);
+
+    // Hoa hong da duyet, chua ket phieu
+    const [approved] = await db.query(
+      `SELECT sc.id, sc.order_id, sc.amount, sc.note, sc.approved_at,
+              o.code, o.total_amount, o.completed_at,
+              (SELECT GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ')
+                 FROM order_lines ol LEFT JOIN order_templates t ON t.id=ol.template_id
+                WHERE ol.order_id=o.id AND ol.is_deleted=0) AS service_name,
+              c.name AS customer_name
+         FROM order_staff_commissions sc
+         JOIN orders o ON o.id=sc.order_id
+         LEFT JOIN customers c ON c.id=o.customer_id
+        WHERE sc.staff_id=? AND sc.is_deleted=0
+          AND sc.carried_at IS NULL AND sc.approved_at IS NOT NULL
+        ORDER BY sc.approved_at DESC, sc.id DESC`,
+      [staffId]
+    );
+
+    // Hoa hong dang cho duyet
+    const [pending] = await db.query(
+      `SELECT sc.id, sc.order_id, sc.amount, sc.note, sc.requested_at,
+              o.code, c.name AS customer_name
+         FROM order_staff_commissions sc
+         JOIN orders o ON o.id=sc.order_id
+         LEFT JOIN customers c ON c.id=o.customer_id
+        WHERE sc.staff_id=? AND sc.is_deleted=0
+          AND sc.carried_at IS NULL AND sc.approved_at IS NULL
+          AND sc.requested_at IS NOT NULL
+        ORDER BY sc.requested_at DESC`,
+      [staffId]
+    );
+
+    // Tien cong tu don hang chua ket phieu
+    const [wageOrders] = await db.query(
+      `SELECT o.id AS order_id, o.code, o.completed_at, o.wage_amount,
+              (SELECT GROUP_CONCAT(COALESCE(ol.custom_name, t.name) ORDER BY ol.seq SEPARATOR ' + ')
+                 FROM order_lines ol LEFT JOIN order_templates t ON t.id=ol.template_id
+                WHERE ol.order_id=o.id AND ol.is_deleted=0) AS service_name,
+              c.name AS customer_name
+         FROM orders o
+         LEFT JOIN customers c ON c.id=o.customer_id
+        WHERE o.assigned_staff_id=? AND o.is_deleted=0
+          AND o.debt_carried_at IS NULL AND o.wage_amount > 0
+          AND o.status='done'
+        ORDER BY o.completed_at DESC`,
+      [staffId]
+    );
+
+    const totalComm = approved.reduce((s, sc) => s + (Number(sc.amount) || 0), 0);
+    const totalWage = wageOrders.reduce((s, o) => s + (Number(o.wage_amount) || 0), 0);
+    res.json({ approved, pending, wage_orders: wageOrders, total_commission: totalComm, total_wage: totalWage });
+  } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------
+// GET /my-summary  — staff tu xem don + hoa hong cua minh (giong /kithuat/summary)
+// ?q=&status=&date_from=&date_to=
+// ----------------------------------------------------------
+router.get('/my-summary', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user?.sub);
+    const { q, date_from, date_to, status } = req.query;
+
+    const conds  = ['o.assigned_staff_id=?', 'o.is_deleted=0'];
+    const whereP = [staffId];
+
+    if (status)    { conds.push('o.status=?'); whereP.push(status); }
+    if (date_from) { conds.push('DATE(COALESCE(o.completed_at,o.created_at))>=?'); whereP.push(date_from); }
+    if (date_to)   { conds.push('DATE(COALESCE(o.completed_at,o.created_at))<=?'); whereP.push(date_to); }
+    if (q) {
+      conds.push('(o.code LIKE ? OR c.full_name LIKE ? OR c.phone LIKE ?)');
+      whereP.push(`%${q}%`, `%${q}%`, `%${q}%`);
+    }
+
+    const [items] = await db.query(
+      `SELECT o.id, o.code, o.status,
+              COALESCE(o.completed_at, o.created_at) AS order_date,
+              o.total_amount, o.paid_amount, o.wage_amount,
+              COALESCE(osc.amount, 0)  AS commission_amount,
+              osc.requested_at         AS comm_requested_at,
+              osc.approved_at          AS comm_approved_at,
+              osc.carried_at           AS comm_carried_at,
+              osc.payslip_id           AS comm_payslip_id,
+              GREATEST(0, COALESCE(o.total_amount,0) - COALESCE(o.paid_amount,0)) AS debt_amount,
+              c.full_name AS customer_name, c.phone AS customer_phone
+         FROM orders o
+         LEFT JOIN customers c ON c.id=o.customer_id
+         LEFT JOIN order_staff_commissions osc
+               ON osc.order_id=o.id AND osc.staff_id=? AND osc.is_deleted=0
+        WHERE ${conds.join(' AND ')}
+        ORDER BY COALESCE(o.completed_at,o.created_at) DESC, o.id DESC`,
+      [staffId, ...whereP]
+    );
+
+    const totals = {
+      order_count:      items.length,
+      total_amount:     items.reduce((s,o) => s + (Number(o.total_amount)||0), 0),
+      total_paid:       items.reduce((s,o) => s + (Number(o.paid_amount)||0), 0),
+      total_debt:       items.reduce((s,o) => s + (Number(o.debt_amount)||0), 0),
+      total_wage:       items.reduce((s,o) => s + (Number(o.wage_amount)||0), 0),
+      total_commission: items.reduce((s,o) => s + (Number(o.commission_amount)||0), 0),
+    };
+
+    const [commItems] = await db.query(
+      `SELECT osc.id, osc.order_id, osc.amount AS staff_commission_amount,
+              osc.requested_at AS comm_requested_at,
+              osc.approved_at  AS comm_approved_at,
+              osc.carried_at   AS comm_carried_at,
+              osc.payslip_id   AS comm_payslip_id,
+              o.code, o.status,
+              COALESCE(o.completed_at, o.created_at) AS order_date,
+              o.total_amount,
+              c.full_name AS customer_name, c.phone AS customer_phone,
+              s.full_name AS assigned_name
+         FROM order_staff_commissions osc
+         JOIN orders o ON o.id=osc.order_id AND o.is_deleted=0
+         LEFT JOIN customers c ON c.id=o.customer_id
+         LEFT JOIN staff s ON s.id=o.assigned_staff_id
+        WHERE osc.staff_id=? AND osc.is_deleted=0
+          AND (o.assigned_staff_id IS NULL OR o.assigned_staff_id != ?)
+        ORDER BY COALESCE(o.completed_at,o.created_at) DESC, osc.id DESC`,
+      [staffId, staffId]
+    );
+
+    res.json({ items, totals, commission_items: commItems });
+  } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------
+// GET /my-advance/list  — staff/admin xem phieu ung luong cua minh (staff_salary_advances)
+// ----------------------------------------------------------
+router.get('/my-advance/list', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user?.sub);
+    const [rows] = await db.query(
+      `SELECT a.id, a.amount, a.note, a.status, a.payslip_id, a.carried_at,
+              a.approved_at, a.reject_reason,
+              a.created_at, c.full_name AS created_by_name,
+              ap.full_name AS approved_by_name
+         FROM staff_salary_advances a
+         LEFT JOIN staff c  ON c.id=a.created_by
+         LEFT JOIN staff ap ON ap.id=a.approved_by
+        WHERE a.staff_id=? AND a.is_deleted=0
+        ORDER BY a.created_at DESC`,
+      [staffId]
+    );
+    res.json({ items: rows });
+  } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------
+// GET /my-payslip/:sid  — nhan vien / admin tu xem chi tiet 1 phieu cua minh
+// ----------------------------------------------------------
+router.get('/my-payslip/:sid', async (req, res, next) => {
+  try {
+    const staffId = Number(req.user?.sub);
+    const slipId  = Number(req.params.sid);
+    const [[slip]] = await db.query(
+      `SELECT sp.*, s.full_name AS staff_name, s.username AS staff_username,
+              f.full_name AS finalized_by_name, p.full_name AS paid_by_name
+         FROM staff_payslips sp
+         JOIN staff s ON s.id=sp.staff_id
+         LEFT JOIN staff f ON f.id=sp.finalized_by
+         LEFT JOIN staff p ON p.id=sp.paid_by
+        WHERE sp.id=? AND sp.staff_id=? AND sp.is_deleted=0 AND sp.finalized_at IS NOT NULL`,
+      [slipId, staffId]
+    );
+    if (!slip) return res.status(404).json({ error: 'Không tìm thấy phiếu lương' });
+    res.json(slip);
+  } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------
+// GET /:id/summary
+// Tong ket don + hoa hong nhan vien cho admin xem
+// ?q=&status=&date_from=&date_to=
+// ----------------------------------------------------------
+router.get('/:id/summary', adminOnly, async (req, res, next) => {
+  try {
+    const staffId = Number(req.params.id);
+    const { q, date_from, date_to, status } = req.query;
+
+    const conds  = ['o.assigned_staff_id=?', 'o.is_deleted=0'];
+    const whereP = [staffId];
+
+    if (status)    { conds.push('o.status=?'); whereP.push(status); }
+    if (date_from) { conds.push('DATE(COALESCE(o.completed_at,o.created_at))>=?'); whereP.push(date_from); }
+    if (date_to)   { conds.push('DATE(COALESCE(o.completed_at,o.created_at))<=?'); whereP.push(date_to); }
+    if (q) {
+      conds.push('(o.code LIKE ? OR c.full_name LIKE ? OR c.phone LIKE ?)');
+      whereP.push(`%${q}%`, `%${q}%`, `%${q}%`);
+    }
+
+    const [items] = await db.query(
+      `SELECT o.id, o.code, o.status,
+              COALESCE(o.completed_at, o.created_at) AS order_date,
+              o.total_amount, o.paid_amount, o.wage_amount,
+              COALESCE(osc.amount, 0)  AS commission_amount,
+              osc.requested_at         AS comm_requested_at,
+              osc.approved_at          AS comm_approved_at,
+              osc.carried_at           AS comm_carried_at,
+              osc.payslip_id           AS comm_payslip_id,
+              GREATEST(0, COALESCE(o.total_amount,0) - COALESCE(o.paid_amount,0)) AS debt_amount,
+              c.full_name AS customer_name, c.phone AS customer_phone
+         FROM orders o
+         LEFT JOIN customers c ON c.id=o.customer_id
+         LEFT JOIN order_staff_commissions osc
+               ON osc.order_id=o.id AND osc.staff_id=? AND osc.is_deleted=0
+        WHERE ${conds.join(' AND ')}
+        ORDER BY COALESCE(o.completed_at,o.created_at) DESC, o.id DESC`,
+      [staffId, ...whereP]
+    );
+
+    const totals = {
+      order_count:      items.length,
+      total_amount:     items.reduce((s,o) => s + (Number(o.total_amount)||0), 0),
+      total_paid:       items.reduce((s,o) => s + (Number(o.paid_amount)||0), 0),
+      total_debt:       items.reduce((s,o) => s + (Number(o.debt_amount)||0), 0),
+      total_wage:       items.reduce((s,o) => s + (Number(o.wage_amount)||0), 0),
+      total_commission: items.reduce((s,o) => s + (Number(o.commission_amount)||0), 0),
+    };
+
+    const [commItems] = await db.query(
+      `SELECT osc.id, osc.order_id, osc.amount AS staff_commission_amount,
+              osc.requested_at AS comm_requested_at,
+              osc.approved_at  AS comm_approved_at,
+              osc.carried_at   AS comm_carried_at,
+              osc.payslip_id   AS comm_payslip_id,
+              o.code, o.status,
+              COALESCE(o.completed_at, o.created_at) AS order_date,
+              o.total_amount,
+              c.full_name AS customer_name, c.phone AS customer_phone,
+              s.full_name AS assigned_name
+         FROM order_staff_commissions osc
+         JOIN orders o ON o.id=osc.order_id AND o.is_deleted=0
+         LEFT JOIN customers c ON c.id=o.customer_id
+         LEFT JOIN staff s ON s.id=o.assigned_staff_id
+        WHERE osc.staff_id=? AND osc.is_deleted=0
+          AND (o.assigned_staff_id IS NULL OR o.assigned_staff_id != ?)
+        ORDER BY COALESCE(o.completed_at,o.created_at) DESC, osc.id DESC`,
+      [staffId, staffId]
+    );
+
+    res.json({ items, totals, commission_items: commItems });
+  } catch (err) { next(err); }
+});
 
 // ----------------------------------------------------------
 // GET /:id/payslip/draft
 // ?from=YYYY-MM-DD&to=YYYY-MM-DD  (optional override)
 // ----------------------------------------------------------
-router.get('/:id/payslip/draft', adminOnly, async (req, res, next) => {
+router.get('/:id/payslip/draft', canManage, async (req, res, next) => {
   try {
     const staffId = Number(req.params.id);
     const [[staff]] = await db.query(
@@ -195,44 +628,64 @@ router.get('/:id/payslip/draft', adminOnly, async (req, res, next) => {
     );
     const carriedDebt = Number(debtRow.total) || 0;
 
-    const orders  = await fetchOrders(db, staffId, fromStart, toEnd);
+    const orders  = await db.withRetry(p => fetchOrders(p, staffId, fromStart, toEnd));
     const payMap  = await fetchPayNotes(db, orders.map(o => o.id));
     const rows    = buildRows(orders, payMap);
 
-    const scRows = await fetchCommissions(db, staffId, fromStart, toEnd);
+    const scRows = await db.withRetry(p => fetchCommissions(p, staffId, fromStart, toEnd));
     for (const sc of scRows) {
       rows.push({
-        order_id:  sc.order_id,
-        sc_id:     sc.id,
-        code:      sc.code,
-        date:      sc.approved_at,
-        service:   sc.service_name || '',
-        bien_so:   '',
-        imei:      '',
-        tai_khoan: '',
-        revenue:   Number(sc.total_amount) || 0,
-        wage:      Number(sc.amount) || 0,
-        pay_note:  sc.note || '',
-        row_type:  'commission',
+        order_id:   sc.order_id,
+        sc_id:      sc.id,
+        code:       sc.code,
+        date:       sc.approved_at,
+        service:    sc.service_name || '',
+        bien_so:    '',
+        imei:       '',
+        tai_khoan:  '',
+        revenue:    Number(sc.total_amount) || 0,
+        wage:       0,
+        commission: Number(sc.amount) || 0,
+        pay_note:   sc.note || '',
+        row_type:   'commission',
       });
     }
     if (scRows.length) rows.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    const totalWage = rows.reduce((s, r) => s + r.wage, 0);
+    const totalWage = rows.reduce((s, r) => s + (r.wage || 0) + (r.commission || 0), 0);
 
-    // Ung luong chua ket
+    // Ung luong da duyet, chua ket phieu (tinh vao luong)
     const advances = await fetchPendingAdvances(db, staffId);
     const totalAdvances = advances.reduce((s, a) => s + (Number(a.amount) || 0), 0);
 
+    // Yeu cau ung luong tu nhan vien dang cho admin duyet (bang staff_advances)
+    const [pendingAdvances] = await db.query(
+      `SELECT id, amount, note, period, created_at
+         FROM staff_advances
+        WHERE staff_id=? AND is_deleted=0 AND status='pending'
+        ORDER BY created_at ASC`,
+      [staffId]
+    );
+
+    // Khoản cộng/trừ nháp đã lưu trước đó
+    const [draftAdj] = await db.query(
+      `SELECT type, label, amount, sort_order FROM staff_payroll_adjustments
+        WHERE staff_id=? AND is_deleted=0
+        ORDER BY sort_order ASC, id ASC`,
+      [staffId]
+    );
+
     res.json({
       staff,
-      from_date:      fromDate,
-      to_date:        toDate,
+      from_date:          fromDate,
+      to_date:            toDate,
       rows,
-      total_wage:     totalWage,
-      carried_debt:   carriedDebt,
+      total_wage:         totalWage,
+      carried_debt:       carriedDebt,
       advances,
-      total_advances: totalAdvances,
+      total_advances:     totalAdvances,
+      pending_advances:   pendingAdvances,
+      draft_adjustments:  draftAdj,
     });
   } catch (err) { next(err); }
 });
@@ -240,7 +693,7 @@ router.get('/:id/payslip/draft', adminOnly, async (req, res, next) => {
 // ----------------------------------------------------------
 // GET /:id/payslip/list
 // ----------------------------------------------------------
-router.get('/:id/payslip/list', adminOnly, async (req, res, next) => {
+router.get('/:id/payslip/list', canManage, async (req, res, next) => {
   try {
     const staffId = Number(req.params.id);
     const [rows] = await db.query(
@@ -288,10 +741,43 @@ router.get('/:id/payslip/:sid/view', async (req, res, next) => {
 });
 
 // ----------------------------------------------------------
+// PUT /:id/payslip/draft-adjustments
+// Lưu nháp khoản cộng/trừ (thay thế toàn bộ)
+// Body: { extras: [{label, amount}], deductions: [{label, amount}] }
+// ----------------------------------------------------------
+router.put('/:id/payslip/draft-adjustments', canManage, async (req, res, next) => {
+  try {
+    const staffId = Number(req.params.id);
+
+    const extras = (Array.isArray(req.body.extras) ? req.body.extras : [])
+      .map((e, i) => ({ type: 'extra', label: String(e?.label||'').slice(0,200), amount: Math.round(Number(e?.amount)||0), sort_order: i }));
+
+    const deductions = (Array.isArray(req.body.deductions) ? req.body.deductions : [])
+      .map((e, i) => ({ type: 'deduction', label: String(e?.label||'').slice(0,200), amount: Math.round(Number(e?.amount)||0), sort_order: i }));
+
+    const all = [...extras, ...deductions];
+
+    // Xóa cũ, chèn mới
+    await db.query(`UPDATE staff_payroll_adjustments SET is_deleted=1 WHERE staff_id=?`, [staffId]);
+
+    if (all.length) {
+      const vals = all.map(a => [staffId, a.type, a.label, a.amount, a.sort_order]);
+      await db.query(
+        `INSERT INTO staff_payroll_adjustments (staff_id, type, label, amount, sort_order)
+         VALUES ${vals.map(() => '(?,?,?,?,?)').join(',')}`,
+        vals.flat()
+      );
+    }
+
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------
 // POST /:id/payslip/finalize
 // Body: { from_date, to_date, base_salary, extras[], deductions[], note }
 // ----------------------------------------------------------
-router.post('/:id/payslip/finalize', adminOnly, async (req, res, next) => {
+router.post('/:id/payslip/finalize', canManage, async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const staffId  = Number(req.params.id);
@@ -358,11 +844,13 @@ router.post('/:id/payslip/finalize', adminOnly, async (req, res, next) => {
     for (const sc of scRows2) {
       scIds.push(sc.id);
       rows.push({
-        order_id: sc.order_id, sc_id: sc.id, code: sc.code,
-        date: sc.approved_at, service: sc.service_name || '',
-        bien_so: '', imei: '', tai_khoan: '',
-        revenue: Number(sc.total_amount) || 0, wage: Number(sc.amount) || 0,
-        pay_note: sc.note || '', row_type: 'commission',
+        order_id:   sc.order_id, sc_id: sc.id, code: sc.code,
+        date:       sc.approved_at, service: sc.service_name || '',
+        bien_so:    '', imei: '', tai_khoan: '',
+        revenue:    Number(sc.total_amount) || 0,
+        wage:       0,
+        commission: Number(sc.amount) || 0,
+        pay_note:   sc.note || '', row_type: 'commission',
       });
     }
     if (scRows2.length) rows.sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -372,7 +860,7 @@ router.post('/:id/payslip/finalize', adminOnly, async (req, res, next) => {
     const advanceIds    = advances.map(a => a.id);
     const totalAdvances = advances.reduce((s, a) => s + (Number(a.amount) || 0), 0);
 
-    const totalWage   = rows.reduce((s, r) => s + r.wage, 0);
+    const totalWage   = rows.reduce((s, r) => s + (r.wage || 0) + (r.commission || 0), 0);
     const grossAmount = baseSalary + totalWage + totalExtras - totalDeductions - totalAdvances + carriedDebt;
 
     const [ins] = await conn.query(
@@ -423,6 +911,9 @@ router.post('/:id/payslip/finalize', adminOnly, async (req, res, next) => {
       await conn.query(`UPDATE staff_payslips SET debt_absorbed=1 WHERE id IN (${ph})`, debtIds);
     }
 
+    // Xóa khoản cộng/trừ nháp (đã ghi vào phiếu)
+    await conn.query(`UPDATE staff_payroll_adjustments SET is_deleted=1 WHERE staff_id=?`, [staffId]);
+
     await conn.commit();
     res.status(201).json({
       ok: true, id: newId,
@@ -467,7 +958,7 @@ router.post('/:id/payslip/:sid/pay', adminOnly, async (req, res, next) => {
 // ----------------------------------------------------------
 // DELETE /:id/payslip/:sid
 // ----------------------------------------------------------
-router.delete('/:id/payslip/:sid', adminOnly, async (req, res, next) => {
+router.delete('/:id/payslip/:sid', canManage, async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const staffId = Number(req.params.id);
@@ -532,14 +1023,17 @@ router.delete('/:id/payslip/:sid', adminOnly, async (req, res, next) => {
 // ----------------------------------------------------------
 // GET /:id/advance/list
 // ----------------------------------------------------------
-router.get('/:id/advance/list', adminOnly, async (req, res, next) => {
+router.get('/:id/advance/list', canManage, async (req, res, next) => {
   try {
     const staffId = Number(req.params.id);
     const [rows] = await db.query(
-      `SELECT a.id, a.amount, a.note, a.payslip_id, a.carried_at,
-              a.created_at, c.full_name AS created_by_name
+      `SELECT a.id, a.amount, a.note, a.status, a.payslip_id, a.carried_at,
+              a.approved_at, a.reject_reason,
+              a.created_at, c.full_name AS created_by_name,
+              ap.full_name AS approved_by_name
          FROM staff_salary_advances a
-         LEFT JOIN staff c ON c.id=a.created_by
+         LEFT JOIN staff c  ON c.id=a.created_by
+         LEFT JOIN staff ap ON ap.id=a.approved_by
         WHERE a.staff_id=? AND a.is_deleted=0
         ORDER BY a.created_at DESC`,
       [staffId]
@@ -551,6 +1045,7 @@ router.get('/:id/advance/list', adminOnly, async (req, res, next) => {
 // ----------------------------------------------------------
 // POST /:id/advance
 // Body: { amount, note }
+// Chi admin duoc tao truc tiep (luon approved). Staff dung POST /me/advances.
 // ----------------------------------------------------------
 router.post('/:id/advance', adminOnly, async (req, res, next) => {
   try {
@@ -577,18 +1072,25 @@ router.post('/:id/advance', adminOnly, async (req, res, next) => {
 // ----------------------------------------------------------
 // DELETE /:id/advance/:aid
 // ----------------------------------------------------------
-router.delete('/:id/advance/:aid', adminOnly, async (req, res, next) => {
+router.delete('/:id/advance/:aid', canManage, async (req, res, next) => {
   try {
     const staffId   = Number(req.params.id);
     const advanceId = Number(req.params.aid);
+    const isAdmin   = req.user?.role === 'admin';
 
     const [[adv]] = await db.query(
-      `SELECT id, carried_at FROM staff_salary_advances
+      `SELECT id, status, carried_at, remittance_id, created_by FROM staff_salary_advances
         WHERE id=? AND staff_id=? AND is_deleted=0`,
       [advanceId, staffId]
     );
     if (!adv) return res.status(404).json({ error: 'Không tìm thấy phiếu ứng lương' });
-    if (adv.carried_at) return res.status(409).json({ error: 'Phiếu này đã được kết vào phiếu lương, không thể xóa' });
+    if (adv.carried_at) return res.status(409).json({ error: 'Phiếu đã kết vào phiếu lương, không thể xóa' });
+    if (adv.remittance_id) return res.status(409).json({ error: 'Phiếu đã tất toán qua lần nộp tiền, không thể xóa' });
+    // Staff chi duoc xoa phieu cua chinh minh va phai o trang thai pending
+    if (!isAdmin) {
+      if (adv.status !== 'pending') return res.status(403).json({ error: 'Chỉ có thể rút yêu cầu khi đang chờ duyệt' });
+      if (Number(adv.created_by) !== Number(req.user?.sub)) return res.status(403).json({ error: 'Không có quyền xóa phiếu này' });
+    }
 
     await db.query(`UPDATE staff_salary_advances SET is_deleted=1 WHERE id=?`, [advanceId]);
     res.json({ ok: true });

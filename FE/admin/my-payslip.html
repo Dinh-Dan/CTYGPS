@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Lương của tôi – VinaGPS Admin</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .slip-empty{text-align:center;color:#94a3b8;padding:40px;font-size:13px;border:1px dashed #e2e8f0;border-radius:8px}
+  .slip-table{width:100%;border-collapse:collapse;font-size:13.5px}
+  .slip-table th{background:#f8fafc;padding:9px 12px;text-align:left;font-weight:600;color:#475569;border-bottom:2px solid var(--border);white-space:nowrap}
+  .slip-table td{padding:9px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+  .slip-table tbody tr:hover{background:#f8fafc;cursor:pointer}
+  .slip-table .num{text-align:right;font-variant-numeric:tabular-nums}
+  .pill-paid{background:#dcfce7;color:#166534;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600;white-space:nowrap}
+  .pill-debt{background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600;white-space:nowrap}
+  .pill-unpaid{background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600;white-space:nowrap}
+
+  .pv-meta-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:18px}
+  .pv-meta-item{background:#f8fafc;border-radius:8px;padding:10px 14px}
+  .pv-meta-item .lbl{font-size:11.5px;color:#64748b;margin-bottom:3px}
+  .pv-meta-item .val{font-size:13.5px;font-weight:600}
+  .pv-tbl{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px}
+  .pv-tbl th{background:#f8fafc;padding:7px 10px;text-align:left;font-weight:600;color:#475569;border-bottom:2px solid var(--border)}
+  .pv-tbl td{padding:7px 10px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+  .pv-tbl .num{text-align:right}
+  .badge-comm{display:inline-block;background:#ede9fe;color:#6d28d9;font-size:10px;padding:1px 5px;border-radius:4px;margin-left:4px;vertical-align:middle}
+  .pv-sum-wrap{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px}
+  .pv-sum-box{flex:1;min-width:200px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  .pv-sum-box .hd{padding:8px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+  .pv-sum-box table{width:100%;border-collapse:collapse}
+  .pv-sum-box table td{padding:6px 14px;font-size:13px}
+  .pv-sum-box table td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+  .pv-sum-box .total-row td{font-weight:700;background:#f0fdf4;font-size:14px}
+  .pv-sum-box .adv-row td{color:#b45309}
+  .pv-sum-box .debt-row td{color:#0369a1}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topnav"><h2 class="topnav-title">Lương của tôi</h2></div>
+    <div class="content">
+      <div id="slipList"><div class="slip-empty">Đang tải...</div></div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal chi tiet -->
+<div class="modal-overlay" id="slipModal" style="display:none">
+  <div class="modal" style="max-width:780px;width:95%">
+    <div class="modal-header">
+      <h3 id="slipModalTitle">Phiếu lương</h3>
+      <button class="modal-close" id="btnCloseSlipModal">×</button>
+    </div>
+    <div class="modal-body" id="slipModalBody"></div>
+    <div class="modal-footer">
+      <button class="btn ghost" id="btnCloseSlipModal2">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<script src="/shared/js/ui.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/auth.js"></script>
+<script src="/shared/js/admin-shell.js"></script>
+<script src="/admin/my-payslip.js"></script>
+</body>
+</html>

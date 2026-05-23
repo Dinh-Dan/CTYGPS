@@ -1,6 +1,7 @@
 (function () {
   'use strict';
   adminShell.init('staff');
+  const IS_ADMIN = (auth.user()?.role === 'admin') || false;
 
   const $ = id => document.getElementById(id);
   const fmt = new Intl.NumberFormat('vi-VN');
@@ -70,6 +71,12 @@
     });
     $('modalAdvSave').onclick = doCreateAdvance;
 
+    if (!IS_ADMIN) {
+      $('advModalTitle').textContent = 'Yêu cầu ứng lương';
+      $('modalAdvSave').textContent  = 'Gửi yêu cầu';
+      $('advPeriodRow').style.display = '';
+    }
+
     // Modal pay
     [$('modalPayClose'), $('modalPayCancel')].forEach(b => b.onclick = () => $('modalPay').classList.remove('open'));
     $('payAmt').addEventListener('input', () => { $('payAmt').value = $('payAmt').value.replace(/[^\d]/g,''); updatePayDebtNote(); });
@@ -108,8 +115,9 @@
     if (!r) return;
     S.draft = r;
     S.base = 0;
-    S.extras = [];
-    S.deductions = [];
+    const adj = r.draft_adjustments || [];
+    S.extras     = adj.filter(a => a.type === 'extra')    .map(a => ({ label: a.label, amount: Number(a.amount) || 0 }));
+    S.deductions = adj.filter(a => a.type === 'deduction').map(a => ({ label: a.label, amount: Number(a.amount) || 0 }));
     const $title = $('pageTitle');
     if ($title) $title.textContent = `Bảng lương — ${r.staff.full_name || r.staff.username}`;
     renderDraft();
@@ -130,11 +138,12 @@
       : d.rows;
 
     const totalWage       = d.rows.reduce((s, r) => s + (r.wage || 0), 0);
+    const totalCommission = d.rows.reduce((s, r) => s + (r.commission || 0), 0);
     const totalExtras     = S.extras.reduce((s, e) => s + (Number(e.amount) || 0), 0);
     const totalDeductions = S.deductions.reduce((s, e) => s + (Number(e.amount) || 0), 0);
     const advances        = d.advances || [];
     const totalAdvances   = advances.reduce((s, a) => s + (Number(a.amount) || 0), 0);
-    const gross = S.base + totalWage + totalExtras - totalDeductions - totalAdvances + (d.carried_debt || 0);
+    const gross = S.base + totalWage + totalCommission + totalExtras - totalDeductions - totalAdvances + (d.carried_debt || 0);
 
     // Gộp đơn + phiếu ứng vào 1 timeline
     const allRows = [];
@@ -142,6 +151,7 @@
     advances.forEach(a  => allRows.push({ _kind: 'advance', _date: a.created_at     || '', _data: a }));
     allRows.sort((a, b) => a._date.localeCompare(b._date));
 
+    const pendingAdvances = d.pending_advances || [];
     const filterTag = filtered.length !== d.rows.length
       ? `<span style="color:#64748b;font-size:12px">${filtered.length}/${d.rows.length} đơn</span>`
       : `<span style="color:#64748b;font-size:12px">${d.rows.length} đơn · ${advances.length} phiếu ứng</span>`;
@@ -163,6 +173,25 @@
         <button id="btnAddAdvance" class="btn-advance-main">💰 Ứng lương</button>
       </div>
 
+      ${pendingAdvances.length ? `
+      <!-- Yeu cau ung luong cho duyet -->
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:12px;flex-shrink:0">
+        <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:8px">⏳ Yêu cầu ứng lương chờ duyệt (${pendingAdvances.length})</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${pendingAdvances.map(a => `
+          <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #fde68a;border-radius:6px;padding:7px 12px">
+            <span style="font-weight:700;color:#b45309;min-width:110px">${fmtMoney(a.amount)} đ</span>
+            ${a.period ? `<span style="font-size:11.5px;background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:5px">Kỳ ${a.period}</span>` : ''}
+            <span style="font-size:12px;color:#64748b;flex:1">${a.note ? a.note : '<span style="color:#94a3b8">—</span>'}</span>
+            <span style="font-size:11.5px;color:#94a3b8">${fmtDateShort(a.created_at)}</span>
+            <button class="btn ghost btn-approve-adv" data-id="${a.id}"
+              style="font-size:11px;padding:3px 10px;color:#16a34a;border-color:#86efac">✓ Duyệt</button>
+            <button class="btn ghost btn-reject-adv" data-id="${a.id}"
+              style="font-size:11px;padding:3px 10px;color:#dc2626;border-color:#fecaca">✗ Từ chối</button>
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
+
       <!-- Grid 7-3 -->
       <div class="draft-grid">
 
@@ -178,13 +207,13 @@
                   <th>Dịch vụ</th>
                   <th>Tài khoản / Biển số</th>
                   <th class="num" style="width:110px">Tiền công</th>
-                  <th style="width:150px">Ghi chú CK</th>
+                  <th class="num" style="width:110px">Hoa hồng</th>
                 </tr>
               </thead>
               <tbody>`;
 
     if (!allRows.length) {
-      html += `<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:30px;font-style:italic">Không có dữ liệu trong kỳ này</td></tr>`;
+      html += `<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:30px;font-style:italic">Không có dữ liệu trong kỳ này</td></tr>`;
     } else {
       let orderIdx = 0;
       allRows.forEach(item => {
@@ -206,8 +235,8 @@
               <td><a class="link order-link" data-id="${r.order_id}" href="/admin/order-detail.html?id=${r.order_id}">${r.code || '—'}${badge}</a>${r.code ? ui.copyCodeBtn(r.code) : ''}</td>
               <td style="font-size:12.5px">${r.service || '—'}</td>
               <td style="font-size:12px;line-height:1.5">${infoCell}</td>
-              <td class="num" style="color:#0f172a;font-weight:600">${fmtMoney(r.wage)}</td>
-              <td style="font-size:11.5px;color:#64748b">${r.pay_note || ''}</td>
+              <td class="num" style="color:#0369a1;font-weight:600">${r.wage ? fmtMoney(r.wage) : '<span style="color:#cbd5e1">—</span>'}</td>
+              <td class="num" style="color:#7c3aed;font-weight:600">${r.commission ? fmtMoney(r.commission) : '<span style="color:#cbd5e1">—</span>'}</td>
             </tr>`;
         } else {
           const a = item._data;
@@ -219,10 +248,7 @@
               <td style="font-weight:600;color:#92400e">Ứng lương</td>
               <td style="font-size:12px;color:#b45309">${a.note || '<span style="color:#94a3b8">—</span>'}</td>
               <td class="num" style="color:#b45309;font-weight:700">− ${fmtMoney(a.amount)}</td>
-              <td style="text-align:right">
-                <button class="btn ghost btn-del-advance" data-id="${a.id}"
-                  style="font-size:11px;padding:2px 8px;color:#dc2626;border-color:#fecaca">Xóa</button>
-              </td>
+              <td></td>
             </tr>`;
         }
       });
@@ -232,15 +258,14 @@
               </tbody>
               <tfoot>
                 <tr style="background:#f0fdf4;font-weight:700">
-                  <td colspan="4" style="text-align:right;color:#166534;font-size:12px">Tổng tiền công (${d.rows.length} đơn):</td>
+                  <td colspan="4" style="text-align:right;color:#475569;font-size:12px">Tổng (${d.rows.length} đơn):</td>
                   <td></td>
-                  <td class="num" style="color:#16a34a;font-size:14px">${fmtMoney(totalWage)}</td>
-                  <td></td>
+                  <td class="num" style="color:#0369a1;font-size:14px">${fmtMoney(totalWage)}</td>
+                  <td class="num" style="color:#7c3aed;font-size:14px">${totalCommission ? fmtMoney(totalCommission) : '—'}</td>
                 </tr>
                 ${totalAdvances > 0 ? `
                 <tr style="background:#fffbeb;font-weight:700">
-                  <td colspan="4" style="text-align:right;color:#92400e;font-size:12px">Tổng tiền ứng (${advances.length} phiếu):</td>
-                  <td></td>
+                  <td colspan="5" style="text-align:right;color:#92400e;font-size:12px">Tổng tiền ứng (${advances.length} phiếu):</td>
                   <td class="num" style="color:#b45309;font-size:14px">− ${fmtMoney(totalAdvances)}</td>
                   <td></td>
                 </tr>` : ''}
@@ -257,6 +282,7 @@
             <div class="ec-section">
               <div class="ec-head">
                 <span>Khoản cộng thêm</span>
+                <span id="adjSaveStatus" style="font-size:10.5px;color:#94a3b8;margin-left:auto;margin-right:6px"></span>
                 <button id="btnAddExtra">+ Thêm</button>
               </div>
               <div id="extrasRows">${renderExtraRows(S.extras, 'extra')}</div>
@@ -280,8 +306,13 @@
             <div class="sum-col-title">Tổng kết kỳ lương</div>
             <div class="row">
               <div class="lbl">Tiền công</div>
-              <div class="val">${fmtMoney(totalWage)} đ</div>
+              <div class="val" style="color:#0369a1">${fmtMoney(totalWage)} đ</div>
             </div>
+            ${totalCommission > 0 ? `
+            <div class="row">
+              <div class="lbl" style="color:#6d28d9">Hoa hồng</div>
+              <div class="val" style="color:#7c3aed">${fmtMoney(totalCommission)} đ</div>
+            </div>` : ''}
             <div class="row">
               <div class="lbl">Lương cứng</div>
               <div class="val"><input type="text" id="inputBase" value="${fmtMoney(S.base)}"
@@ -347,18 +378,25 @@
       recalc();
     });
 
-    $('btnAddExtra').onclick = () => { S.extras.push({ label: '', amount: 0 }); reRenderExtras(); recalc(); };
-    $('btnAddDeduct').onclick = () => { S.deductions.push({ label: '', amount: 0 }); reRenderDeductions(); recalc(); };
+    $('btnAddExtra').onclick = () => { S.extras.push({ label: '', amount: 0 }); reRenderExtras(); recalc(); scheduleAdjSave(); };
+    $('btnAddDeduct').onclick = () => { S.deductions.push({ label: '', amount: 0 }); reRenderDeductions(); recalc(); scheduleAdjSave(); };
 
     $('btnAddAdvance').onclick = () => {
       $('advAmt').value = '';
       $('advNote').value = '';
+      if (!IS_ADMIN) {
+        const now = new Date();
+        $('advPeriod').value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+      }
       $('modalAdvance').classList.add('open');
       setTimeout(() => $('advAmt').focus(), 50);
     };
 
-    document.querySelectorAll('.btn-del-advance').forEach(btn => {
-      btn.onclick = () => deleteAdvance(Number(btn.dataset.id));
+    document.querySelectorAll('.btn-approve-adv').forEach(btn => {
+      btn.onclick = () => approveAdvance(Number(btn.dataset.id));
+    });
+    document.querySelectorAll('.btn-reject-adv').forEach(btn => {
+      btn.onclick = () => rejectAdvance(Number(btn.dataset.id));
     });
 
     wireExtraEvents();
@@ -371,7 +409,7 @@
     return arr.map((e, i) => `
       <div class="pl-extra-row" data-type="${type}" data-idx="${i}">
         <input class="lbl-in" type="text" placeholder="${type === 'extra' ? 'Tên khoản' : 'Thuế / phí...'}" value="${e.label || ''}"/>
-        <input class="amt-in" type="text" placeholder="0" value="${e.amount || 0}"/>
+        <input class="amt-in" type="text" placeholder="0" value="${e.amount ? fmt.format(e.amount) : ''}"/>
         <button title="Xóa">×</button>
       </div>`).join('');
   }
@@ -393,28 +431,57 @@
       const [lIn, aIn] = row.querySelectorAll('input');
       const btn = row.querySelector('button');
 
-      lIn.addEventListener('change', () => { arr[idx].label = lIn.value.trim(); });
+      lIn.addEventListener('change', () => { arr[idx].label = lIn.value.trim(); scheduleAdjSave(); });
+      aIn.addEventListener('input', () => {
+        const raw = aIn.value.replace(/\D/g, '');
+        const num = Number(raw) || 0;
+        const sel = aIn.selectionStart;
+        aIn.value = num ? fmt.format(num) : '';
+        try { aIn.setSelectionRange(sel, sel); } catch {}
+      });
       aIn.addEventListener('change', () => {
         arr[idx].amount = Math.round(Number(aIn.value.replace(/\D/g,'')) || 0);
-        aIn.value = arr[idx].amount;
+        aIn.value = arr[idx].amount ? fmt.format(arr[idx].amount) : '';
         recalc();
+        scheduleAdjSave();
       });
       aIn.addEventListener('focus', () => aIn.select());
       btn.onclick = () => {
         arr.splice(idx, 1);
         if (type === 'extra') reRenderExtras(); else reRenderDeductions();
         recalc();
+        scheduleAdjSave();
       };
     });
+  }
+
+  let _adjSaveTimer = null;
+  function scheduleAdjSave() {
+    clearTimeout(_adjSaveTimer);
+    _adjSaveTimer = setTimeout(saveAdjustments, 900);
+  }
+  async function saveAdjustments() {
+    if (!S.staffId) return;
+    const el = document.getElementById('adjSaveStatus');
+    try {
+      await api.put(`/admin/staff/${S.staffId}/payslip/draft-adjustments`, {
+        extras:     S.extras.map(e => ({ label: e.label, amount: e.amount })),
+        deductions: S.deductions.map(e => ({ label: e.label, amount: e.amount })),
+      }, { silent: true });
+      if (el) { el.textContent = 'Đã lưu'; el.style.color = '#16a34a'; }
+    } catch {
+      if (el) { el.textContent = 'Lỗi lưu', el.style.color = '#dc2626'; }
+    }
   }
 
   function recalc() {
     const d = S.draft; if (!d) return;
     const tw  = d.rows.reduce((s, r) => s + (r.wage || 0), 0);
+    const tc  = d.rows.reduce((s, r) => s + (r.commission || 0), 0);
     const te  = S.extras.reduce((s, e) => s + (Number(e.amount) || 0), 0);
     const td  = S.deductions.reduce((s, e) => s + (Number(e.amount) || 0), 0);
     const ta  = (d.advances || []).reduce((s, a) => s + (Number(a.amount) || 0), 0);
-    const gross = S.base + tw + te - td - ta + (d.carried_debt || 0);
+    const gross = S.base + tw + tc + te - td - ta + (d.carried_debt || 0);
     const sumE = $('sumExtrasVal');  if (sumE) sumE.textContent = fmtMoney(te) + ' đ';
     const sumD = $('sumDeductVal');  if (sumD) sumD.textContent = '− ' + fmtMoney(td) + ' đ';
     const sumG = $('sumGross');      if (sumG) sumG.textContent = fmtMoney(gross) + ' đ';
@@ -425,7 +492,7 @@
     const d = S.draft; if (!d) return;
     const ta    = (d.advances || []).reduce((s, a) => s + (Number(a.amount) || 0), 0);
     const gross = S.base
-      + d.rows.reduce((s,r) => s + r.wage, 0)
+      + d.rows.reduce((s,r) => s + (r.wage||0) + (r.commission||0), 0)
       + S.extras.reduce((s,e) => s + (Number(e.amount)||0), 0)
       - S.deductions.reduce((s,e) => s + (Number(e.amount)||0), 0)
       - ta
@@ -475,10 +542,17 @@
 
     $('modalAdvSave').disabled = true;
     try {
-      await api.post(`/admin/staff/${S.staffId}/advance`, { amount, note });
-      ui.toast('Đã tạo phiếu ứng lương', 'success');
+      if (!IS_ADMIN) {
+        const period = $('advPeriod').value;
+        if (!period) { ui.toast('Chọn kỳ lương', 'warning'); return; }
+        await api.post('/admin/staff/me/advances', { period, amount, note: note || '' }, {
+          successMessage: 'Đã gửi yêu cầu ứng lương, chờ admin duyệt',
+        });
+      } else {
+        await api.post(`/admin/staff/${S.staffId}/advance`, { amount, note });
+        ui.toast('Đã tạo phiếu ứng lương', 'success');
+      }
       $('modalAdvance').classList.remove('open');
-      // Reload lai draft de cap nhat danh sach advance
       const from = $('editFrom')?.value || S.draft?.from_date;
       const to   = $('editTo')?.value   || S.draft?.to_date;
       loadDraft(from, to);
@@ -487,6 +561,29 @@
     } finally {
       $('modalAdvSave').disabled = false;
     }
+  }
+
+  async function approveAdvance(advId) {
+    if (!await ui.confirm('Duyệt yêu cầu ứng lương này? Phiếu ứng sẽ được tạo và tính vào lương kỳ này.')) return;
+    try {
+      await api.patch(`/admin/staff/${S.staffId}/advances/${advId}/approve`, {});
+      ui.toast('Đã duyệt — phiếu ứng lương đã được tạo', 'success');
+      const from = $('editFrom')?.value || S.draft?.from_date;
+      const to   = $('editTo')?.value   || S.draft?.to_date;
+      loadDraft(from, to);
+    } catch (e) { ui.toast(e.message || 'Lỗi', 'error'); }
+  }
+
+  async function rejectAdvance(advId) {
+    const reason = prompt('Lý do từ chối (tuỳ chọn):');
+    if (reason === null) return;
+    try {
+      await api.patch(`/admin/staff/${S.staffId}/advances/${advId}/reject`, { reason: reason || '' });
+      ui.toast('Đã từ chối yêu cầu', 'success');
+      const from = $('editFrom')?.value || S.draft?.from_date;
+      const to   = $('editTo')?.value   || S.draft?.to_date;
+      loadDraft(from, to);
+    } catch (e) { ui.toast(e.message || 'Lỗi', 'error'); }
   }
 
   async function deleteAdvance(advId) {
@@ -586,8 +683,9 @@
     let advances = [];
     try { advances = s.advances_json ? JSON.parse(s.advances_json) : []; } catch {}
 
-    const totalWage     = rows.reduce((a, r) => a + (r.wage || 0), 0);
-    const totalAdvances = advances.reduce((a, adv) => a + (Number(adv.amount) || 0), 0);
+    const totalWage       = rows.reduce((a, r) => a + (r.wage || 0), 0);
+    const totalCommission = rows.reduce((a, r) => a + (r.commission || 0), 0);
+    const totalAdvances   = advances.reduce((a, adv) => a + (Number(adv.amount) || 0), 0);
 
     $('slipDetailTitle').textContent = `Phiếu lương ${fmtDate(s.from_date)} → ${fmtDate(s.to_date)}`;
 
@@ -595,7 +693,7 @@
       <table class="slip-detail-table" style="margin-bottom:14px">
         <thead><tr>
           <th>#</th><th>Ngày</th><th>Mã đơn</th><th>Dịch vụ</th><th>Tài khoản / Biển số</th>
-          <th class="num">Tiền công</th><th>Ghi chú CK</th>
+          <th class="num">Tiền công</th><th class="num">Hoa hồng</th>
         </tr></thead>
         <tbody>`;
 
@@ -612,15 +710,16 @@
         <td><a class="link" href="/admin/order-detail.html?id=${r.order_id}" target="_blank">${r.code||'—'}${badge}</a>${r.code ? ui.copyCodeBtn(r.code) : ''}</td>
         <td style="font-size:12px">${r.service||'—'}</td>
         <td style="font-size:11.5px;line-height:1.5">${infoCell2}</td>
-        <td class="num" style="font-weight:600">${fmtMoney(r.wage)}</td>
-        <td style="font-size:11px;color:#64748b">${r.pay_note||''}</td>
+        <td class="num" style="font-weight:600;color:#0369a1">${r.wage ? fmtMoney(r.wage) : '<span style="color:#cbd5e1">—</span>'}</td>
+        <td class="num" style="font-weight:600;color:#7c3aed">${r.commission ? fmtMoney(r.commission) : '<span style="color:#cbd5e1">—</span>'}</td>
       </tr>`;
     });
 
     body += `
-      <tr style="background:#fef3c7;font-weight:700">
-        <td colspan="5" style="text-align:right;color:#92400e">Tổng tiền công:</td>
-        <td class="num" style="color:#92400e">${fmtMoney(totalWage)}</td><td></td>
+      <tr style="background:#f0fdf4;font-weight:700">
+        <td colspan="5" style="text-align:right;color:#475569">Tổng:</td>
+        <td class="num" style="color:#0369a1">${fmtMoney(totalWage)}</td>
+        <td class="num" style="color:#7c3aed">${totalCommission ? fmtMoney(totalCommission) : '—'}</td>
       </tr>
       </tbody></table>
 

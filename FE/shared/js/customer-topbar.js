@@ -95,9 +95,10 @@
   }
 
   function renderUser(target, u) {
+    const ini = initialOf(u.full_name, u.code);
     const avatar = u.avatar_url
-      ? `<img src="${escape(u.avatar_url)}" alt="">`
-      : initialOf(u.full_name, u.code);
+      ? `<img src="${escape(u.avatar_url)}" alt="" onerror="this.onerror=null;this.insertAdjacentHTML('afterend','${ini}');this.remove()">`
+      : ini;
     const displayName = escape(u.full_name || u.code || 'Khách');
 
     target.innerHTML = `

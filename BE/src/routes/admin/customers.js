@@ -61,16 +61,6 @@ function pickPayload(body, { isUpdate = false } = {}) {
     if (!out.type)      out.type = 'retail';
   }
 
-  // Voi retail thi reset truong dealer ve mac dinh
-  if (out.type === 'retail') {
-    out.company_name = null;
-    out.tax_code = null;
-    out.contact_person = null;
-    out.debt_limit = 0;
-    out.credit_term_days = 0;
-    out.discount_rate = 0;
-  }
-
   return out;
 }
 
@@ -171,6 +161,32 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ---- GET /api/admin/customers/stats --------------------------
+router.get('/stats', async (req, res, next) => {
+  try {
+    const [[totals]] = await db.query(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(type='retail') AS retail,
+        SUM(type='dealer') AS dealer,
+        SUM(MONTH(created_at)=MONTH(NOW()) AND YEAR(created_at)=YEAR(NOW())) AS new_this_month
+      FROM customers WHERE is_deleted = 0
+    `);
+    const [[orders]] = await db.query(`
+      SELECT COUNT(*) AS total_orders, COALESCE(SUM(total_amount),0) AS total_revenue
+      FROM orders WHERE is_deleted = 0 AND status != 'cancelled'
+    `);
+    const [[loyal]] = await db.query(`
+      SELECT COUNT(*) AS loyal FROM (
+        SELECT customer_id FROM orders
+        WHERE is_deleted=0 AND status != 'cancelled'
+        GROUP BY customer_id HAVING COUNT(*) >= 3
+      ) sub
+    `);
+    res.json({ ...totals, ...orders, loyal: loyal.loyal });
+  } catch (err) { next(err); }
+});
+
 // ---- GET /api/admin/customers/:id -----------------------------
 router.get('/:id', async (req, res, next) => {
   try {
@@ -239,6 +255,13 @@ router.post('/', async (req, res, next) => {
 
     if (!data.code) {
       data.code = await generateCustomerCode(data.type);
+    }
+
+    if (!data.default_tier_id) {
+      const [defTier] = await db.query(
+        `SELECT id FROM price_tiers WHERE is_default = 1 AND is_deleted = 0 LIMIT 1`
+      );
+      if (defTier.length) data.default_tier_id = defTier[0].id;
     }
 
     const [dup] = await db.query(

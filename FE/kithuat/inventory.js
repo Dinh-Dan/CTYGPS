@@ -298,9 +298,9 @@
             <tbody>${lines}</tbody>
           </table>
           <div class="field" style="margin-top:14px">
-            <label>Ảnh xác nhận đã nhận hàng *</label>
+            <label>Ảnh xác nhận đã nhận hàng (tuỳ chọn)</label>
             <input type="file" id="iss_photo" accept="image/*" capture="environment">
-            <p class="help">Ảnh sẽ upload lên imgbb. Bắt buộc.</p>
+            <p class="help">Ảnh sẽ upload lên imgbb. Không bắt buộc.</p>
             <img id="iss_preview" style="max-height:160px;margin-top:8px;border-radius:6px;display:none">
           </div>
         </div>
@@ -335,8 +335,7 @@
     });
     wrap.querySelector('#iss_submit').addEventListener('click', async () => {
       if (uploading) { ui.toast('Đợi upload xong', 'warning'); return; }
-      if (!uploadedUrl) { ui.toast('Phải upload ảnh trước', 'warning'); return; }
-      await api.post(`/kithuat/staff-issues/${id}/receive`, { photo_url: uploadedUrl },
+      await api.post(`/kithuat/staff-issues/${id}/receive`, { photo_url: uploadedUrl || null },
         { successMessage: 'Đã xác nhận nhận hàng' });
       wrap.remove();
       await Promise.all([loadIssues(), loadHoldings()]);

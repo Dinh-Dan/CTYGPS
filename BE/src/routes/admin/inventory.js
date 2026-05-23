@@ -93,7 +93,10 @@ router.get('/stats', async (req, res, next) => {
         (SELECT COALESCE(SUM(qty), 0) FROM staff_holdings) AS held_units,
         (SELECT COUNT(*) FROM product_stock ps
             JOIN products p ON p.id = ps.product_id
-           WHERE p.is_deleted = 0 AND ps.quantity < ?) AS low_stock
+           WHERE p.is_deleted = 0 AND ps.quantity < ?) AS low_stock,
+        (SELECT COALESCE(SUM(ps.quantity * p.cost_price), 0) FROM product_stock ps
+            JOIN products p ON p.id = ps.product_id
+           WHERE p.is_deleted = 0) AS total_value
     `, [LOW_STOCK_THRESHOLD]);
 
     res.json({
@@ -102,6 +105,7 @@ router.get('/stats', async (req, res, next) => {
       held_units:          r1[0].held_units,
       low_stock:           r1[0].low_stock,
       low_threshold:       LOW_STOCK_THRESHOLD,
+      total_value:         r1[0].total_value,
     });
   } catch (err) { next(err); }
 });
@@ -110,12 +114,13 @@ router.get('/stats', async (req, res, next) => {
 router.get('/products/all', async (req, res, next) => {
   try {
     const [rows] = await db.query(
-      `SELECT p.id, p.code, p.name,
+      `SELECT p.id, p.code, p.name, p.category_id, c.name AS category_name,
               (SELECT pp.price FROM product_prices pp
                 JOIN price_tiers t ON t.id = pp.tier_id
                 WHERE pp.product_id = p.id AND t.is_default = 1 AND t.is_deleted = 0
                 LIMIT 1) AS default_price
          FROM products p
+         LEFT JOIN categories c ON c.id = p.category_id
         WHERE p.is_deleted = 0
         ORDER BY p.code`
     );
@@ -160,7 +165,7 @@ router.get('/stock', async (req, res, next) => {
 
     const [rows] = await db.query(
       `SELECT
-         p.id AS product_id, p.code, p.name, p.image_url, p.thumbnail_url,
+         p.id AS product_id, p.code, p.name, p.description, p.image_url, p.thumbnail_url,
          p.warranty_months, p.cost_price, p.category_id,
          c.name AS category_name,
          COALESCE(ps.quantity, 0) AS quantity,

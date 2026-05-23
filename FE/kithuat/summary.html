@@ -6,29 +6,48 @@
 <title>Tổng kết đơn – Kỹ thuật VinaGPS</title>
 <link rel="stylesheet" href="/shared/css/style.css" />
 <style>
-  .filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:flex-end}
+  /* layout flex-page: khoa chieu cao, chi tbody cuon */
+  .main{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  .page-body{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:16px}
+
+  .filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end;flex-shrink:0}
   .filter-bar .field{margin:0}
   .filter-bar .input,.filter-bar .select{height:36px}
-  .table-wrap{background:#fff;border:1px solid var(--border);border-radius:10px;overflow:auto}
+
+  /* tab bar */
+  .tab-bar{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:0;flex-shrink:0}
+  .tab-btn{padding:8px 18px;font-size:13.5px;font-weight:600;color:#64748b;background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;white-space:nowrap}
+  .tab-btn.active{color:#2563eb;border-bottom-color:#2563eb}
+  .tab-btn .badge{display:inline-block;background:#e0e7ff;color:#3730a3;border-radius:999px;font-size:11px;font-weight:700;padding:0 6px;margin-left:5px;line-height:18px}
+  .tab-btn.active .badge{background:#2563eb;color:#fff}
+
+  /* panel: flex:1 + overflow hidden -> table-wrap fills height */
+  .tab-panel{display:none;flex:1;overflow:hidden;flex-direction:column}
+  .tab-panel.active{display:flex}
+
+  .table-wrap{flex:1;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:0 0 10px 10px;border-top:none}
   table.summary{width:100%;border-collapse:collapse;font-size:13.5px;min-width:900px}
   table.summary th,table.summary td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
-  table.summary th{background:#f8fafc;font-weight:600;color:#475569;position:sticky;top:0;z-index:1}
+  table.summary th{background:#f8fafc;font-weight:600;color:#475569;position:sticky;top:0;z-index:2}
   table.summary td.num,table.summary th.num{text-align:right;font-variant-numeric:tabular-nums}
   table.summary tbody tr:hover td{background:#f8fafc;cursor:pointer}
-  table.summary tfoot td{background:#f1f5f9;font-weight:700;border-top:2px solid #cbd5e1;position:sticky;bottom:0}
+  table.summary tfoot td{background:#f1f5f9;font-weight:700;border-top:2px solid #cbd5e1;position:sticky;bottom:0;z-index:1}
   table.summary tfoot td.num{font-variant-numeric:tabular-nums}
+
   .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600}
   .pill.pending{background:#fef3c7;color:#92400e}
   .pill.confirmed{background:#dbeafe;color:#1e40af}
   .pill.in_progress{background:#e0e7ff;color:#3730a3}
   .pill.done{background:#dcfce7;color:#166534}
   .pill.cancelled{background:#fee2e2;color:#991b1b}
+  .pill.comm-pending{background:#fef3c7;color:#92400e}
+  .pill.comm-approved{background:#ede9fe;color:#6d28d9}
+  .pill.comm-payslip{background:#dcfce7;color:#166534}
   .empty{text-align:center;padding:30px;color:#64748b}
-  @media (max-width:768px){
-    .sum-grid{grid-template-columns:repeat(2,1fr)}
-    .sum-card .val{font-size:15px}
-    .filter-bar{gap:6px}
+
+  @media(max-width:768px){
     .filter-bar .input,.filter-bar .select{font-size:13px}
+    .tab-btn{padding:7px 12px;font-size:13px}
   }
 </style>
 </head>
@@ -37,10 +56,12 @@
   <aside class="sidebar" id="sidebar"></aside>
   <main class="main">
     <div class="topnav"><h2 class="topnav-title">Tổng kết đơn</h2></div>
-    <div class="content">
 
+    <div class="page-body">
+
+      <!-- filter dùng chung -->
       <div class="filter-bar">
-        <div class="field" style="flex:1;min-width:200px">
+        <div class="field" style="flex:1;min-width:180px">
           <input id="fQ" class="input" type="search" placeholder="Mã đơn / tên khách / SĐT…">
         </div>
         <div class="field">
@@ -59,45 +80,91 @@
         <div class="field">
           <input id="fTo" class="input" type="date" title="Đến ngày">
         </div>
+        <!-- chi hien o tab 1 -->
+        <div class="field" id="wrapFComm">
+          <select id="fComm" class="select">
+            <option value="">Tất cả hoa hồng</option>
+            <option value="requested">Chờ duyệt</option>
+            <option value="approved">Đã duyệt</option>
+            <option value="none">Chưa yêu cầu</option>
+          </select>
+        </div>
         <button id="btnReset" class="btn ghost sm" type="button">Xoá lọc</button>
       </div>
 
-      <div class="table-wrap">
-        <table class="summary">
-          <thead>
-            <tr>
-              <th>Mã đơn</th>
-              <th>Ngày</th>
-              <th>Khách</th>
-              <th>Trạng thái</th>
-              <th class="num">Tổng đơn</th>
-              <th class="num">Đã thu</th>
-              <th class="num">Còn nợ</th>
-              <th class="num">Chưa nộp</th>
-              <th class="num">Đã nộp</th>
-              <th class="num">Tiền công</th>
-              <th class="num">Hoa hồng</th>
-            </tr>
-          </thead>
-          <tbody id="tbody">
-            <tr><td colspan="11" class="empty">Đang tải…</td></tr>
-          </tbody>
-          <tfoot id="tfoot">
-            <tr>
-              <td colspan="4">Tổng (<span id="kOrders">0</span> đơn)</td>
-              <td class="num" id="kTotal">0</td>
-              <td class="num" id="kPaid" style="color:#16a34a">0</td>
-              <td class="num" id="kDebt" style="color:#dc2626">0</td>
-              <td class="num" id="kUnremit" style="color:#b45309">0</td>
-              <td class="num" id="kRemit">0</td>
-              <td class="num" id="kWage" style="color:#16a34a">0</td>
-              <td class="num" id="kCommission" style="color:#7c3aed">0</td>
-            </tr>
-          </tfoot>
-        </table>
+      <!-- tab bar -->
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="assigned">Đơn phụ trách <span class="badge" id="badgeAssigned">0</span></button>
+        <button class="tab-btn" data-tab="other">Hoa hồng đơn khác <span class="badge" id="badgeOther">0</span></button>
       </div>
 
-    </div>
+      <!-- tab 1: don phu trach -->
+      <div class="tab-panel active" id="panelAssigned">
+        <div class="table-wrap">
+          <table class="summary">
+            <thead>
+              <tr>
+                <th>Mã đơn</th>
+                <th>Ngày</th>
+                <th>Khách</th>
+                <th>Trạng thái</th>
+                <th class="num">Tổng đơn</th>
+                <th class="num">Đã thu</th>
+                <th class="num">Còn nợ</th>
+                <th class="num">Chưa nộp</th>
+                <th class="num">Đã nộp</th>
+                <th class="num">Tiền công</th>
+                <th class="num">Hoa hồng</th>
+              </tr>
+            </thead>
+            <tbody id="tbody">
+              <tr><td colspan="11" class="empty">Đang tải…</td></tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="4">Tổng (<span id="kOrders">0</span> đơn)</td>
+                <td class="num" id="kTotal">0</td>
+                <td class="num" id="kPaid" style="color:#16a34a">0</td>
+                <td class="num" id="kDebt" style="color:#dc2626">0</td>
+                <td class="num" id="kUnremit" style="color:#b45309">0</td>
+                <td class="num" id="kRemit">0</td>
+                <td class="num" id="kWage" style="color:#16a34a">0</td>
+                <td class="num" id="kCommission" style="color:#7c3aed">0</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- tab 2: hoa hong don khac -->
+      <div class="tab-panel" id="panelOther">
+        <div class="table-wrap">
+          <table class="summary">
+            <thead>
+              <tr>
+                <th>Mã đơn</th>
+                <th>Ngày</th>
+                <th>Khách</th>
+                <th>Trạng thái</th>
+                <th>KTV phụ trách</th>
+                <th class="num">Tổng đơn</th>
+                <th class="num">Hoa hồng</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyComm">
+              <tr><td colspan="7" class="empty">Đang tải…</td></tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="6">Tổng (<span id="kCommOrders">0</span> đơn)</td>
+                <td class="num" id="kCommTotal" style="color:#7c3aed">0</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- page-body -->
   </main>
 </div>
 

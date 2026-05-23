@@ -21,7 +21,7 @@
   }
 
   let state = {
-    page: 1, limit: 30, total: 0,
+    page: 1, limit: 10, total: 0,
     filters: { bucket: 'all' },
     templates: [],
     items: [],
@@ -62,6 +62,17 @@
     if (f.collected_for_dealer) p.set('collected_for_dealer', f.collected_for_dealer);
     if (f.device_q) p.set('device_q', f.device_q);
     return p.toString();
+  }
+
+  async function loadStats() {
+    const res = await api.get('/admin/orders/stats').catch(() => null);
+    if (!res) return;
+    $('sCntAll').textContent      = res.total;
+    $('sCntPending').textContent  = res.pending;
+    $('sCntConfirmed').textContent = res.confirmed;
+    $('sCntProgress').textContent = res.in_progress;
+    $('sCntDone').textContent     = res.done;
+    $('sCntCancelled').textContent = res.cancelled;
   }
 
   async function loadList() {
@@ -133,7 +144,17 @@
             </td>
             <td data-label="Mã đơn"><b>${esc(o.code)}</b>${ui.copyCodeBtn(o.code)}</td>
             <td data-label="Ngày tạo">${fmtDate(o.created_at)}</td>
-            <td data-label="Khách">${esc(o.customer_name || '')}<br><small style="color:#64748b">${esc(o.customer_phone || '')}</small></td>
+            <td data-label="Khách">
+              <div style="display:flex;align-items:center;gap:8px">
+                ${o.customer_avatar_url
+                  ? `<img src="${esc(o.customer_avatar_url)}" alt="" class="avatar-cell" style="width:30px;height:30px;flex-shrink:0">`
+                  : `<div class="avatar-placeholder" style="width:30px;height:30px;font-size:11px;flex-shrink:0">${esc((o.customer_name||'?').trim().charAt(0).toUpperCase())}</div>`}
+                <div>
+                  ${esc(o.customer_name || '')}<br>
+                  <small style="color:#64748b">${esc(o.customer_phone || '')}</small>
+                </div>
+              </div>
+            </td>
             <td data-label="Loại đơn">${esc(o.template_names || o.template_name || '—')}</td>
             <td data-label="Thông tin">${renderDeviceInfo(o)}</td>
             <td data-label="Tổng tiền" style="text-align:right">
@@ -143,7 +164,12 @@
             </td>
             <td data-label="Trạng thái"><span class="pill ${sCls.cls}">${esc(sCls.label)}</span></td>
             <td data-label="Thanh toán"><span class="pill ${pCls.cls}">${esc(pCls.label)}</span></td>
-            <td data-label="Hành động"><button class="btn ghost sm" data-act="open">Xem</button></td>
+            <td data-label="Hành động">
+              <div class="actions-wrap">
+                <button class="btn ghost sm" data-act="open">Xem</button>
+                <button class="btn-more" data-act="more" title="Thêm tác vụ">···</button>
+              </div>
+            </td>
           </tr>
         `;
       }).join('');
@@ -171,7 +197,57 @@
       });
     }
     syncCbAll();
-    $('pageInfo').textContent = `Trang ${state.page} / ${Math.max(1, Math.ceil(state.total / state.limit))} (${state.total} đơn)`;
+    const totalPages = Math.max(1, Math.ceil(state.total / state.limit));
+    const startRow = state.total === 0 ? 0 : (state.page - 1) * state.limit + 1;
+    const endRow = Math.min(state.page * state.limit, state.total);
+    $('pagerInfo').textContent = `${startRow} – ${endRow} trong ${state.total} đơn`;
+    renderPager(totalPages);
+  }
+
+  function renderPager(totalPages) {
+    const box = $('pagerPages');
+    if (!box) return;
+    const cur = state.page;
+    const pages = [];
+
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (cur > 3) pages.push('…');
+      const lo = Math.max(2, cur - 1), hi = Math.min(totalPages - 1, cur + 1);
+      for (let i = lo; i <= hi; i++) pages.push(i);
+      if (cur < totalPages - 2) pages.push('…');
+      pages.push(totalPages);
+    }
+
+    const prevDis = cur <= 1 ? 'disabled' : '';
+    const nextDis = cur >= totalPages ? 'disabled' : '';
+    box.innerHTML = `
+      <button ${prevDis} id="pgPrev">«</button>
+      <button ${prevDis} id="pgPrevStep">‹</button>
+      ${pages.map(p => p === '…'
+        ? `<span class="pager-ellipsis">···</span>`
+        : `<button class="${p === cur ? 'active' : ''}" data-pg="${p}">${p}</button>`
+      ).join('')}
+      <button ${nextDis} id="pgNextStep">›</button>
+      <button ${nextDis} id="pgNext">»</button>
+    `;
+    box.querySelector('#pgPrev').addEventListener('click', () => goPage(1));
+    box.querySelector('#pgPrevStep').addEventListener('click', () => goPage(cur - 1));
+    box.querySelector('#pgNextStep').addEventListener('click', () => goPage(cur + 1));
+    box.querySelector('#pgNext').addEventListener('click', () => goPage(totalPages));
+    box.querySelectorAll('[data-pg]').forEach(b => {
+      b.addEventListener('click', () => goPage(Number(b.dataset.pg)));
+    });
+  }
+
+  function goPage(p) {
+    const totalPages = Math.max(1, Math.ceil(state.total / state.limit));
+    p = Math.max(1, Math.min(totalPages, p));
+    if (p === state.page) return;
+    state.page = p;
+    loadList();
   }
 
   function syncCbAll() {
@@ -353,10 +429,10 @@
   }
 
   const STATUS_LABELS = {
-    pending:     'Đang chờ',
-    confirmed:   'Lên đơn',
-    in_progress: 'Đang xử lý',
-    done:        'Đã xong',
+    pending:     'Chờ xác nhận',
+    confirmed:   'Đang xử lý',
+    in_progress: 'Đang giao',
+    done:        'Hoàn thành',
     cancelled:   'Đã huỷ',
   };
   function pillForStatus(o) {
@@ -384,9 +460,15 @@
   async function openDetail(id) {
     $('modal').classList.add('open');
     $('odBody').innerHTML = '<p style="text-align:center;color:#94a3b8">Đang tải…</p>';
-    const res = await api.get('/admin/orders/' + id).catch(() => null);
+    const [res, pendingRes, payHistRes] = await Promise.all([
+      api.get('/admin/orders/' + id).catch(() => null),
+      api.get('/admin/orders/' + id + '/admin-pending').catch(() => null),
+      api.get('/admin/orders/' + id + '/payment-history').catch(() => null),
+    ]);
     if (!res) { $('odBody').innerHTML = '<p style="color:#dc2626">Không tải được</p>'; return; }
     state.currentDetail = res;
+    state.currentDetail._adminPending = (pendingRes && pendingRes.items) || [];
+    state.currentDetail._payHistory = payHistRes || null;
     location.hash = 'order-' + id;
     try {
       renderDetail();
@@ -410,7 +492,6 @@
     const tplNames = lines.map(l => l.template_name).filter(Boolean).join(' + ');
     $('modalTitle').innerHTML = `${esc(o.code)}${ui.copyCodeBtn(o.code)}<span style="font-weight:400;color:#64748b"> — ${esc(tplNames || '')}</span>`;
 
-    // Tong subtotal cua moi line (items + charges trong line)
     const lineSum = lines.reduce((s, l) => s + Number(l.subtotal || 0), 0);
     const remain = Math.max(0, Number(o.total_amount) - Number(o.paid_amount));
 
@@ -444,7 +525,16 @@
             </div>` : ''}
             <div><b>Loại đơn:</b> ${esc(tplNames || '—')}</div>
             <div><b>Địa chỉ:</b> ${esc(o.address || '—')}</div>
-            <div><b>Ghi chú:</b> ${esc(o.note || '—')}</div>
+            <div style="margin-top:4px">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                <b>Ghi chú:</b>
+              </div>
+              <textarea id="orderNote" class="input" rows="2" style="width:100%;resize:vertical"
+                placeholder="Ghi chú đơn hàng…">${esc(o.note || '')}</textarea>
+              <div style="text-align:right;margin-top:4px">
+                <button class="btn ghost sm" id="btnSaveOrderNote">💾 Lưu ghi chú</button>
+              </div>
+            </div>
           </div>
           <div style="flex:1;min-width:240px">
             <div>Trạng thái: <span class="pill ${sCls.cls}">${esc(sCls.label)}</span> · <span class="pill ${pCls.cls}">${esc(pCls.label)}</span>${o.collected_for_dealer ? ' · <span class="pill amber" title="Đơn thu hộ đại lí">🏪 Thu hộ ĐL</span>' : ''}</div>
@@ -460,7 +550,7 @@
         <div class="timeline" id="timeline"></div>
         <div style="margin-top:10px">
           <label style="font-size:13px;color:#334155;font-weight:600;display:block;margin-bottom:4px">Thực tế hiện tại</label>
-          <textarea id="progressNote" class="input" rows="2" placeholder="Ví dụ: KTV đang trên đường, dự kiến tới 14h">${esc(o.progress_note || '')}</textarea>
+          <textarea id="progressNote" class="input" rows="4" placeholder="Ví dụ: KTV đang trên đường, dự kiến tới 14h">${esc(o.progress_note || '')}</textarea>
           <div style="margin-top:6px;text-align:right">
             <button class="btn ghost sm" id="btnSaveProgressNote">💾 Lưu ghi chú</button>
           </div>
@@ -495,6 +585,8 @@
         </div>
       </div>
 
+      <div class="od-section" id="payHistSection"></div>
+
     `;
 
     renderTimeline();
@@ -503,6 +595,8 @@
     renderKtvRequests();
     renderCommission();
     renderActions();
+    renderAdminPending();
+    renderPaymentHistory();
 
     $('btnReloadDetail').addEventListener('click', () => openDetail(o.id));
     $('btnEditLines').addEventListener('click', editLines);
@@ -512,6 +606,13 @@
         const r = await api.patch(`/admin/orders/${o.id}/progress-note`,
           { progress_note: v }, { onError: 'toast' });
         if (r) { ui.toast('Đã lưu', 'success'); state.currentDetail.progress_note = v; }
+      });
+    }
+    if ($('btnSaveOrderNote')) {
+      $('btnSaveOrderNote').addEventListener('click', async () => {
+        const v = $('orderNote').value.trim();
+        const r = await api.put(`/admin/orders/${o.id}`, { note: v || null }, { onError: 'toast' });
+        if (r) { ui.toast('Đã lưu ghi chú', 'success'); state.currentDetail.note = v || null; }
       });
     }
     // Nut gan / go khach dau cuoi (admin)
@@ -820,7 +921,7 @@
               <div class="cc-staff-picker-panel" id="ccStaffPickerPanel"></div>
               <input type="hidden" id="ccStaffSelect" value="">
             </div>
-            <input type="number" id="ccStaffAmt" min="0" step="1000" placeholder="Số tiền (VND)">
+            <input type="text" inputmode="numeric" id="ccStaffAmt" placeholder="Số tiền (VND)" autocomplete="off">
           </div>
           <input type="text" id="ccStaffNote" maxlength="300" placeholder="Ghi chú (tuỳ chọn)">
           <div class="cc-actions" style="margin-top:4px">
@@ -830,6 +931,19 @@
         </div>
       </div>
     `;
+
+    // Dinh dang so tien khi go (500000 -> 500.000)
+    const $amtInput = $('ccStaffAmt');
+    if ($amtInput) {
+      $amtInput.addEventListener('input', () => {
+        const raw = $amtInput.value.replace(/\D/g, '');
+        const cursor = $amtInput.selectionStart;
+        const oldLen = $amtInput.value.length;
+        $amtInput.value = raw ? Number(raw).toLocaleString('vi-VN') : '';
+        const diff = $amtInput.value.length - oldLen;
+        $amtInput.setSelectionRange(cursor + diff, cursor + diff);
+      });
+    }
 
     // Bind form them moi
     const $addForm     = $('ccAddStaffForm');
@@ -927,7 +1041,7 @@
 
     if ($('ccStaffSaveBtn')) $('ccStaffSaveBtn').addEventListener('click', async () => {
       const staffId = Number($staffHidden.value);
-      const amt     = Math.max(0, Math.round(Number($('ccStaffAmt').value) || 0));
+      const amt     = Math.max(0, Math.round(Number($('ccStaffAmt').value.replace(/\./g, '').replace(/,/g, '.')) || 0));
       if (!staffId) { ui.toast('Chọn nhân viên', 'error'); return; }
       if (!amt)     { ui.toast('Nhập số tiền', 'error'); return; }
       const note = ($('ccStaffNote').value || '').trim();
@@ -1155,6 +1269,104 @@
     }
   }
 
+  function renderAdminPending() {
+    const o = state.currentDetail;
+    const pending = (o._adminPending || []).filter(p => !p.confirmed);
+    if (!pending.length) return;
+
+    const $box = $('odActions');
+    pending.forEach(p => {
+      const btn = document.createElement('button');
+      btn.className = 'btn';
+      btn.id = `btnConfirmPending_${p.id}`;
+      btn.style.cssText = 'background:#7c3aed;white-space:nowrap';
+      btn.textContent = `✓ Xác nhận thu từ khách ${fmt(p.amount)}đ`;
+      $box.prepend(btn);
+      btn.addEventListener('click', async () => {
+        const yes = await ui.confirm({ title: `Xác nhận đã nhận ${fmt(p.amount)}đ từ khách?`, okText: 'Xác nhận' });
+        if (!yes) return;
+        const r = await api.post(`/admin/orders/${o.id}/confirm-admin-pending/${p.id}`, {}, { onError: 'toast' });
+        if (r) { ui.toast('Đã xác nhận', 'success'); openDetail(o.id); loadList(); }
+      });
+    });
+  }
+
+  function renderPaymentHistory() {
+    const o = state.currentDetail;
+    const hist = o._payHistory;
+    const el = $('payHistSection');
+    if (!el) return;
+
+    const direct = (hist && hist.direct) || [];
+    const viaReq = (hist && hist.via_request) || [];
+    if (!direct.length && !viaReq.length) { el.innerHTML = ''; return; }
+
+    const sourceLabel = {
+      admin_mark_paid:   'Ghi nhận TT',
+      admin_pending:     'KH chuyển (đã XN)',
+      staff_collection:  'KTV thu',
+      customer_self_pay: 'KH tự trả',
+    };
+    const prStatusLabel = {
+      pending:         'Chờ thu',
+      partially_paid:  'Thu một phần',
+      paid:            'Đã thu đủ',
+      expired:         'Hết hạn',
+      cancelled:       'Đã huỷ',
+    };
+    const prStatusCls = {
+      pending:        '#f59e0b',
+      partially_paid: '#f59e0b',
+      paid:           '#16a34a',
+      expired:        '#94a3b8',
+      cancelled:      '#94a3b8',
+    };
+
+    function rowDate(d) {
+      if (!d) return '—';
+      const dt = new Date(d);
+      return dt.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        + ' ' + dt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    const rows = [];
+
+    for (const p of direct) {
+      const lbl = sourceLabel[p.source] || p.source;
+      rows.push(`
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <span style="flex:0 0 130px;font-size:11.5px;color:#475569">${esc(lbl)}</span>
+          <span style="flex:0 0 110px;font-weight:700;color:#0f172a">${fmt(p.amount)}đ</span>
+          <span style="flex:1;font-size:11.5px;color:#64748b">${rowDate(p.paid_at)}</span>
+          ${p.staff_name ? `<span style="font-size:11.5px;color:#64748b">${esc(p.staff_name)}</span>` : ''}
+          ${p.note ? `<span style="font-size:11px;color:#94a3b8;font-style:italic">${esc(p.note)}</span>` : ''}
+        </div>`);
+    }
+
+    for (const pr of viaReq) {
+      const stCls = prStatusCls[pr.request_status] || '#94a3b8';
+      const stLbl = prStatusLabel[pr.request_status] || pr.request_status;
+      rows.push(`
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <span style="flex:0 0 150px;font-size:11.5px;color:#475569;display:flex;align-items:center;gap:4px">
+            <a href="/admin/payment-request-detail.html?id=${pr.id}" target="_blank"
+               style="color:#2563eb;font-weight:700;text-decoration:none" title="Xem phiếu">
+              ${esc(pr.request_code)} ↗
+            </a>
+            <button onclick="navigator.clipboard.writeText('${esc(pr.request_code)}');event.target.textContent='✓';setTimeout(()=>event.target.textContent='⎘',1200)"
+              style="border:none;background:none;cursor:pointer;color:#94a3b8;font-size:12px;padding:0" title="Copy mã phiếu">⎘</button>
+          </span>
+          <span style="flex:0 0 110px;font-weight:700;color:#0f172a">${fmt(pr.amount)}đ</span>
+          <span style="flex:1;font-size:11.5px;color:#64748b">${rowDate(pr.paid_at || pr.created_at)}</span>
+          <span style="font-size:11px;font-weight:700;color:${stCls}">${stLbl}</span>
+        </div>`);
+    }
+
+    el.innerHTML = `
+      <div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px">Lịch sử thanh toán</div>
+      <div style="font-size:12.5px">${rows.join('')}</div>`;
+  }
+
   function renderActions() {
     const o = state.currentDetail;
     const $box = $('odActions');
@@ -1174,7 +1386,7 @@
     if (o.status !== 'cancelled') {
       btns.push(`<button class="btn ghost" id="btnCancel" style="color:#dc2626;margin-left:auto">Huỷ đơn</button>`);
     }
-    btns.push(`<button class="btn ghost" id="btnDelete" style="color:#dc2626">Xoá</button>`);
+    if (o.status !== 'done') btns.push(`<button class="btn ghost" id="btnDelete" style="color:#dc2626">Xoá</button>`);
 
     $box.innerHTML = btns.join('');
 
@@ -1194,28 +1406,94 @@
   }
 
   async function assignKTV() {
-    // Lay ds KTV (tu suggested-staff endpoint)
     const id = state.currentDetail.id;
     const r = await api.get(`/admin/orders/${id}/suggested-staff`).catch(() => null);
     const staff = (r && r.items) || [];
     if (!staff.length) { ui.toast('Chưa có KTV nào', 'warning'); return; }
 
-    const opts = staff.map(s => `<option value="${s.id}" ${s.id === state.currentDetail.assigned_staff_id ? 'selected' : ''}>${esc(s.full_name)} (đang ${s.active_count} đơn)</option>`).join('');
+    const currentStaffId = state.currentDetail.assigned_staff_id;
+    const defaultSel = currentStaffId || (staff[0] && staff[0].id) || 0;
+
+    function initials(name) {
+      const p = (name || '').trim().split(/\s+/);
+      return p.length >= 2 ? (p[0][0] + p[p.length - 1][0]).toUpperCase() : (name || '??').slice(0, 2).toUpperCase();
+    }
+
+    const wageInit = state.currentDetail.wage_amount
+      ? Number(state.currentDetail.wage_amount).toLocaleString('vi-VN') : '';
+
+    const cardsHtml = staff.map(s => {
+      const isSel = s.id === defaultSel;
+      const avatar = s.avatar_url
+        ? `<img src="${esc(s.avatar_url)}" class="ktv-card-avatar" alt="">`
+        : `<div class="ktv-card-avatar ktv-card-initials">${initials(s.full_name)}</div>`;
+      const badge = s.active_count > 0
+        ? `<span class="ktv-card-badge">${s.active_count} đơn</span>`
+        : `<span class="ktv-card-badge free">Rảnh</span>`;
+      return `
+        <label class="ktv-card${isSel ? ' selected' : ''}">
+          <input type="radio" name="ktvSel" value="${s.id}" ${isSel ? 'checked' : ''} style="display:none">
+          ${avatar}
+          <div class="ktv-card-info">
+            <div class="ktv-card-name">${esc(s.full_name)}</div>
+            ${badge}
+          </div>
+        </label>`;
+    }).join('');
+
     const html = `
-      <div style="padding:14px">
-        <div class="field"><label>Chọn KTV</label>
-          <select id="aSel" class="select">${opts}</select>
-        </div>
-        <div class="field"><label>Tiền công (đ)</label>
-          <input id="aWage" type="number" class="input" value="${state.currentDetail.wage_amount || 0}" min="0">
-        </div>
+      <style>
+        .ktv-grid { display:flex; flex-direction:column; gap:6px; max-height:280px; overflow-y:auto; padding:2px 0 8px; }
+        .ktv-card { display:flex; align-items:center; gap:10px; padding:10px 12px; border:2px solid #e2e8f0; border-radius:10px; cursor:pointer; transition:border-color .15s,background .15s; }
+        .ktv-card:hover { border-color:#93c5fd; background:#f0f9ff; }
+        .ktv-card.selected { border-color:#3b82f6; background:#eff6ff; }
+        .ktv-card-avatar { width:40px; height:40px; border-radius:50%; object-fit:cover; flex-shrink:0; }
+        .ktv-card-initials { background:#3b82f6; color:#fff; font-weight:700; font-size:15px; display:flex; align-items:center; justify-content:center; }
+        .ktv-card-info { flex:1; min-width:0; }
+        .ktv-card-name { font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .ktv-card-badge { font-size:11px; padding:1px 7px; border-radius:20px; background:#fef3c7; color:#92400e; margin-top:2px; display:inline-block; }
+        .ktv-card-badge.free { background:#d1fae5; color:#065f46; }
+        .aWage-wrap label { display:block; font-size:13px; font-weight:600; color:#374151; margin-bottom:4px; }
+      </style>
+      <div style="padding:14px 14px 0">
+        <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Chọn KTV</div>
+        <div class="ktv-grid">${cardsHtml}</div>
+      </div>
+      <div class="aWage-wrap" style="padding:12px 14px 14px">
+        <label for="aWage">Tiền công (đ)</label>
+        <input id="aWage" type="text" inputmode="numeric" class="input" value="${wageInit}" placeholder="0" autocomplete="off" style="width:100%;box-sizing:border-box">
       </div>
     `;
-    const dlg = await openSimpleModal('Gán KTV', html, 'Lưu');
+
+    const dlg = await openSimpleModal('Gán KTV', html, 'Lưu', () => {
+      // Highlight card khi chon
+      document.querySelectorAll('.ktv-card').forEach(card => {
+        const radio = card.querySelector('input[type=radio]');
+        card.addEventListener('click', () => {
+          document.querySelectorAll('.ktv-card').forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+          radio.checked = true;
+        });
+      });
+      // Format tien cong
+      const $w = document.getElementById('aWage');
+      if ($w) {
+        $w.addEventListener('input', () => {
+          const raw = $w.value.replace(/\D/g, '');
+          const cur = $w.selectionStart;
+          const oldLen = $w.value.length;
+          $w.value = raw ? Number(raw).toLocaleString('vi-VN') : '';
+          const diff = $w.value.length - oldLen;
+          $w.setSelectionRange(cur + diff, cur + diff);
+        });
+      }
+    });
     if (!dlg) return;
-    const staffId = Number(document.getElementById('aSel').value);
+
+    const checkedRadio = document.querySelector('input[name="ktvSel"]:checked');
+    const staffId = checkedRadio ? Number(checkedRadio.value) : defaultSel;
     const staffName = (staff.find(s => s.id === staffId) || {}).full_name || '';
-    const wage = Number(document.getElementById('aWage').value) || 0;
+    const wage = Number((document.getElementById('aWage').value || '').replace(/\./g, '').replace(/,/g, '.')) || 0;
     closeSimpleModal();
     await doAssignKTV(id, staffId, staffName, wage, false);
   }
@@ -1994,7 +2272,6 @@
       }
 
       btn.addEventListener('click', (e) => {
-        // đóng các pop khác
         document.querySelectorAll('.ms-pop').forEach(p => { if (p !== pop) p.style.display = 'none'; });
         e.stopPropagation();
         pop.style.display = pop.style.display === 'none' ? 'block' : 'none';
@@ -2014,89 +2291,132 @@
       }
     }
 
-    // Multi-select thanh toán
     initMultiSelect({
       btnId: 'psBtn', popId: 'psPop', applyId: 'psApply', clearId: 'psClear',
       filterKey: 'payment_status',
       labels: { unpaid: 'Chưa trả', partial: 'Một phần', paid: 'Đã trả', customer_owes: 'KH nợ', staff_owes: 'KTV giữ', pending_admin_confirm: 'Chờ xác nhận' }
     });
 
-    // Multi-select trạng thái — mặc định tick 4 trạng thái đang hoạt động, ẩn đã huỷ
     initMultiSelect({
       btnId: 'stBtn', popId: 'stPop', applyId: 'stApply', clearId: 'stClear',
       filterKey: 'status',
-      labels: { pending: 'Đang chờ', confirmed: 'Lên đơn', in_progress: 'Đang xử lý', done: 'Đã xong', cancelled: 'Đã huỷ' },
+      labels: { pending: 'Chờ xác nhận', confirmed: 'Đang xử lý', in_progress: 'Đang giao', done: 'Hoàn thành', cancelled: 'Đã huỷ' },
       defaults: ['pending', 'confirmed', 'in_progress', 'done']
     });
 
-    // Multi-select loại đơn
     initMultiSelect({
       btnId: 'tplBtn', popId: 'tplPop', applyId: 'tplApply', clearId: 'tplClear',
       filterKey: 'template_id',
-      labels: null  // dùng state.templates để tra tên
+      labels: null
     });
 
-    // Filters
-    document.querySelectorAll('[data-filter]').forEach(el => {
-      el.addEventListener('change', () => {
-        state.filters[el.dataset.filter] = el.value;
+    // ---- Filter bar: search input ---
+    const $fbSearch = $('fbSearch');
+    let searchTimer;
+    $fbSearch.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        state.filters.q = $fbSearch.value.trim();
         state.page = 1;
         loadList();
-      });
-      if (el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'search')) {
-        let t;
-        el.addEventListener('input', () => {
-          clearTimeout(t);
-          t = setTimeout(() => {
-            state.filters[el.dataset.filter] = el.value;
-            state.page = 1;
-            loadList();
-          }, 300);
-        });
-      }
+      }, 350);
     });
 
-    // Date range popover
-    const $dBtn  = $('dateRangeBtn');
-    const $dPop  = $('dateRangePop');
-    const $dLbl  = $('dateRangeLabel');
-    const $dFrom = document.querySelector('[data-filter=date_from]');
-    const $dTo   = document.querySelector('[data-filter=date_to]');
+    const $fbDeviceQ = $('fbDeviceQ');
+    let deviceTimer;
+    $fbDeviceQ.addEventListener('input', () => {
+      clearTimeout(deviceTimer);
+      deviceTimer = setTimeout(() => {
+        state.filters.device_q = $fbDeviceQ.value.trim();
+        state.page = 1;
+        loadList();
+      }, 350);
+    });
+
+    // ---- Filter bar: date range ---
+    const $fbDateBtn  = $('fbDateBtn');
+    const $fbDatePop  = $('fbDatePop');
+    const $fbDateLbl  = $('fbDateLabel');
+    const $fbDateFrom = $('fbDateFrom');
+    const $fbDateTo   = $('fbDateTo');
+
     function fmtDayVi(s) {
       if (!s) return '';
       const [y, m, d] = s.split('-');
       return `${d}/${m}/${y}`;
     }
     function refreshDateLabel() {
-      const f = $dFrom.value, t = $dTo.value;
-      if (!f && !t) { $dLbl.textContent = 'Chọn khoảng ngày'; $dBtn.classList.remove('active'); return; }
-      $dBtn.classList.add('active');
-      if (f && t) $dLbl.textContent = `${fmtDayVi(f)} – ${fmtDayVi(t)}`;
-      else if (f)  $dLbl.textContent = `Từ ${fmtDayVi(f)}`;
-      else         $dLbl.textContent = `Đến ${fmtDayVi(t)}`;
+      const f = $fbDateFrom.value, t = $fbDateTo.value;
+      if (!f && !t) { $fbDateLbl.textContent = 'Chọn khoảng ngày'; $fbDateBtn.classList.remove('active'); return; }
+      $fbDateBtn.classList.add('active');
+      if (f && t)  $fbDateLbl.textContent = `${fmtDayVi(f)} – ${fmtDayVi(t)}`;
+      else if (f)  $fbDateLbl.textContent = `Từ ${fmtDayVi(f)}`;
+      else         $fbDateLbl.textContent = `Đến ${fmtDayVi(t)}`;
     }
-    $dBtn.addEventListener('click', (e) => {
+    $fbDateBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      $dPop.style.display = $dPop.style.display === 'none' ? 'block' : 'none';
+      $fbDatePop.style.display = $fbDatePop.style.display === 'none' ? 'block' : 'none';
     });
     document.addEventListener('click', (e) => {
-      if (!$dPop.contains(e.target) && e.target !== $dBtn) $dPop.style.display = 'none';
+      if (!$fbDatePop.contains(e.target) && e.target !== $fbDateBtn) $fbDatePop.style.display = 'none';
     });
-    $('dateRangeClose').addEventListener('click', () => { $dPop.style.display = 'none'; });
-    $('dateRangeClear').addEventListener('click', () => {
-      $dFrom.value = ''; $dTo.value = '';
+    $('fbDateClose').addEventListener('click', () => { $fbDatePop.style.display = 'none'; });
+    $('fbDateClear').addEventListener('click', () => {
+      $fbDateFrom.value = ''; $fbDateTo.value = '';
       state.filters.date_from = ''; state.filters.date_to = '';
       refreshDateLabel();
+      $fbDatePop.style.display = 'none';
       state.page = 1; loadList();
     });
-    [$dFrom, $dTo].forEach(el => {
-      el.addEventListener('change', refreshDateLabel);
-    });
+    [$fbDateFrom, $fbDateTo].forEach(el => el.addEventListener('change', refreshDateLabel));
     refreshDateLabel();
 
-    $('prevPage').addEventListener('click', () => { if (state.page > 1) { state.page--; loadList(); } });
-    $('nextPage').addEventListener('click', () => {
-      if (state.page * state.limit < state.total) { state.page++; loadList(); }
+    // ---- Bộ lọc & Đặt lại ---
+    $('btnApplyFilter').addEventListener('click', () => {
+      state.filters.date_from = $fbDateFrom.value;
+      state.filters.date_to   = $fbDateTo.value;
+      $fbDatePop.style.display = 'none';
+      state.page = 1; loadList();
+    });
+    $('btnResetFilter').addEventListener('click', () => {
+      $fbSearch.value = ''; $fbDateFrom.value = ''; $fbDateTo.value = '';
+      $fbDeviceQ.value = '';
+      state.filters = { bucket: 'all' };
+      // reset multi-selects
+      ['psPop','stPop','tplPop'].forEach(id => {
+        document.getElementById(id).querySelectorAll('input[type=checkbox]').forEach(c => c.checked = false);
+      });
+      ['psBtn','stBtn','tplBtn'].forEach(id => { document.getElementById(id).textContent = 'Tất cả'; });
+      refreshDateLabel();
+      state.page = 1; loadList(); loadStats();
+    });
+
+    // ---- Stats cards: click để lọc theo status ---
+    document.getElementById('statsRow').querySelectorAll('.stat-card').forEach(card => {
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.stat-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        const s = card.dataset.stat;
+        // reset status multi-select
+        const stPop = $('stPop');
+        stPop.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = false);
+        if (s !== 'all') {
+          const cb = stPop.querySelector(`input[value="${s}"]`);
+          if (cb) cb.checked = true;
+          $('stBtn').textContent = card.querySelector('.stat-label').textContent;
+          state.filters.status = s;
+        } else {
+          $('stBtn').textContent = 'Tất cả';
+          state.filters.status = '';
+        }
+        state.page = 1; loadList();
+      });
+    });
+
+    // ---- Limit select ---
+    $('limitSel').addEventListener('change', () => {
+      state.limit = Number($('limitSel').value) || 10;
+      state.page = 1; loadList();
     });
 
     $('modalClose').addEventListener('click', closeDetail);
@@ -2104,7 +2424,7 @@
       if (e.target.id === 'modal') closeDetail();
     });
 
-    // ---- Xuất bảng kê: lấy thẳng filter hiện tại --------------------
+    // ---- Xuất bảng kê ---
     $('btnOpenStatement').onclick = () => {
       const f = state.filters;
       const qs = new URLSearchParams();
@@ -2117,12 +2437,10 @@
       if (f.payment_status) qs.set('payment_status', f.payment_status);
       window.open('/admin/order-statement.html?' + qs.toString(), '_blank');
     };
-    // ------------------------------------------------------------------
 
-    await loadList();
+    await Promise.all([loadList(), loadStats()]);
 
-    // ---- BULK SELECT init -----------------------------------------
-    // cbAll: chọn/bỏ toàn trang
+    // ---- BULK SELECT ---
     document.addEventListener('change', (e) => {
       if (e.target.id === 'cbAll') {
         const checked = e.target.checked;
@@ -2144,6 +2462,5 @@
     });
 
     $('btnCreatePR').addEventListener('click', openCreatePRModal);
-    // ------------------------------------------------------------------
   });
 })();

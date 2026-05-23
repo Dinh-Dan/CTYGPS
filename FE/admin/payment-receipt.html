@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="vi">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hóa Đơn Thanh Toán – VinaGPS</title>
+  <link rel="stylesheet" href="/shared/css/style.css" />
+  <style>
+    body { background: #cbd5e1; margin: 0; font-family: system-ui,-apple-system,sans-serif; color: #1e293b }
+    .receipt-page { max-width: 640px; margin: 30px auto; padding: 0 16px 60px }
+    .receipt-actions {
+      display: flex; gap: 8px; margin-bottom: 14px; align-items: center;
+      background: #fff; padding: 12px 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.05)
+    }
+    .receipt-actions .spacer { flex: 1 }
+    .receipt-paper {
+      background: #fff; padding: 40px 44px; box-shadow: 0 10px 25px rgba(0,0,0,.1);
+      border-radius: 2px
+    }
+    .rp-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      border-bottom: 2px solid #0f172a; padding-bottom: 14px; margin-bottom: 24px
+    }
+    .rp-brand { display: flex; align-items: center; gap: 12px }
+    .rp-brand .logo {
+      width: 48px; height: 48px; border-radius: 4px; background: #1e293b; color: #fff;
+      display: grid; place-items: center; font-weight: 800; font-size: 20px; letter-spacing: 1px
+    }
+    .rp-brand .brand-name { font-size: 14px; font-weight: 700; color: #0f172a; text-transform: uppercase }
+    .rp-brand .brand-sub { font-size: 11px; color: #475569; margin-top: 2px; line-height: 1.4 }
+    .rp-meta { text-align: right; font-size: 12px; color: #334155 }
+    .rp-meta .code { font-size: 18px; font-weight: 800; color: #0f172a }
+    .doc-title { text-align: center; margin: 20px 0 20px }
+    .doc-title h1 { font-size: 22px; font-weight: 800; color: #0f172a; text-transform: uppercase; margin: 0; letter-spacing: 1px }
+    .rp-section { margin-bottom: 20px }
+    .rp-section h3 {
+      font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase;
+      border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 10px; letter-spacing: .5px
+    }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; font-size: 13px; line-height: 1.5 }
+    .info-grid b { color: #0f172a; font-weight: 600; display: inline-block; min-width: 80px }
+    .amount-box {
+      background: #f0fdf4; border: 2px solid #166534; border-radius: 8px;
+      padding: 20px 24px; text-align: center; margin: 20px 0
+    }
+    .amount-box .label { font-size: 13px; color: #475569; margin-bottom: 6px }
+    .amount-box .amount { font-size: 36px; font-weight: 800; color: #166534; font-variant-numeric: tabular-nums }
+    .amount-box .method { font-size: 13px; color: #475569; margin-top: 6px }
+    .summary-rows { font-size: 14px }
+    .summary-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #f1f5f9 }
+    .summary-row:last-child { border-bottom: none }
+    .summary-row span:last-child { font-weight: 600; font-variant-numeric: tabular-nums }
+    .summary-row.remain span:last-child { color: #dc2626 }
+    .summary-row.total-row { font-size: 16px; font-weight: 700; border-top: 1px solid #cbd5e1; padding-top: 10px }
+    .bank-section { border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px 16px; font-size: 13px }
+    .bank-row { display: flex; gap: 8px; margin-bottom: 4px }
+    .bank-row span:first-child { color: #475569; width: 100px }
+    .bank-row b { color: #0f172a }
+    .qr-inline { text-align: center; margin-top: 10px }
+    .qr-inline img { width: 120px; height: 120px; object-fit: contain; border: 1px solid #e2e8f0; padding: 4px }
+    .qr-inline .qr-label { font-size: 11px; color: #64748b; margin-top: 4px }
+    .signatures { display: flex; justify-content: space-between; margin-top: 36px; padding: 0 20px }
+    .sig-box { text-align: center; width: 160px }
+    .sig-box h4 { margin: 0 0 4px; font-size: 13px; color: #0f172a }
+    .sig-box p { margin: 0; font-size: 11px; color: #64748b; font-style: italic }
+    .sig-space { height: 70px }
+    .ref-link { color: #2563eb; text-decoration: none; font-weight: 600 }
+    .ref-link:hover { text-decoration: underline }
+    .empty { color: #64748b; font-style: italic; padding: 20px 0; text-align: center }
+    .copied { background: #dcfce7; color: #166534; padding: 4px 10px; border-radius: 6px; font-size: 12px }
+    @media print {
+      body { background: #fff; margin: 0; padding: 0 }
+      .receipt-page { max-width: none; margin: 0; padding: 0 }
+      .receipt-actions { display: none }
+      .receipt-paper { box-shadow: none; padding: 20px; border-radius: 0 }
+      @page { size: A5; margin: 10mm }
+    }
+    @media (max-width:680px) {
+      .receipt-paper { padding: 20px }
+      .info-grid { grid-template-columns: 1fr }
+      .signatures { flex-direction: column; gap: 30px; align-items: center }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="receipt-page">
+    <div class="receipt-actions">
+      <a class="btn ghost" id="btnBack" href="#">← Về Phiếu Yêu Cầu</a>
+      <button class="btn ghost" id="btnCopy">📋 Copy link</button>
+      <span id="copyOk" class="copied" style="display:none">Đã copy</span>
+      <div class="spacer"></div>
+      <button class="btn" onclick="window.print()">🖨️ In Hóa Đơn</button>
+    </div>
+    <div class="receipt-paper" id="receiptPaper">
+      <div class="empty">Đang tải...</div>
+    </div>
+  </div>
+
+  <script src="/shared/js/ui.js"></script>
+  <script src="/shared/js/api.js"></script>
+  <script src="/shared/js/auth.js"></script>
+  <script>
+  (function () {
+    const $ = (id) => document.getElementById(id);
+    const fmt = new Intl.NumberFormat('vi-VN');
+    const fmtVnd = (n) => fmt.format(Number(n) || 0) + 'đ';
+    const escape = (s) => String(s == null ? '' : s)
+      .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+    function fmtDate(d) {
+      if (!d) return '—';
+      const dt = new Date(d);
+      if (isNaN(dt.getTime())) return String(d);
+      const dd = String(dt.getDate()).padStart(2, '0');
+      const mm = String(dt.getMonth() + 1).padStart(2, '0');
+      return `${dd}/${mm}/${dt.getFullYear()}`;
+    }
+    function fmtDateTime(d) {
+      if (!d) return '—';
+      const dt = new Date(d);
+      if (isNaN(dt.getTime())) return String(d);
+      const dd = String(dt.getDate()).padStart(2, '0');
+      const mm = String(dt.getMonth() + 1).padStart(2, '0');
+      const hh = String(dt.getHours()).padStart(2, '0');
+      const mn = String(dt.getMinutes()).padStart(2, '0');
+      return `${dd}/${mm}/${dt.getFullYear()} ${hh}:${mn}`;
+    }
+
+    const METHOD_LABEL = { cash: 'Tiền mặt', transfer: 'Chuyển khoản', mixed: 'Hỗn hợp' };
+
+    async function load() {
+      const p = new URLSearchParams(location.search);
+      const id = Number(p.get('id'));
+      if (!id) {
+        $('receiptPaper').innerHTML = '<div class="empty">Thiếu tham số ?id=...</div>';
+        return;
+      }
+
+      const data = await api.get(`/admin/payment-requests/receipts/${id}`).catch(() => null);
+      if (!data) {
+        $('receiptPaper').innerHTML = '<div class="empty">Không tải được dữ liệu hóa đơn</div>';
+        return;
+      }
+
+      const r = data.receipt;
+      const req = data.request;
+      const cust = data.customer;
+      const qr = data.qr || {};
+      const bank = data.bank || {};
+
+      // Back button
+      $('btnBack').href = `/admin/payment-request-detail.html?id=${req.id}`;
+
+      const bankHtml = (bank.account_no || qr.url) ? `
+        <div class="bank-section">
+          ${bank.bank_name ? `<div class="bank-row"><span>Ngân hàng:</span><b>${escape(bank.bank_name)}</b></div>` : ''}
+          ${bank.account_no ? `<div class="bank-row"><span>Số tài khoản:</span><b>${escape(bank.account_no)}</b></div>` : ''}
+          ${bank.account_name ? `<div class="bank-row"><span>Chủ tài khoản:</span><b>${escape(bank.account_name)}</b></div>` : ''}
+          ${qr.url ? `<div class="qr-inline"><img src="${escape(qr.url)}" alt="QR"><div class="qr-label">${escape(qr.label)}</div></div>` : ''}
+        </div>` : '';
+
+      $('receiptPaper').innerHTML = `
+        <div class="rp-header">
+          <div class="rp-brand">
+            <div class="logo">VG</div>
+            <div>
+              <div class="brand-name">CÔNG TY TNHH VIỄN THÔNG VINAGPS</div>
+              <div class="brand-sub">190 TTH 21, P. Tân Thới Hiệp, Q.12, TP.HCM<br>ĐT: (028) 6682 5658 — DĐ: 0949.155.160</div>
+            </div>
+          </div>
+          <div class="rp-meta">
+            <div class="code">${escape(r.code)}</div>
+            <div style="margin-top:4px">Ngày: <b>${fmtDateTime(r.created_at)}</b></div>
+            ${r.created_by_name ? `<div style="font-size:11px;color:#64748b;margin-top:2px">Người thu: ${escape(r.created_by_name)}</div>` : ''}
+          </div>
+        </div>
+
+        <div class="doc-title">
+          <h1>HÓA ĐƠN THANH TOÁN</h1>
+        </div>
+
+        <div class="rp-section">
+          <h3>Thông tin khách hàng</h3>
+          <div class="info-grid">
+            <div><b>Họ tên:</b> ${escape(cust.company_name || cust.full_name || '—')}</div>
+            <div><b>Mã KH:</b> ${escape(cust.code || '—')}</div>
+            <div><b>Điện thoại:</b> ${escape(cust.phone || '—')}</div>
+            <div><b>Địa chỉ:</b> ${escape(cust.address || '—')}</div>
+          </div>
+        </div>
+
+        <div class="rp-section">
+          <h3>Phiếu yêu cầu gốc</h3>
+          <div style="font-size:13px">
+            <a class="ref-link" href="/admin/payment-request-detail.html?id=${req.id}" target="_blank">${escape(req.code)}</a>
+            &nbsp;·&nbsp; Tổng phiếu: <b>${fmtVnd(req.total_amount)}</b>
+          </div>
+        </div>
+
+        <div class="amount-box">
+          <div class="label">SỐ TIỀN THU LẦN NÀY</div>
+          <div class="amount">${fmtVnd(r.amount)}</div>
+          <div class="method">${escape(METHOD_LABEL[r.pay_method] || r.pay_method)}${r.note ? ` · ${escape(r.note)}` : ''}</div>
+        </div>
+
+        <div class="rp-section">
+          <h3>Đối chiếu thanh toán</h3>
+          <div class="summary-rows">
+            <div class="summary-row total-row"><span>Tổng phải thu:</span><span>${fmtVnd(req.total_amount)}</span></div>
+            <div class="summary-row" style="color:#166534"><span>Đã thu (bao gồm lần này):</span><span>${fmtVnd(req.paid_amount)}</span></div>
+            <div class="summary-row remain"><span>Còn lại sau lần này:</span><span>${fmtVnd(req.remaining)}</span></div>
+          </div>
+          ${req.remaining <= 0 ? `<div style="text-align:center;margin-top:12px;font-size:14px;color:#166534;font-weight:600">✅ Đã thanh toán đầy đủ</div>` : ''}
+        </div>
+
+        ${bankHtml ? `<div class="rp-section"><h3>Thông tin chuyển khoản</h3>${bankHtml}</div>` : ''}
+
+        <div class="signatures">
+          <div class="sig-box">
+            <h4>Khách hàng</h4>
+            <p>(Ký và ghi rõ họ tên)</p>
+            <div class="sig-space"></div>
+          </div>
+          <div class="sig-box">
+            <h4>Người thu tiền</h4>
+            <p>(Ký và ghi rõ họ tên)</p>
+            <div class="sig-space"></div>
+          </div>
+        </div>
+
+        <div style="margin-top:20px;text-align:center;font-size:11px;color:#94a3b8">
+          <i>Biên lai được xuất tự động từ hệ thống GPS Việt</i>
+        </div>
+      `;
+    }
+
+    $('btnCopy').onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(location.href);
+        $('copyOk').style.display = '';
+        setTimeout(() => $('copyOk').style.display = 'none', 1500);
+      } catch {
+        ui.toast('Không copy được link', 'error');
+      }
+    };
+
+    load();
+  })();
+  </script>
+</body>
+
+</html>

@@ -16,7 +16,7 @@
     { type: 'sep',  label: 'Liên hệ' },
     { type: 'item', href: '/kithuat/chat.html',       icon: '💬', label: 'Chat khách',     key: 'chat' },
     { type: 'sep',  label: 'Cá nhân' },
-    { type: 'item', href: '/kithuat/advances.html',   icon: '💰', label: 'Ứng lương',       key: 'advances' },
+    { type: 'item', href: '/kithuat/salary.html',      icon: '💵', label: 'Lương thưởng',    key: 'salary' },
     { type: 'item', href: '/kithuat/profile.html',    icon: '👤', label: 'Hồ sơ',          key: 'profile' },
   ];
 
@@ -49,7 +49,7 @@
   function renderTopnavUser(user) {
     const initial = (user.full_name || user.username || '?').trim().charAt(0).toUpperCase();
     const avatar = user.avatar_url
-      ? `<img src="${user.avatar_url}" class="avatar" style="object-fit:cover">`
+      ? `<img src="${user.avatar_url}" class="avatar" style="object-fit:cover" onerror="this.onerror=null;this.insertAdjacentHTML('afterend','<div class=&quot;avatar&quot;>${initial}</div>');this.remove()">`
       : `<div class="avatar">${initial}</div>`;
     const roleLabel = 'Kỹ thuật' + (user.area ? ' · ' + user.area : '');
     return `

@@ -21,6 +21,7 @@
   };
 
   let debounceTimer = null;
+  let lastItems = [];
 
   function buildQuery() {
     const p = new URLSearchParams();
@@ -36,6 +37,7 @@
   }
 
   function renderTotals(t) {
+    $('badgeAssigned').textContent = Number(t.order_count) || 0;
     $('kOrders').textContent  = fmt(t.order_count);
     $('kTotal').textContent   = fmt(t.total_amount);
     $('kPaid').textContent    = fmt(t.total_paid);
@@ -46,13 +48,34 @@
     $('kCommission').textContent = fmt(t.total_commission);
   }
 
+  function commPill(o) {
+    const amt = Number(o.tech_commission_amount) || 0;
+    if (!amt && !o.tech_commission_requested_at) return '<span style="color:#94a3b8">—</span>';
+    if (o.payslip_id) return `<span class="pill comm-payslip">Đã tính lương: ${fmt(amt)}</span>`;
+    if (o.tech_commission_approved_at) return `<span class="pill comm-approved">Đã duyệt: ${fmt(amt)}</span>`;
+    if (o.tech_commission_requested_at) return `<span class="pill comm-pending">Chờ duyệt: ${fmt(amt)}</span>`;
+    return '<span style="color:#94a3b8">—</span>';
+  }
+
+  function filterByComm(items) {
+    const v = $('fComm').value;
+    if (!v) return items;
+    return items.filter(o => {
+      if (v === 'approved') return !!o.tech_commission_approved_at;
+      if (v === 'requested') return !!o.tech_commission_requested_at && !o.tech_commission_approved_at;
+      if (v === 'none') return !o.tech_commission_requested_at;
+      return true;
+    });
+  }
+
   function renderRows(items) {
+    const filtered = filterByComm(items);
     const tb = $('tbody');
-    if (!items.length) {
+    if (!filtered.length) {
       tb.innerHTML = '<tr><td colspan="11" class="empty">Không có đơn nào khớp lọc</td></tr>';
       return;
     }
-    tb.innerHTML = items.map(o => {
+    tb.innerHTML = filtered.map(o => {
       const date = fmtDate(o.completed_at || o.due_at || o.created_at);
       const cust = [o.customer_name, o.customer_phone].filter(Boolean).join(' · ');
       const stCls = o.status || '';
@@ -68,7 +91,34 @@
         <td class="num" style="color:${Number(o.unremitted_amount) > 0 ? '#b45309' : '#94a3b8'}">${fmt(o.unremitted_amount)}</td>
         <td class="num">${fmt(o.remitted_amount)}</td>
         <td class="num" style="color:${o.status === 'done' ? '#16a34a' : '#94a3b8'}">${fmt(o.wage_amount)}</td>
-        <td class="num" style="color:${Number(o.commission_amount) > 0 ? '#7c3aed' : '#94a3b8'}">${fmt(o.commission_amount)}</td>
+        <td class="num">${commPill(o)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function commPillStaff(o) {
+    const amt = Number(o.staff_commission_amount) || 0;
+    if (o.comm_payslip_id) return `<span class="pill comm-payslip">Đã tính lương: ${fmt(amt)}</span>`;
+    if (o.comm_approved_at) return `<span class="pill comm-approved">Đã duyệt: ${fmt(amt)}</span>`;
+    if (o.comm_requested_at) return `<span class="pill comm-pending">Chờ duyệt: ${fmt(amt)}</span>`;
+    return `<span style="color:#94a3b8">${fmt(amt)}</span>`;
+  }
+
+  function renderCommItems(items) {
+    $('badgeOther').textContent  = items.length;
+    $('kCommOrders').textContent = fmt(items.length);
+    $('kCommTotal').textContent  = fmt(items.reduce((s, o) => s + (Number(o.staff_commission_amount) || 0), 0));
+    $('tbodyComm').innerHTML = items.map(o => {
+      const date = fmtDate(o.completed_at || o.due_at || o.created_at);
+      const cust = [o.customer_name, o.customer_phone].filter(Boolean).join(' · ');
+      return `<tr data-id="${o.id}">
+        <td><b>${esc(o.code)}</b></td>
+        <td>${esc(date)}</td>
+        <td>${esc(cust)}</td>
+        <td><span class="pill ${o.status || ''}">${esc(STATUS_LABEL[o.status] || o.status || '—')}</span></td>
+        <td>${esc(o.assigned_name || '—')}</td>
+        <td class="num">${fmt(o.total_amount)}</td>
+        <td class="num">${commPillStaff(o)}</td>
       </tr>`;
     }).join('');
   }
@@ -78,8 +128,14 @@
     $('tbody').innerHTML = '<tr><td colspan="10" class="empty">Đang tải…</td></tr>';
     const r = await api.get('/kithuat/summary' + (qs ? '?' + qs : ''));
     if (!r) return;
+    lastItems = r.items || [];
     renderTotals(r.totals || {});
-    renderRows(r.items || []);
+    renderRows(lastItems);
+    renderCommItems(r.commission_items || []);
+  }
+
+  function applyCommFilter() {
+    renderRows(lastItems);
   }
 
   function bindFilters() {
@@ -90,25 +146,43 @@
     ['fStatus', 'fFrom', 'fTo'].forEach(id => {
       $(id).addEventListener('change', load);
     });
+    $('fComm').addEventListener('change', applyCommFilter);
     $('btnReset').addEventListener('click', () => {
       $('fQ').value = '';
       $('fStatus').value = '';
       $('fFrom').value = '';
       $('fTo').value = '';
+      $('fComm').value = '';
       load();
     });
 
-    // Click row -> mo tab cong viec voi tim kiem ma don
-    $('tbody').addEventListener('click', (e) => {
+    function openOrder(e) {
       const tr = e.target.closest('tr[data-id]');
       if (!tr) return;
       const code = tr.querySelector('td b')?.textContent || '';
       if (code) window.location.href = '/kithuat/tasks.html?q=' + encodeURIComponent(code);
+    }
+    $('tbody').addEventListener('click', openOrder);
+    $('tbodyComm').addEventListener('click', openOrder);
+  }
+
+  function bindTabs() {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        $('panel' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+        // an filter hoa hong khi sang tab 2
+        $('wrapFComm').style.display = tab === 'assigned' ? '' : 'none';
+      });
     });
   }
 
   function init() {
     techShell.init('summary');
+    bindTabs();
     bindFilters();
     load();
   }

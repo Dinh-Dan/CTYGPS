@@ -1,4 +1,4 @@
-// Trang Sản phẩm — CRUD products + categories + image upload (auto thumbnail)
+// Trang Sản phẩm — CRUD products + categories + image upload
 
 (function () {
   const $   = (id) => document.getElementById(id);
@@ -17,7 +17,7 @@
       .replaceAll('>','&gt;').replaceAll('"','&quot;');
   }
 
-  // ---- List ---------------------------------------------------
+  // ---- Danh sách sản phẩm -------------------------------------
   async function load() {
     const p = new URLSearchParams();
     if (state.q)           p.set('q', state.q);
@@ -43,67 +43,167 @@
     return `<div class="product-thumb-fallback">${i}</div>`;
   }
 
+  function priceCell(val) {
+    if (val == null || val === '' || val === 0) return '<span class="text-muted">—</span>';
+    return fmt.format(val);
+  }
+
   function renderRows(items) {
     const tb = $('tbody');
     if (!items.length) {
-      tb.innerHTML = `<tr><td colspan="7" class="text-center text-muted" style="padding:24px">Chưa có sản phẩm. Bấm <b>+ Thêm sản phẩm</b> để bắt đầu.</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="8" class="text-center text-muted" style="padding:32px">Chưa có sản phẩm. Bấm <b>+ Thêm sản phẩm</b> để bắt đầu.</td></tr>`;
       return;
     }
     tb.innerHTML = items.map(p => {
       const desc = (p.description || '').trim();
-      const shortDesc = desc.length > 80 ? desc.slice(0, 80) + '…' : desc;
+      const shortDesc = desc.length > 90 ? desc.slice(0, 90) + '…' : desc;
+      const nameCell = `
+        <div style="font-weight:600;font-size:14px;color:#1e293b">${escape(p.name)}</div>
+        <div style="font-size:11.5px;color:#94a3b8;margin-top:1px">${escape(p.code)}</div>
+        ${shortDesc ? `<div style="font-size:12px;color:#64748b;margin-top:2px" title="${escape(desc)}">${escape(shortDesc)}</div>` : ''}`;
       return `
       <tr>
         <td data-label="Ảnh">${thumbCell(p)}</td>
-        <td data-label="Tên sản phẩm">${escape(p.name)}</td>
-        <td data-label="Mô tả" class="text-muted" style="font-size:13px" title="${escape(desc)}">${shortDesc ? escape(shortDesc) : '—'}</td>
+        <td data-label="Sản phẩm">${nameCell}</td>
         <td data-label="Danh mục">${p.category_name ? `<span class="pill gray">${escape(p.category_name)}</span>` : '<span class="text-muted">—</span>'}</td>
         <td data-label="Bảo hành">${p.warranty_months ? p.warranty_months + ' tháng' : '<span class="text-muted">—</span>'}</td>
-        <td data-label="Giá gốc" class="text-muted">${fmt.format(p.cost_price || 0)}</td>
+        <td data-label="Giá bán lẻ">${priceCell(p.price)}</td>
+        <td data-label="Đại lý">${priceCell(p.price_dealer)}</td>
+        <td data-label="Bán sỉ">${priceCell(p.price_wholesale)}</td>
         <td data-label="Hành động">
-          <a class="btn sm" href="/admin/product-edit.html?id=${p.id}" title="Mở trang sửa sản phẩm">📝 Sửa sản phẩm</a>
+          <a class="btn sm" href="/admin/product-edit.html?id=${p.id}">📝 Sửa</a>
           <button class="btn ghost sm" data-act="del" data-id="${p.id}" style="color:#dc2626">Xoá</button>
         </td>
       </tr>`;
     }).join('');
   }
 
-  // ---- Categories ---------------------------------------------
+  // ---- Categories (dropdown) ----------------------------------
   async function loadCategories() {
     const r = await api.get('/admin/categories', { silent: true }).catch(() => null);
     if (!r) return;
     state.categories = r.items;
-    // Filter top
-    $('f_category').innerHTML = `<option value="">Tất cả</option>` +
+    // Filter trên toolbar
+    $('f_category').innerHTML = `<option value="">Tất cả danh mục</option>` +
       r.items.map(c => `<option value="${c.id}">${escape(c.name)}</option>`).join('');
-    // Modal select
+    // Dropdown trong modal thêm SP
+    const cur = $('f_category_id').value;
     $('f_category_id').innerHTML = `<option value="">— Chưa phân loại —</option>` +
       r.items.map(c => `<option value="${c.id}">${escape(c.name)}</option>`).join('');
+    if (cur) $('f_category_id').value = cur;
   }
 
-  function openCatModal() {
-    $('cat_name').value = '';
-    $('catModal').classList.add('open');
-    setTimeout(() => $('cat_name').focus(), 50);
-  }
-  function closeCatModal() { $('catModal').classList.remove('open'); }
+  // ---- Modal quản lý danh mục (CRUD đầy đủ) -------------------
+  let catManageOpen = false;
 
-  async function handleCatSubmit(e) {
+  async function openCatManage() {
+    catManageOpen = true;
+    $('catManageModal').classList.add('open');
+    await renderCatList();
+    setTimeout(() => $('cat_name_new').focus(), 60);
+  }
+
+  function closeCatManage() {
+    catManageOpen = false;
+    $('catManageModal').classList.remove('open');
+    loadCategories();
+  }
+
+  async function renderCatList() {
+    const r = await api.get('/admin/categories', { silent: true }).catch(() => null);
+    const list = $('catList');
+    if (!r || !r.items.length) {
+      list.innerHTML = `<div class="cat-empty">Chưa có danh mục nào. Thêm danh mục đầu tiên bên trên.</div>`;
+      return;
+    }
+    list.innerHTML = r.items.map(c => catItemHtml(c)).join('');
+  }
+
+  function catItemHtml(c) {
+    const count = c.product_count || 0;
+    return `
+      <div class="cat-item" data-cat-id="${c.id}">
+        <span class="cat-item-name">${escape(c.name)}</span>
+        <span class="cat-item-count">${count} sản phẩm</span>
+        <div class="cat-item-actions">
+          <button class="btn ghost sm" data-cat-act="rename" data-id="${c.id}" data-name="${escape(c.name)}">Sửa</button>
+          <button class="btn ghost sm" data-cat-act="delete" data-id="${c.id}" style="color:#dc2626" ${count > 0 ? 'disabled title="Có sản phẩm đang dùng danh mục này"' : ''}>Xoá</button>
+        </div>
+      </div>`;
+  }
+
+  function startRenameInline(id, currentName) {
+    const row = $('catList').querySelector(`[data-cat-id="${id}"]`);
+    if (!row) return;
+    row.classList.add('editing');
+    row.innerHTML = `
+      <input type="text" class="cat-edit-input" value="${escape(currentName)}" style="flex:1">
+      <div class="cat-item-actions">
+        <button class="btn sm" data-cat-act="save-rename" data-id="${id}">Lưu</button>
+        <button class="btn ghost sm" data-cat-act="cancel-rename" data-id="${id}">Hủy</button>
+      </div>`;
+    row.querySelector('.cat-edit-input').focus();
+  }
+
+  async function saveRename(id) {
+    const row = $('catList').querySelector(`[data-cat-id="${id}"]`);
+    if (!row) return;
+    const name = row.querySelector('.cat-edit-input').value.trim();
+    if (!name) return ui.toast('Tên danh mục không được để trống', 'warning');
+
+    const ok = await api.put(`/admin/categories/${id}`, { name }, {
+      successMessage: 'Đã đổi tên danh mục',
+      errorMessages: { 409: 'Tên danh mục đã tồn tại' },
+    }).catch(() => null);
+    if (!ok) return;
+    await renderCatList();
+  }
+
+  async function deleteCat(id) {
+    const yes = await ui.confirm({
+      title: 'Xoá danh mục',
+      message: 'Xoá danh mục này? Hành động không thể hoàn tác.',
+      type: 'warning', okText: 'Xoá',
+    });
+    if (!yes) return;
+    const ok = await api.delete(`/admin/categories/${id}`, {
+      successMessage: 'Đã xoá danh mục',
+      errorMessages: { 409: 'Danh mục đang có sản phẩm, không thể xoá' },
+    }).catch(() => null);
+    if (ok) await renderCatList();
+  }
+
+  async function handleCatAddSubmit(e) {
     e.preventDefault();
-    const name = $('cat_name').value.trim();
-    if (!name) return ui.toast('Thiếu tên danh mục', 'warning');
+    const name = $('cat_name_new').value.trim();
+    if (!name) return ui.toast('Nhập tên danh mục', 'warning');
 
     const r = await api.post('/admin/categories', { name }, {
-      successMessage: 'Đã tạo danh mục',
+      successMessage: 'Đã thêm danh mục',
       errorMessages: { 409: 'Danh mục đã tồn tại' },
     }).catch(() => null);
     if (!r) return;
-    closeCatModal();
+    $('cat_name_new').value = '';
+    await renderCatList();
+    // Chọn luôn danh mục vừa tạo trong modal SP nếu đang mở
     await loadCategories();
-    $('f_category_id').value = r.id;
+    if ($('modal').classList.contains('open')) {
+      $('f_category_id').value = r.id;
+    }
   }
 
-  // ---- Image upload (auto-resize thumbnail) -------------------
+  function handleCatListClick(e) {
+    const btn = e.target.closest('button[data-cat-act]');
+    if (!btn) return;
+    const act = btn.dataset.catAct;
+    const id  = btn.dataset.id;
+    if (act === 'rename')       startRenameInline(id, btn.dataset.name);
+    if (act === 'save-rename')  saveRename(id);
+    if (act === 'cancel-rename') renderCatList();
+    if (act === 'delete')       deleteCat(id);
+  }
+
+  // ---- Upload ảnh ---------------------------------------------
   function fileToDataUrl(file) {
     return new Promise((res, rej) => {
       const r = new FileReader();
@@ -113,7 +213,6 @@
     });
   }
 
-  // Resize anh ve max size (giu ti le) -> dataUrl
   function resizeDataUrl(dataUrl, maxSize, mime = 'image/jpeg', quality = 0.85) {
     return new Promise((res, rej) => {
       const img = new Image();
@@ -123,10 +222,8 @@
         width = Math.round(width * r);
         height = Math.round(height * r);
         const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
         res(canvas.toDataURL(mime, quality));
       };
       img.onerror = () => rej(new Error('Không decode được ảnh'));
@@ -142,16 +239,11 @@
       e.target.value = '';
       return;
     }
-
     try {
-      const orig = await fileToDataUrl(file);
+      const orig      = await fileToDataUrl(file);
+      const fullData  = await resizeDataUrl(orig, 1200, 'image/jpeg', 0.88);
+      const thumbData = await resizeDataUrl(orig, 300,  'image/jpeg', 0.82);
 
-      // Anh chinh: resize ve toi da 1200px (tiet kiem dung luong)
-      const fullData = await resizeDataUrl(orig, 1200, 'image/jpeg', 0.88);
-      // Thumbnail: 300px
-      const thumbData = await resizeDataUrl(orig, 300, 'image/jpeg', 0.82);
-
-      // Upload song song
       const [full, thumb] = await Promise.all([
         api.post('/admin/uploads', { dataUrl: fullData,  folder: 'products' }, { loading: true }),
         api.post('/admin/uploads', { dataUrl: thumbData, folder: 'products' }, { silent: true }),
@@ -159,11 +251,22 @@
 
       $('f_image_url').value     = full.url;
       $('f_thumbnail_url').value = thumb.url;
-      $('f_image_preview').src   = thumb.url;
-      $('f_image_preview').classList.remove('hide');
-      $('f_image_placeholder').classList.add('hide');
-    } catch (err) {
-      // api da hien toast roi
+      setImagePreview(thumb.url);
+    } catch (_) {}
+  }
+
+  function setImagePreview(url) {
+    const zone = $('uploadZone');
+    if (url) {
+      $('f_image_preview').src = url;
+      $('f_image_preview').style.display = '';
+      $('f_image_placeholder').style.display = 'none';
+      zone.classList.add('has-image');
+    } else {
+      $('f_image_preview').src = '';
+      $('f_image_preview').style.display = 'none';
+      $('f_image_placeholder').style.display = '';
+      zone.classList.remove('has-image');
     }
   }
 
@@ -171,82 +274,39 @@
     $('f_image_url').value     = '';
     $('f_thumbnail_url').value = '';
     $('f_image_file').value    = '';
-    $('f_image_preview').src   = '';
-    $('f_image_preview').classList.add('hide');
-    $('f_image_placeholder').classList.remove('hide');
+    setImagePreview('');
   }
 
   function setImage(imageUrl, thumbnailUrl) {
     $('f_image_url').value     = imageUrl || '';
     $('f_thumbnail_url').value = thumbnailUrl || '';
-    const display = thumbnailUrl || imageUrl;
-    if (display) {
-      $('f_image_preview').src = display;
-      $('f_image_preview').classList.remove('hide');
-      $('f_image_placeholder').classList.add('hide');
-    } else {
-      clearImage();
-    }
+    setImagePreview(thumbnailUrl || imageUrl || '');
   }
 
-  // ---- Dynamic rows: prices ----------------------------------
-  function priceRowHtml(t) {
-    const label = t ? escape(t.label) : '';
-    const price = t ? (t.price || '') : '';
-    return `
-      <div class="dyn-row">
-        <div class="field dyn-label">
-          <label>Nhãn mức giá</label>
-          <input type="text" class="input dyn-key" value="${label}" placeholder="VD: Bán lẻ">
-        </div>
-        <div class="field dyn-value">
-          <label>Giá (VND)</label>
-          <input type="number" class="input dyn-num" value="${price}" min="0" step="1000" placeholder="0">
-        </div>
-        <button type="button" class="btn-del" title="Xoá">✕</button>
-      </div>`;
-  }
-  function renderPrices(prices) {
-    const wrap = $('prices_rows');
-    const list = (prices && prices.length) ? prices : [{ label: 'Bán lẻ', price: '' }];
-    wrap.innerHTML = list.map(priceRowHtml).join('');
-  }
-  function collectPrices() {
-    const rows = $('prices_rows').querySelectorAll('.dyn-row');
-    const out = [];
-    rows.forEach(r => {
-      const label = r.querySelector('.dyn-key').value.trim();
-      const price = r.querySelector('.dyn-num').value;
-      if (label) out.push({ label, price: Number(price) || 0 });
-    });
-    return out;
-  }
-
-  // ---- Dynamic rows: attributes ------------------------------
+  // ---- Dynamic rows: attributes --------------------------------
   function attrRowHtml(t) {
     const label = t ? escape(t.label) : '';
     const value = t ? escape(t.value || '') : '';
     return `
       <div class="dyn-row">
         <div class="field dyn-label">
-          <label>Nhãn</label>
+          <label style="font-size:12px">Nhãn</label>
           <input type="text" class="input dyn-key" value="${label}" placeholder="VD: Nguồn">
         </div>
         <div class="field dyn-value">
-          <label>Giá trị</label>
+          <label style="font-size:12px">Giá trị</label>
           <input type="text" class="input dyn-val" value="${value}" placeholder="VD: DC 9-36V">
         </div>
         <button type="button" class="btn-del" title="Xoá">✕</button>
       </div>`;
   }
+
   function renderAttrs(attrs) {
     const wrap = $('attrs_rows');
-    if (!attrs || !attrs.length) {
-      wrap.innerHTML = '';
-      return;
-    }
+    if (!attrs || !attrs.length) { wrap.innerHTML = ''; return; }
     wrap.innerHTML = attrs.map(attrRowHtml).join('');
   }
+
   function collectAttrs() {
     const rows = $('attrs_rows').querySelectorAll('.dyn-row');
     const out = [];
@@ -258,7 +318,7 @@
     return out;
   }
 
-  // ---- Modal --------------------------------------------------
+  // ---- Modal thêm sản phẩm ------------------------------------
   function openModal(p) {
     $('modalTitle').textContent = p ? `Sửa sản phẩm ${p.code}` : 'Thêm sản phẩm';
     $('f_id').value          = p ? p.id : '';
@@ -266,45 +326,33 @@
     $('f_name').value        = p ? p.name : '';
     $('f_category_id').value = p && p.category_id ? p.category_id : '';
     $('f_warranty').value    = p ? (p.warranty_months || 0) : 12;
-    $('f_cost_price').value  = p ? (p.cost_price || 0) : '';
+    $('f_cost_price').value  = p ? (p.cost_price || '') : '';
     $('f_description').value = p ? (p.description || '') : '';
-
+    $('f_code').readOnly     = !!p;
     setImage(p ? p.image_url : '', p ? p.thumbnail_url : '');
-    renderPrices(p ? p.prices : null);
     renderAttrs(p ? p.attributes : null);
-
-    // Khi sua, khoa code
-    $('f_code').readOnly = !!p;
-
     $('modal').classList.add('open');
   }
+
   function closeModal() { $('modal').classList.remove('open'); }
 
-  function readForm() {
-    return {
+  async function handleSubmit(e) {
+    e.preventDefault();
+    const data = {
       code:            $('f_code').value.trim(),
       name:            $('f_name').value.trim(),
       category_id:     $('f_category_id').value ? Number($('f_category_id').value) : null,
       image_url:       $('f_image_url').value || null,
       thumbnail_url:   $('f_thumbnail_url').value || null,
       warranty_months: Number($('f_warranty').value) || 0,
-      cost_price:      Number($('f_cost_price').value) || 0,
+      cost_price:      Money.get($('f_cost_price')) || null,
       description:     $('f_description').value.trim() || null,
-      prices:          collectPrices(),
       attributes:      collectAttrs(),
     };
-  }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    const id = $('f_id').value;
-    const data = readForm();
-
-    if (!data.code || !data.name) return ui.toast('Thiếu mã hoặc tên', 'warning');
-    // Gia + thuoc tinh + timeline co the bo sung sau o trang sua chi tiet
+    if (!data.code || !data.name) return ui.toast('Thiếu mã hoặc tên sản phẩm', 'warning');
 
     $('btnSave').disabled = true;
-    // Modal nay gio chi de TAO san pham. Sua chi tiet -> trang product-edit.
     const ok = await api.post('/admin/products', data, {
       successMessage: 'Đã tạo sản phẩm — chuyển sang trang sửa chi tiết',
       errorMessages: { 409: 'Mã thiết bị đã tồn tại' },
@@ -313,22 +361,17 @@
     $('btnSave').disabled = false;
     if (!ok || !ok.id) return;
     closeModal();
-    // Mo trang sua de admin tiep tuc them timeline / thong so 2 nhom
     setTimeout(() => { location.href = '/admin/product-edit.html?id=' + ok.id; }, 300);
   }
 
-  // ---- Click handlers ----------------------------------------
-  // List chi co 2 hanh dong: link "Sua san pham" (a tag, browser tu xu ly)
-  // va nut "Xoa" (data-act="del").
+  // ---- Xoá sản phẩm -------------------------------------------
   async function handleTableClick(e) {
     const btn = e.target.closest('button[data-act="del"]');
     if (!btn) return;
-
     const yes = await ui.confirm({
       title: 'Xác nhận xoá',
-      message: 'Ẩn sản phẩm khỏi danh sách? Lịch sử đơn/kho vẫn được giữ nguyên. Nếu còn cá thể tồn, bạn sẽ phải dọn dẹp ở trang Kho sau.',
-      type: 'warning',
-      okText: 'Xoá',
+      message: 'Ẩn sản phẩm khỏi danh sách? Lịch sử đơn/kho vẫn được giữ nguyên.',
+      type: 'warning', okText: 'Xoá',
     });
     if (!yes) return;
     const ok = await api.delete('/admin/products/' + btn.dataset.id, {
@@ -340,61 +383,50 @@
     }
   }
 
-  function handleDynRowsClick(e) {
-    const btn = e.target.closest('.btn-del');
-    if (!btn) return;
-    btn.closest('.dyn-row').remove();
-  }
-
-  // ---- Init --------------------------------------------------
+  // ---- Init ---------------------------------------------------
   function init() {
     adminShell.init('products');
 
+    // Tìm kiếm
     let searchTimer;
     $('search').addEventListener('input', (e) => {
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(() => {
-        state.q = e.target.value.trim();
-        state.page = 1;
-        load();
-      }, 300);
+      searchTimer = setTimeout(() => { state.q = e.target.value.trim(); state.page = 1; load(); }, 300);
     });
-
-    $('f_category').addEventListener('change', (e) => {
-      state.category_id = e.target.value;
-      state.page = 1;
-      load();
-    });
-
+    $('f_category').addEventListener('change', (e) => { state.category_id = e.target.value; state.page = 1; load(); });
     $('prevPage').addEventListener('click', () => { state.page--; load(); });
     $('nextPage').addEventListener('click', () => { state.page++; load(); });
 
+    // Modal sản phẩm
     $('btnAdd').addEventListener('click', () => openModal(null));
     $('modalClose').addEventListener('click', closeModal);
     $('btnCancel').addEventListener('click', closeModal);
     $('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
     $('frm').addEventListener('submit', handleSubmit);
 
-    // Image
+    // Upload ảnh — click trên zone (trừ nút xóa) mở file dialog
     $('f_image_file').addEventListener('change', handleImageChange);
-    $('f_image_clear').addEventListener('click', clearImage);
+    $('f_image_clear').addEventListener('click', (e) => { e.stopPropagation(); clearImage(); });
 
-    // Dynamic rows
-    $('btnAddPrice').addEventListener('click', () => {
-      $('prices_rows').insertAdjacentHTML('beforeend', priceRowHtml());
-    });
+    // Attrs
     $('btnAddAttr').addEventListener('click', () => {
       $('attrs_rows').insertAdjacentHTML('beforeend', attrRowHtml());
     });
-    $('prices_rows').addEventListener('click', handleDynRowsClick);
-    $('attrs_rows').addEventListener('click', handleDynRowsClick);
+    $('attrs_rows').addEventListener('click', (e) => {
+      const btn = e.target.closest('.btn-del');
+      if (btn) btn.closest('.dyn-row').remove();
+    });
 
-    // Category modal
-    $('btnAddCat').addEventListener('click', openCatModal);
-    $('catClose').addEventListener('click', closeCatModal);
-    $('catCancel').addEventListener('click', closeCatModal);
-    $('catModal').addEventListener('click', (e) => { if (e.target.id === 'catModal') closeCatModal(); });
-    $('catForm').addEventListener('submit', handleCatSubmit);
+    // Nút mở quản lý danh mục (từ toolbar và từ trong modal SP)
+    $('btnManageCat').addEventListener('click', openCatManage);
+    $('btnAddCat').addEventListener('click', openCatManage);
+
+    // Modal quản lý danh mục
+    $('catManageClose').addEventListener('click', closeCatManage);
+    $('catManageDone').addEventListener('click', closeCatManage);
+    $('catManageModal').addEventListener('click', (e) => { if (e.target.id === 'catManageModal') closeCatManage(); });
+    $('catAddForm').addEventListener('submit', handleCatAddSubmit);
+    $('catList').addEventListener('click', handleCatListClick);
 
     $('tbody').addEventListener('click', handleTableClick);
 

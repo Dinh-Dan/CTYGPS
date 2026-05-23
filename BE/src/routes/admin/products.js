@@ -1,5 +1,5 @@
 // /api/admin/products — CRUD san pham (master) + bang phu prices + attributes
-// Tat ca route deu yeu cau role admin (da check o admin.js cha)
+// Tat ca route deu yeu cau role admin hoac staff (da check o admin.js cha)
 
 const express = require('express');
 const db = require('../../db');
@@ -7,7 +7,7 @@ const { resolvePriceMap } = require('../../utils/priceResolver');
 const { requireRole } = require('../../middleware/auth');
 
 const router = express.Router();
-const adminOnly = requireRole('admin');
+const adminOnly = requireRole('admin', 'staff');
 
 function httpErr(status, message) {
   const e = new Error(message);
@@ -110,7 +110,17 @@ router.get('/', async (req, res, next) => {
     const [rows] = await db.query(
       `SELECT p.id, p.code, p.name, p.category_id, p.image_url, p.thumbnail_url,
               p.warranty_months, p.cost_price, p.description,
-              c.name AS category_name
+              c.name AS category_name,
+              COALESCE((SELECT quantity FROM product_stock WHERE product_id = p.id), 0) AS stock_qty,
+              (SELECT pp.price FROM product_prices pp
+                 JOIN price_tiers t ON t.id = pp.tier_id
+                WHERE pp.product_id = p.id AND t.code = 'retail' AND t.is_deleted = 0 LIMIT 1) AS price,
+              (SELECT pp.price FROM product_prices pp
+                 JOIN price_tiers t ON t.id = pp.tier_id
+                WHERE pp.product_id = p.id AND t.code = 'dealer' AND t.is_deleted = 0 LIMIT 1) AS price_dealer,
+              (SELECT pp.price FROM product_prices pp
+                 JOIN price_tiers t ON t.id = pp.tier_id
+                WHERE pp.product_id = p.id AND t.code = 'wholesale' AND t.is_deleted = 0 LIMIT 1) AS price_wholesale
          FROM products p
          LEFT JOIN categories c ON c.id = p.category_id
          ${whereSql}
@@ -118,11 +128,6 @@ router.get('/', async (req, res, next) => {
          LIMIT ? OFFSET ?`,
       [...args, limit, offset]
     );
-
-    if (rows.length) {
-      const priceMap = await resolvePriceMap(db, rows.map(r => r.id), customerId);
-      rows.forEach(r => { r.price = priceMap.get(Number(r.id)) ?? 0; });
-    }
     res.json({ items: rows, total: count[0].total, page, limit });
   } catch (err) { next(err); }
 });

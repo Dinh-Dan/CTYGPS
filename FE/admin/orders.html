@@ -13,20 +13,118 @@
   .pill.green  { background:#f0fdf4; color:#15803d; border-color: #bbf7d0; }
   .pill.red    { background:#fef2f2; color:#b91c1c; border-color: #fecaca; }
   .pill.purple { background:#faf5ff; color:#7e22ce; border-color: #e9d5ff; }
-  .quick-tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; background: #fff; padding: 10px 14px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid var(--border); }
-  .quick-tabs button {
-    padding:8px 18px; border-radius:8px; border:none;
-    background:transparent; cursor:pointer; font-size:14px; font-weight: 500; color: #64748b; transition: all 0.2s ease;
+  /* ===== STATS CARDS ===== */
+  .stats-row { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:16px; }
+  @media(max-width:900px){ .stats-row { grid-template-columns:repeat(3,1fr); } }
+  @media(max-width:560px){ .stats-row { grid-template-columns:repeat(2,1fr); } }
+  .stat-card {
+    background:#fff; border:1px solid var(--border); border-radius:12px;
+    padding:14px 16px; cursor:pointer; transition:box-shadow .15s, border-color .15s;
+    display:flex; align-items:center; gap:12px;
   }
-  .quick-tabs button:hover { background: #f1f5f9; color: #0f172a; }
-  .quick-tabs button.on { background: var(--primary-soft); color: var(--primary); font-weight: 600; box-shadow: inset 0 0 0 1px var(--primary); }
+  .stat-card:hover { box-shadow:0 4px 14px rgba(0,0,0,.08); border-color:#cbd5e1; }
+  .stat-card.active { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft); }
+  .stat-icon { width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+  .stat-icon.all      { background:#eff6ff; }
+  .stat-icon.pending  { background:#fff7ed; }
+  .stat-icon.confirmed{ background:#eff6ff; }
+  .stat-icon.progress { background:#faf5ff; }
+  .stat-icon.done     { background:#f0fdf4; }
+  .stat-icon.cancelled{ background:#fef2f2; }
+  .stat-info { min-width:0; }
+  .stat-count { font-size:22px; font-weight:800; line-height:1.1; }
+  .stat-count.pending  { color:#f97316; }
+  .stat-count.default  { color:#0f172a; }
+  .stat-label { font-size:12px; color:#64748b; margin-top:1px; white-space:nowrap; }
 
-  .toolbar {
-    background: #fff; padding: 14px 16px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid var(--border); margin-bottom: 16px;
+  /* ===== FILTER BAR ===== */
+  .filter-bar {
+    background:#fff; border:1px solid var(--border); border-radius:12px;
+    margin-bottom:16px; position:relative;
   }
-  .toolbar .btn { box-shadow: 0 2px 6px rgba(31, 111, 235, 0.25); transition: transform 0.1s, box-shadow 0.1s; }
-  .toolbar .btn:active { transform: translateY(1px); box-shadow: none; }
-  
+  .filter-bar .fb-row1 {
+    display:flex; align-items:center; gap:8px; padding:10px 12px;
+  }
+  .filter-bar .fb-row2 {
+    display:flex; align-items:center; gap:8px; padding:8px 12px;
+    background:#f8fafc; border-top:1px solid #f1f5f9; flex-wrap:wrap;
+    border-radius:0 0 12px 12px;
+  }
+  .filter-bar .fb-search {
+    position:relative; flex:1; min-width:180px;
+  }
+  .filter-bar .fb-search input {
+    width:100%; box-sizing:border-box; height:36px; padding:0 10px 0 32px;
+    border:1px solid var(--border); border-radius:8px; font-size:13px;
+    outline:none; transition:border-color .2s, box-shadow .2s; color:#0f172a;
+    background:#f8fafc;
+  }
+  .filter-bar .fb-search input:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft); background:#fff; }
+  .filter-bar .fb-search .fb-search-icon {
+    position:absolute; left:9px; top:50%; transform:translateY(-50%);
+    color:#94a3b8; font-size:14px; pointer-events:none;
+  }
+  .filter-bar .fb-label {
+    font-size:11px; color:#94a3b8; font-weight:600; text-transform:uppercase;
+    letter-spacing:.4px; white-space:nowrap;
+  }
+  .filter-bar .fb-chip-wrap { display:flex; align-items:center; gap:6px; }
+  .filter-bar .fb-chip-wrap .fb-label { margin-right:2px; }
+  .filter-bar .btn-filter {
+    height:36px; padding:0 14px; background:var(--primary); color:#fff;
+    border:none; border-radius:8px; font-weight:600; font-size:13px;
+    cursor:pointer; display:flex; align-items:center; gap:5px;
+    transition:background .15s; white-space:nowrap; margin-left:auto;
+  }
+  .filter-bar .btn-filter:hover { background:#1d4ed8; }
+  .filter-bar .btn-reset {
+    height:36px; padding:0 10px; background:transparent; color:#64748b;
+    border:1px solid var(--border); border-radius:8px; font-size:13px;
+    cursor:pointer; transition:background .15s; white-space:nowrap;
+  }
+  .filter-bar .btn-reset:hover { background:#f1f5f9; color:#0f172a; }
+  /* Date range compact */
+  .filter-bar .fb-date-wrap { position:relative; }
+  .filter-bar .fb-date-btn {
+    height:36px; padding:0 24px 0 10px; border:1px solid var(--border); border-radius:8px;
+    font-size:13px; color:#0f172a; cursor:pointer; background:#f8fafc;
+    display:flex; align-items:center; gap:6px; white-space:nowrap; min-width:160px;
+    transition:border-color .2s;
+  }
+  .filter-bar .fb-date-btn:hover { border-color:#94a3b8; background:#fff; }
+  .filter-bar .fb-date-btn.active { border-color:var(--primary); color:var(--primary); font-weight:600; box-shadow:0 0 0 3px var(--primary-soft); background:#fff; }
+  .filter-bar .fb-date-btn .fb-date-icon { color:#94a3b8; font-size:13px; }
+  .filter-bar .fb-date-pop {
+    position:absolute; top:calc(100% + 4px); left:0; z-index:30;
+    background:#fff; border:1px solid var(--border); border-radius:10px;
+    box-shadow:0 12px 32px rgba(15,23,42,.15); padding:14px; min-width:240px;
+    display:none;
+  }
+  .filter-bar .fb-divider {
+    width:1px; height:20px; background:#e2e8f0; flex-shrink:0;
+  }
+
+  /* More actions button per row */
+  .btn-more {
+    width:32px; height:32px; border-radius:8px; border:1px solid var(--border);
+    background:#fff; cursor:pointer; display:inline-flex; align-items:center;
+    justify-content:center; color:#64748b; font-size:16px; transition:background .15s;
+  }
+  .btn-more:hover { background:#f1f5f9; color:#0f172a; }
+  .actions-wrap { display:flex; align-items:center; gap:6px; }
+
+  /* Pagination cải tiến */
+  .pager { background:#fff; padding:5px 12px; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,0.05); border:1px solid var(--border); margin-top:10px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-height:38px; }
+  .pager-info { font-size:12px; color:#94a3b8; margin-right:auto; }
+  .pager-pages { display:flex; align-items:center; gap:3px; }
+  .pager-pages button { min-width:28px; height:28px; padding:0 6px; font-weight:600; border-radius:6px; transition:all .15s; border:1px solid var(--border); background:#fff; cursor:pointer; color:#475569; font-size:12px; }
+  .pager-pages button:hover:not(:disabled) { background:#f8fafc; color:var(--primary); border-color:var(--primary); }
+  .pager-pages button.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .pager-pages button:disabled { opacity:.4; cursor:not-allowed; }
+  .pager-pages .pager-ellipsis { padding:0 3px; color:#94a3b8; font-size:12px; }
+  .pager-limit { display:flex; align-items:center; gap:5px; font-size:12px; color:#94a3b8; }
+  .pager-limit select { border:1px solid var(--border); border-radius:5px; padding:2px 5px; font-size:12px; color:#0f172a; outline:none; cursor:pointer; height:26px; }
+
   .table-wrap { box-shadow: 0 8px 24px rgba(15,23,42,0.06); border: 1px solid #f1f5f9; border-radius: 14px; overflow: hidden; background: #fff; margin-bottom: 0; }
   table.data { width: 100%; border-collapse: separate; border-spacing: 0; }
   table.data thead th { background: #f8fafc; color: #475569; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; font-size: 11.5px; border-bottom: 1px solid #e2e8f0; padding: 10px 12px; }
@@ -38,10 +136,6 @@
   table.data thead tr.filter-row input, table.data thead tr.filter-row select { background: #f1f5f9; border: 1px solid transparent; transition: all 0.2s ease; border-radius: 6px; padding: 5px 8px; font-size: 12.5px; width: 100%; box-sizing: border-box; color: #0f172a; outline: none; height: 32px; }
   table.data thead tr.filter-row input:focus, table.data thead tr.filter-row select:focus { background: #fff; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
   
-  .pager { background: #fff; padding: 12px 16px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid var(--border); margin-top: 20px; }
-  .pager button { padding: 8px 16px; font-weight: 600; border-radius: 8px; transition: all 0.2s; border: 1px solid var(--border); background: #fff; cursor: pointer; color: #475569; }
-  .pager button:hover:not(:disabled) { background: #f8fafc; color: var(--primary); border-color: var(--primary); }
-  .pager #pageInfo { font-weight: 600; color: #0f172a; margin: 0 16px; display: inline-block; min-width: 80px; text-align: center; }
 
   .od-detail { padding:14px; }
   .od-section { margin-bottom:18px; padding-bottom:14px; border-bottom:1px dashed var(--border); }
@@ -380,20 +474,6 @@
   .cc-staff-picker-panel .sp-item .sp-role-pill.staff { background:#dbeafe; color:#1d4ed8; }
   .cc-staff-picker-panel .sp-item .sp-role-pill.kithuat { background:#dcfce7; color:#15803d; }
 
-  /* Date range button + popover */
-  .date-range-btn {
-    display:flex; align-items:center; width:100%; height:32px; padding:5px 10px;
-    background:#f1f5f9; border:1px solid transparent; border-radius:6px;
-    font-size:12.5px; color:#0f172a; cursor:pointer; text-align:left;
-    transition: all .2s ease; box-sizing:border-box;
-  }
-  .date-range-btn:hover { background:#e2e8f0; }
-  .date-range-btn.active { background:#fff; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft); color:var(--primary); font-weight:600; }
-  .date-range-pop {
-    position:absolute; top:calc(100% + 4px); left:0; z-index:30;
-    background:#fff; border:1px solid var(--border); border-radius:10px;
-    box-shadow:0 12px 32px rgba(15,23,42,.15); padding:12px; min-width:240px;
-  }
 
   /* Bill column colors */
   .amt-total  { color:#0f172a; font-weight:600; }
@@ -401,7 +481,11 @@
   .amt-paid-zero { color:#94a3b8; }
   .amt-remain { color:#dc2626; font-weight:600; }
   /* multi-select chung */
-  .ms-btn { width:100%; height:32px; background:#f1f5f9; border:1px solid transparent; border-radius:6px; padding:0 8px; font-size:12.5px; color:#0f172a; text-align:left; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ms-btn { width:100%; height:32px; background:#f1f5f9; border:1px solid transparent; border-radius:6px; padding:0 8px; font-size:12.5px; color:#0f172a; text-align:left; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 6px center;
+  }
+  .ms-btn.active { background-color:#eff6ff; border-color:#bfdbfe !important; color:#1d4ed8; font-weight:600; }
   .ms-pop { position:absolute; top:calc(100% + 4px); right:0; z-index:200; background:#fff; border:1px solid #e2e8f0; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.12); padding:4px 0; min-width:160px; width:max-content; }
   /* multi-select thanh toan */
   .ps-opt { display:flex; align-items:center; gap:8px; padding:6px 14px; cursor:pointer; font-size:13px; user-select:none; white-space:nowrap; color:#0f172a; }
@@ -458,16 +542,132 @@
 <div class="shell">
   <aside class="sidebar" id="sidebar"></aside>
   <main class="main">
-    <div class="topnav"><h2 class="topnav-title">Đơn hàng</h2></div>
+    <div class="topnav">
+      <div style="flex:1;min-width:0">
+        <h2 style="font-size:17px;font-weight:700;margin:0;color:var(--text)">Đơn hàng</h2>
+        <p style="margin:0;font-size:13px;color:#64748b">Quản lý và theo dõi tất cả đơn hàng trong cửa hàng</p>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+        <a href="/admin/new-order.html" class="btn" style="white-space:nowrap">+ Tạo đơn</a>
+        <button type="button" class="btn ghost" id="btnOpenStatement" style="white-space:nowrap">📋 Xuất bảng kê</button>
+      </div>
+    </div>
     <div class="content flex-page">
-      <div class="toolbar">
-        <a href="/admin/new-order.html" class="btn sm">+ Tạo đơn</a>
-        <button type="button" class="btn ghost sm" id="btnOpenStatement" style="margin-left:8px">📋 Xuất bảng kê</button>
-        <select data-filter="collected_for_dealer" class="select" style="margin-left:auto;max-width:200px">
-          <option value="">Tất cả đơn</option>
-          <option value="1">Chỉ đơn thu hộ đại lí</option>
-          <option value="0">Bỏ đơn thu hộ đại lí</option>
-        </select>
+
+      <!-- Stats cards -->
+      <div class="stats-row" id="statsRow">
+        <div class="stat-card" data-stat="all">
+          <div class="stat-icon all">📋</div>
+          <div class="stat-info"><div class="stat-count default" id="sCntAll">—</div><div class="stat-label">Tất cả đơn</div></div>
+        </div>
+        <div class="stat-card" data-stat="pending">
+          <div class="stat-icon pending">🕐</div>
+          <div class="stat-info"><div class="stat-count pending" id="sCntPending">—</div><div class="stat-label">Chờ xác nhận</div></div>
+        </div>
+        <div class="stat-card" data-stat="confirmed">
+          <div class="stat-icon confirmed">📝</div>
+          <div class="stat-info"><div class="stat-count default" id="sCntConfirmed">—</div><div class="stat-label">Đang xử lý</div></div>
+        </div>
+        <div class="stat-card" data-stat="in_progress">
+          <div class="stat-icon progress">🚗</div>
+          <div class="stat-info"><div class="stat-count default" id="sCntProgress">—</div><div class="stat-label">Đang giao</div></div>
+        </div>
+        <div class="stat-card" data-stat="done">
+          <div class="stat-icon done">✅</div>
+          <div class="stat-info"><div class="stat-count default" id="sCntDone">—</div><div class="stat-label">Hoàn thành</div></div>
+        </div>
+        <div class="stat-card" data-stat="cancelled">
+          <div class="stat-icon cancelled">❌</div>
+          <div class="stat-info"><div class="stat-count default" id="sCntCancelled">—</div><div class="stat-label">Đã hủy</div></div>
+        </div>
+      </div>
+
+      <!-- Filter bar -->
+      <div class="filter-bar">
+        <!-- Tầng 1: tìm kiếm chính -->
+        <div class="fb-row1">
+          <div class="fb-search">
+            <span class="fb-search-icon">🔍</span>
+            <input type="text" id="fbSearch" placeholder="Tìm theo mã đơn, tên, SĐT khách...">
+          </div>
+          <div class="fb-date-wrap">
+            <button type="button" id="fbDateBtn" class="fb-date-btn">
+              <span class="fb-date-icon">📅</span>
+              <span id="fbDateLabel">Khoảng ngày</span>
+            </button>
+            <div id="fbDatePop" class="fb-date-pop">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <label style="font-size:12px;color:#475569">Từ ngày
+                  <input type="date" id="fbDateFrom" style="width:100%;margin-top:3px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+                </label>
+                <label style="font-size:12px;color:#475569">Đến ngày
+                  <input type="date" id="fbDateTo" style="width:100%;margin-top:3px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+                </label>
+                <div style="display:flex;gap:6px;justify-content:flex-end">
+                  <button type="button" class="btn ghost sm" id="fbDateClear">Xoá</button>
+                  <button type="button" class="btn sm" id="fbDateClose">Xong</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="fb-divider"></div>
+          <div class="fb-search" style="min-width:150px;max-width:200px">
+            <span class="fb-search-icon">📡</span>
+            <input type="text" id="fbDeviceQ" placeholder="Biển số / TK / SIM...">
+          </div>
+          <button type="button" class="btn-filter" id="btnApplyFilter">
+            <span>⚙</span> Bộ lọc
+          </button>
+          <button type="button" class="btn-reset" id="btnResetFilter">Đặt lại</button>
+        </div>
+        <!-- Tầng 2: bộ lọc nhanh -->
+        <div class="fb-row2">
+          <span class="fb-label">Lọc nhanh:</span>
+          <div class="fb-chip-wrap">
+            <div style="position:relative">
+              <button type="button" id="tplBtn" class="ms-btn" style="height:30px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;padding:0 26px 0 8px;min-width:90px">Loại đơn</button>
+              <div id="tplPop" class="ms-pop" style="display:none">
+                <div style="display:flex;gap:6px;justify-content:flex-end;padding:5px 10px;border-top:1px solid #f1f5f9;margin-top:2px">
+                  <button type="button" id="tplClear" class="btn ghost sm">Xoá</button>
+                  <button type="button" id="tplApply" class="btn sm">Áp dụng</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="fb-chip-wrap">
+            <div style="position:relative">
+              <button type="button" id="stBtn" class="ms-btn" style="height:30px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;padding:0 26px 0 8px;min-width:100px">Trạng thái</button>
+              <div id="stPop" class="ms-pop" style="display:none">
+                <label class="ps-opt"><input type="checkbox" value="pending"><span class="ps-box"></span> Chờ xác nhận</label>
+                <label class="ps-opt"><input type="checkbox" value="confirmed"><span class="ps-box"></span> Đang xử lý</label>
+                <label class="ps-opt"><input type="checkbox" value="in_progress"><span class="ps-box"></span> Đang giao</label>
+                <label class="ps-opt"><input type="checkbox" value="done"><span class="ps-box"></span> Hoàn thành</label>
+                <label class="ps-opt"><input type="checkbox" value="cancelled"><span class="ps-box"></span> Đã huỷ</label>
+                <div style="display:flex;gap:6px;justify-content:flex-end;padding:5px 10px;border-top:1px solid #f1f5f9;margin-top:2px">
+                  <button type="button" id="stClear" class="btn ghost sm">Xoá</button>
+                  <button type="button" id="stApply" class="btn sm">Áp dụng</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="fb-chip-wrap">
+            <div style="position:relative">
+              <button type="button" id="psBtn" class="ms-btn" style="height:30px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;padding:0 26px 0 8px;min-width:100px">Thanh toán</button>
+              <div id="psPop" class="ms-pop" style="display:none">
+                <label class="ps-opt"><input type="checkbox" value="unpaid"><span class="ps-box"></span> Chưa trả</label>
+                <label class="ps-opt"><input type="checkbox" value="partial"><span class="ps-box"></span> Một phần</label>
+                <label class="ps-opt"><input type="checkbox" value="paid"><span class="ps-box"></span> Đã trả</label>
+                <label class="ps-opt"><input type="checkbox" value="customer_owes"><span class="ps-box"></span> KH nợ</label>
+                <label class="ps-opt"><input type="checkbox" value="staff_owes"><span class="ps-box"></span> KTV giữ</label>
+                <label class="ps-opt"><input type="checkbox" value="pending_admin_confirm"><span class="ps-box"></span> Chờ xác nhận</label>
+                <div style="display:flex;gap:6px;justify-content:flex-end;padding:5px 10px;border-top:1px solid #f1f5f9;margin-top:2px">
+                  <button type="button" id="psClear" class="btn ghost sm">Xoá</button>
+                  <button type="button" id="psApply" class="btn sm">Áp dụng</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Bulk action bar -->
@@ -481,105 +681,38 @@
         <button type="button" class="btn-clear" id="btnClearSel">✕ Bỏ chọn</button>
       </div>
 
-<div class="table-wrap">
+      <div class="table-wrap">
         <table class="data" id="tbl">
           <thead>
             <tr>
               <th class="cb-col"><input type="checkbox" id="cbAll" class="row-cb" title="Chọn tất cả"></th>
-              <th style="width:100px">Mã đơn</th>
-              <th style="width:140px">Ngày tạo</th>
-              <th>Khách</th>
-              <th style="width:110px">Loại đơn</th>
-              <th style="width:260px">Thông tin</th>
-              <th style="width:150px">Tổng tiền</th>
-              <th style="width:110px">Trạng thái</th>
-              <th style="width:110px">Thanh toán</th>
-              <th style="width:70px"></th>
-            </tr>
-            <tr class="filter-row">
-              <th class="cb-col"></th>
-              <th><input data-filter="q" placeholder="Mã đơn"></th>
-              <th>
-                <div class="date-picker-wrap" style="position:relative">
-                  <button type="button" id="dateRangeBtn" class="date-range-btn">
-                    <span id="dateRangeLabel">Chọn khoảng ngày</span>
-                    <span style="margin-left:auto;color:#94a3b8">▾</span>
-                  </button>
-                  <div id="dateRangePop" class="date-range-pop" style="display:none">
-                    <div style="display:flex;flex-direction:column;gap:8px">
-                      <label style="font-size:12px;color:#475569">Từ ngày
-                        <input type="date" data-filter="date_from" style="width:100%;margin-top:2px">
-                      </label>
-                      <label style="font-size:12px;color:#475569">Đến ngày
-                        <input type="date" data-filter="date_to" style="width:100%;margin-top:2px">
-                      </label>
-                      <div style="display:flex;gap:6px;justify-content:flex-end">
-                        <button type="button" class="btn ghost sm" id="dateRangeClear">Xoá</button>
-                        <button type="button" class="btn sm" id="dateRangeClose">Xong</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </th>
-              <th><input data-filter="customer_q" placeholder="Tên / SĐT khách"></th>
-              <th>
-                <div style="position:relative">
-                  <button type="button" id="tplBtn" class="ms-btn">Tất cả</button>
-                  <div id="tplPop" class="ms-pop" style="display:none">
-                    <!-- options nạp động bởi JS -->
-                    <div style="display:flex;gap:6px;justify-content:flex-end;padding:5px 10px;border-top:1px solid #f1f5f9;margin-top:2px">
-                      <button type="button" id="tplClear" class="btn ghost sm">Xoá</button>
-                      <button type="button" id="tplApply" class="btn sm">Áp dụng</button>
-                    </div>
-                  </div>
-                </div>
-              </th>
-              <th><input data-filter="device_q" placeholder="Biển số / TK / SIM"></th>
-              <th></th>
-              <th>
-                <div style="position:relative">
-                  <button type="button" id="stBtn" class="ms-btn">Tất cả</button>
-                  <div id="stPop" class="ms-pop" style="display:none">
-                    <label class="ps-opt"><input type="checkbox" value="pending"><span class="ps-box"></span> Đang chờ</label>
-                    <label class="ps-opt"><input type="checkbox" value="confirmed"><span class="ps-box"></span> Lên đơn</label>
-                    <label class="ps-opt"><input type="checkbox" value="in_progress"><span class="ps-box"></span> Đang xử lý</label>
-                    <label class="ps-opt"><input type="checkbox" value="done"><span class="ps-box"></span> Đã xong</label>
-                    <label class="ps-opt"><input type="checkbox" value="cancelled"><span class="ps-box"></span> Đã huỷ</label>
-                    <div style="display:flex;gap:6px;justify-content:flex-end;padding:5px 10px;border-top:1px solid #f1f5f9;margin-top:2px">
-                      <button type="button" id="stClear" class="btn ghost sm">Xoá</button>
-                      <button type="button" id="stApply" class="btn sm">Áp dụng</button>
-                    </div>
-                  </div>
-                </div>
-              </th>
-              <th>
-                <div style="position:relative">
-                  <button type="button" id="psBtn" class="ms-btn">Tất cả</button>
-                  <div id="psPop" class="ms-pop" style="display:none">
-                    <label class="ps-opt"><input type="checkbox" value="unpaid"><span class="ps-box"></span> Chưa trả</label>
-                    <label class="ps-opt"><input type="checkbox" value="partial"><span class="ps-box"></span> Một phần</label>
-                    <label class="ps-opt"><input type="checkbox" value="paid"><span class="ps-box"></span> Đã trả</label>
-                    <label class="ps-opt"><input type="checkbox" value="customer_owes"><span class="ps-box"></span> KH nợ</label>
-                    <label class="ps-opt"><input type="checkbox" value="staff_owes"><span class="ps-box"></span> KTV giữ</label>
-                    <label class="ps-opt"><input type="checkbox" value="pending_admin_confirm"><span class="ps-box"></span> Chờ xác nhận</label>
-                    <div style="display:flex;gap:6px;justify-content:flex-end;padding:5px 10px;border-top:1px solid #f1f5f9;margin-top:2px">
-                      <button type="button" id="psClear" class="btn ghost sm">Xoá</button>
-                      <button type="button" id="psApply" class="btn sm">Áp dụng</button>
-                    </div>
-                  </div>
-                </div>
-              </th>
-              <th></th>
+              <th style="width:110px">MÃ ĐƠN</th>
+              <th style="width:130px">THỜI GIAN</th>
+              <th>KHÁCH HÀNG<br><small style="font-weight:400;color:#94a3b8">SĐT</small></th>
+              <th style="width:120px">LOẠI ĐƠN</th>
+              <th style="width:240px">THÔNG TIN<br><small style="font-weight:400;color:#94a3b8">Biển số / TK / SIM</small></th>
+              <th style="width:160px;text-align:right">TỔNG TIỀN</th>
+              <th style="width:110px">TRẠNG THÁI</th>
+              <th style="width:110px">THANH TOÁN</th>
+              <th style="width:90px">THAO TÁC</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
         </table>
       </div>
 
-      <div class="pager">
-        <button id="prevPage">« Trước</button>
-        <span id="pageInfo">Trang 1</span>
-        <button id="nextPage">Sau »</button>
+      <div class="pager" id="pagerWrap">
+        <span class="pager-info" id="pagerInfo"></span>
+        <div class="pager-pages" id="pagerPages"></div>
+        <div class="pager-limit">
+          <span>Hiển thị</span>
+          <select id="limitSel">
+            <option value="10" selected>10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+          </select>
+          <span>dòng / trang</span>
+        </div>
       </div>
     </div>
   </main>

@@ -9,7 +9,9 @@ const router = express.Router();
 router.get('/', async (req, res, next) => {
   try {
     const [rows] = await db.query(
-      `SELECT id, name FROM categories WHERE is_deleted = 0 ORDER BY name`
+      `SELECT c.id, c.name,
+              (SELECT COUNT(*) FROM products p WHERE p.category_id = c.id AND p.is_deleted = 0) AS product_count
+         FROM categories c WHERE c.is_deleted = 0 ORDER BY c.name`
     );
     res.json({ items: rows });
   } catch (err) { next(err); }
@@ -28,6 +30,26 @@ router.post('/', async (req, res, next) => {
 
     const [r] = await db.query(`INSERT INTO categories (name) VALUES (?)`, [name]);
     res.status(201).json({ id: r.insertId, name });
+  } catch (err) { next(err); }
+});
+
+router.put('/:id', async (req, res, next) => {
+  try {
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Thieu ten danh muc' });
+
+    const [dup] = await db.query(
+      `SELECT id FROM categories WHERE name = ? AND id <> ? AND is_deleted = 0 LIMIT 1`,
+      [name, req.params.id]
+    );
+    if (dup.length) return res.status(409).json({ error: 'Ten danh muc da ton tai' });
+
+    const [r] = await db.query(
+      `UPDATE categories SET name = ? WHERE id = ? AND is_deleted = 0`,
+      [name, req.params.id]
+    );
+    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay danh muc' });
+    res.json({ ok: true, id: Number(req.params.id), name });
   } catch (err) { next(err); }
 });
 

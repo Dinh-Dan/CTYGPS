@@ -398,9 +398,10 @@
 
   // ---- Copy-code button ----------------------------------------
   const COPY_ICON = `<svg width="10" height="10" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="pointer-events:none"><rect x="5" y="5" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5" stroke="currentColor" stroke-width="1.5"/></svg>`;
+  const BTN_STYLE = 'all:unset;display:inline-flex;align-items:center;margin-left:4px;cursor:pointer;color:#cbd5e1;line-height:1;vertical-align:middle;';
   function copyCodeBtn(code) {
     const safe = String(code || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    return `<button class="btn-copy-code" data-copy="${safe}" title="Copy mã đơn">${COPY_ICON}</button>`;
+    return `<button class="btn-copy-code" data-copy="${safe}" title="Copy mã đơn" style="${BTN_STYLE}">${COPY_ICON}</button>`;
   }
   document.addEventListener('click', function(e) {
     const btn = e.target.closest && e.target.closest('.btn-copy-code');

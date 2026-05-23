@@ -349,34 +349,42 @@
         </div>
 
         <div class="field" style="margin-bottom:6px">
-          <label style="font-weight:600;color:#374151;font-size:13px">Số tiền thu hộ (đ)</label>
+          <label style="font-weight:600;color:#374151;font-size:13px">KTV thu hộ (đ)</label>
           <input id="cCollected" type="text" inputmode="numeric" autocomplete="off" class="input"
                  placeholder="0"
-                 value="${fmtI(remain)}"
+                 value=""
                  style="font-size:20px;font-weight:700;text-align:right;padding-right:10px;letter-spacing:.3px;color:#0f172a">
         </div>
-        <div style="display:flex;gap:6px;margin-bottom:14px">
+        <div style="display:flex;gap:6px;margin-bottom:12px">
           <button type="button" id="cBtnFull"
                   style="flex:1;padding:5px 0;border-radius:6px;border:1.5px solid #2563eb;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:600;cursor:pointer">
             Thu đủ
           </button>
           <button type="button" id="cBtnZero"
                   style="flex:1;padding:5px 0;border-radius:6px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600;cursor:pointer">
-            Chưa thu
+            Khách nợ hoặc Thu 1 phần
           </button>
+        </div>
+
+        <div id="cToStaffMRow" class="field" style="margin-bottom:12px">
+          <label style="font-size:12px;color:#64748b">Hình thức KTV nhận</label>
+          <select id="cToStaffM" class="select" style="font-size:13px">
+            <option value="cash">Tiền mặt</option>
+            <option value="transfer">Chuyển khoản qua KTV</option>
+          </select>
+        </div>
+
+        <div class="field" style="margin-bottom:6px">
+          <label style="font-weight:600;color:#374151;font-size:13px">Nộp cho admin (đ)</label>
+          <input id="cToAdmin" type="text" inputmode="numeric" autocomplete="off" class="input"
+                 placeholder="0"
+                 value=""
+                 style="font-size:20px;font-weight:700;text-align:right;padding-right:10px;letter-spacing:.3px;color:#0f172a">
         </div>
 
         <div id="cDebtRow" style="border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:8px">
           <span style="font-size:13px;color:#6b7280;flex:1">Khách còn nợ</span>
           <b id="cDebtVal" style="font-size:17px"></b>
-        </div>
-
-        <div class="field" style="margin-bottom:0">
-          <label style="font-size:12px;color:#64748b">Hình thức nhận</label>
-          <select id="cToStaffM" class="select" style="font-size:13px">
-            <option value="cash">Tiền mặt</option>
-            <option value="transfer">Chuyển khoản qua KTV</option>
-          </select>
         </div>
 
         <input id="cExpect" type="hidden" value="${remain}">
@@ -400,6 +408,8 @@
     const modalPromise = openSimpleModal('Hoàn thành đơn', html, 'Hoàn thành');
 
     const $inp = document.getElementById('cCollected');
+    const $inpAdmin = document.getElementById('cToAdmin');
+    const $toStaffMRow = document.getElementById('cToStaffMRow');
     const $debtRow = document.getElementById('cDebtRow');
     const $debtVal = document.getElementById('cDebtVal');
     const $debtHidden = document.getElementById('cDebtHidden');
@@ -453,41 +463,49 @@
 
     function recalc() {
       const collected = parseI($inp.value);
-      const debt = remain - collected;
+      const toAdmin = parseI($inpAdmin.value);
+      const debt = Math.max(0, remain - collected - toAdmin);
       applyDebtStyle(debt);
-      const isFull = collected >= remain;
+      const isFull = (collected + toAdmin) >= remain;
       $btnFull.style.background = isFull ? '#2563eb' : '#eff6ff';
       $btnFull.style.color = isFull ? '#fff' : '#1d4ed8';
       $btnZero.style.background = collected === 0 ? '#64748b' : '#f8fafc';
       $btnZero.style.color = collected === 0 ? '#fff' : '#64748b';
+      $toStaffMRow.style.display = collected > 0 ? '' : 'none';
     }
 
-    $inp.addEventListener('input', () => {
-      const raw = $inp.value.replace(/\./g, '').replace(/\D/g, '');
-      const num = Number(raw) || 0;
-      const pos = $inp.selectionStart;
-      const oldLen = $inp.value.length;
-      $inp.value = fmtI(num) || '';
-      const newLen = $inp.value.length;
-      $inp.setSelectionRange(pos + newLen - oldLen, pos + newLen - oldLen);
-      recalc();
-    });
+    function bindNumericInput(el) {
+      el.addEventListener('input', () => {
+        const raw = el.value.replace(/\./g, '').replace(/\D/g, '');
+        const num = Number(raw) || 0;
+        const pos = el.selectionStart;
+        const oldLen = el.value.length;
+        el.value = fmtI(num) || '';
+        const newLen = el.value.length;
+        el.setSelectionRange(pos + newLen - oldLen, pos + newLen - oldLen);
+        recalc();
+      });
+    }
 
-    $btnFull.addEventListener('click', () => { $inp.value = fmtI(remain); recalc(); });
-    $btnZero.addEventListener('click', () => { $inp.value = ''; recalc(); });
+    bindNumericInput($inp);
+    bindNumericInput($inpAdmin);
+
+    $btnFull.addEventListener('click', () => { $inp.value = fmtI(remain); $inpAdmin.value = ''; recalc(); });
+    $btnZero.addEventListener('click', () => { $inp.value = ''; $inpAdmin.value = ''; recalc(); });
 
     recalc();
 
     const ok = await modalPromise;
     if (!ok) return;
     const collected = parseI(document.getElementById('cCollected').value);
+    const toAdmin = parseI(document.getElementById('cToAdmin').value);
     const pendingPhotos = [...photoFiles];
     const body = {
       target_step_code: targetStep,
       expected_amount: Number(document.getElementById('cExpect').value) || 0,
       to_staff_amount: collected,
-      to_staff_method: document.getElementById('cToStaffM').value,
-      to_admin_amount: 0,
+      to_staff_method: collected > 0 ? document.getElementById('cToStaffM').value : 'cash',
+      to_admin_amount: toAdmin,
       debt_amount: Number(document.getElementById('cDebtHidden').value) || 0,
       note: document.getElementById('cNote').value.trim() || null,
     };

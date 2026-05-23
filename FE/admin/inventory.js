@@ -1,4 +1,4 @@
-// Trang Kho v2 — 4 tab: Tồn kho / Phiếu nhập / Phiếu xuất / KTV đang giữ
+// Trang Kho v3 — Tổng quan kho với sidebar lọc
 
 (function () {
   const $ = (id) => document.getElementById(id);
@@ -27,18 +27,35 @@
   const ADMIN_REASONS_IN  = ['import_supplier', 'adjust_plus'];
   const ADMIN_REASONS_OUT = ['return_supplier', 'adjust_minus'];
 
+  // Bảng màu cho category pill
+  const CAT_COLORS = [
+    { bg: '#dbeafe', text: '#1e40af' },
+    { bg: '#dcfce7', text: '#166534' },
+    { bg: '#ede9fe', text: '#5b21b6' },
+    { bg: '#fce7f3', text: '#9d174d' },
+    { bg: '#fef3c7', text: '#92400e' },
+    { bg: '#cffafe', text: '#155e75' },
+    { bg: '#fef9c3', text: '#713f12' },
+    { bg: '#f3f4f6', text: '#374151' },
+  ];
+  function catColor(name) {
+    let h = 0;
+    if (name) for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+    return CAT_COLORS[h % CAT_COLORS.length];
+  }
+
   const state = {
     activeTab: 'stock',
-    products: [],   // dropdown cache
-    suppliers: [],  // dropdown cache
-    stock: { q: '', stock_state: '', cat: '', qty_min: '', qty_max: '', page: 1, limit: 20, total: 0 },
+    products: [],
+    suppliers: [],
+    stock: { q: '', stock_state: '', cat_id: '', qty_min: '', qty_max: '', page: 1, limit: 20, total: 0 },
     inR:   { q: '', reason: '', from: '', to: '', page: 1, limit: 20, total: 0 },
     outR:  { q: '', reason: '', from: '', to: '', page: 1, limit: 20, total: 0 },
     hold:  { q: '' },
     takes: { status: '', from: '', to: '', page: 1, limit: 20, total: 0 },
     receiptDraft: { kind: 'in', lines: [] },
     currentReceiptId: null,
-    currentTake: null,   // { id, code, status, lines: [{ product_id, product_code, product_name, system_qty, current_qty, counted_qty, note, receipt_id, receipt_code, receipt_kind }] }
+    currentTake: null,
   };
 
   function escape(s) {
@@ -58,26 +75,36 @@
     if (isNaN(dt)) return String(d);
     return dt.toLocaleDateString('vi-VN');
   }
+
   function thumbCell(p) {
     if (p.thumbnail_url || p.image_url) {
-      return `<img src="${escape(p.thumbnail_url || p.image_url)}" class="product-thumb" alt="">`;
+      return `<img src="${escape(p.thumbnail_url || p.image_url)}" class="prod-thumb" alt="">`;
     }
     const i = (p.code || p.name || '?').trim().charAt(0).toUpperCase();
-    return `<div class="product-thumb-fallback">${i}</div>`;
+    return `<div class="prod-thumb-fb">${i}</div>`;
   }
+
   function stockBadge(q) {
-    if (q === 0) return `<span class="pill red">Hết</span>`;
-    if (q < 5)   return `<b>${q}</b> <span class="pill amber" style="font-size:10px">Sắp hết</span>`;
-    return `<b>${q}</b>`;
+    const n = Number(q);
+    if (n === 0) return `<div class="stock-val"><span class="stock-dot out"></span><span class="pill red" style="font-size:10px">Hết</span></div>`;
+    if (n < 5)   return `<div class="stock-val"><b>${n}</b><span class="stock-dot low"></span><br><span class="pill amber" style="font-size:10px;margin-top:2px">Sắp hết</span></div>`;
+    return `<div class="stock-val"><b>${n}</b><span class="stock-dot ok"></span></div>`;
   }
+
+  function catPill(name) {
+    if (!name) return '<span style="color:#94a3b8;font-size:12px">—</span>';
+    const c = catColor(name);
+    return `<span class="cat-pill" style="background:${c.bg};color:${c.text}">${escape(name)}</span>`;
+  }
+
   function reasonBadge(code) {
     const label = REASON_LABELS[code] || code;
     let cls = 'gray';
-    if (code === 'import_supplier' || code === 'order_cancel_return' || code === 'order_return_done' || code === 'technician_return') cls = 'green';
+    if (['import_supplier','order_cancel_return','order_return_done','technician_return'].includes(code)) cls = 'green';
     else if (code === 'adjust_plus') cls = 'blue';
-    else if (code === 'order_release' || code === 'technician_take' || code === 'technician_take_direct') cls = 'amber';
+    else if (['order_release','technician_take','technician_take_direct'].includes(code)) cls = 'amber';
     else if (code === 'install_done') cls = 'blue';
-    else if (code === 'damaged' || code === 'return_supplier' || code === 'adjust_minus') cls = 'red';
+    else if (['damaged','return_supplier','adjust_minus'].includes(code)) cls = 'red';
     return `<span class="pill ${cls}" style="font-size:11px">${escape(label)}</span>`;
   }
 
@@ -89,6 +116,58 @@
     $('st-units').textContent    = fmt.format(s.total_units || 0);
     $('st-held').textContent     = fmt.format(s.held_units || 0);
     $('st-low').textContent      = fmt.format(s.low_stock || 0);
+    if (s.total_value != null) {
+      $('st-value').textContent = fmt.format(s.total_value) + 'đ';
+    }
+  }
+
+  // ==================== CATEGORY SIDEBAR ====================
+  function buildCatList() {
+    const catMap = new Map(); // id → { name, count }
+    state.products.forEach(p => {
+      if (!p.category_id) return;
+      if (!catMap.has(p.category_id)) catMap.set(p.category_id, { name: p.category_name || '', count: 0 });
+      catMap.get(p.category_id).count++;
+    });
+
+    // Điền select dropdown
+    const sel = $('f_stock_cat');
+    sel.innerHTML = '<option value="">Tất cả</option>';
+    catMap.forEach((v, id) => {
+      const o = document.createElement('option');
+      o.value = id; o.textContent = v.name || `Danh mục #${id}`;
+      sel.appendChild(o);
+    });
+
+    // Category quick-list trong sidebar
+    const total = state.products.length;
+    const listEl = $('inv-cat-list');
+    const allActive = !state.stock.cat_id;
+    let html = `<div class="inv-cat-item ${allActive ? 'active' : ''}" data-cat-id="">
+      <span>🗂 Tất cả</span><span class="cnt">${total}</span>
+    </div>`;
+    catMap.forEach((v, id) => {
+      const active = String(state.stock.cat_id) === String(id);
+      const c = catColor(v.name);
+      html += `<div class="inv-cat-item ${active ? 'active' : ''}" data-cat-id="${id}">
+        <span><span class="cat-pill" style="background:${c.bg};color:${c.text};padding:1px 7px;font-size:11px">${escape(v.name)}</span></span>
+        <span class="cnt">${v.count}</span>
+      </div>`;
+    });
+    listEl.innerHTML = html;
+
+    listEl.querySelectorAll('.inv-cat-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const catId = el.dataset.catId;
+        state.stock.cat_id = catId;
+        state.stock.page = 1;
+        // Sync select
+        $('f_stock_cat').value = catId;
+        // Re-render sidebar
+        buildCatList();
+        loadStock();
+      });
+    });
   }
 
   // ==================== TAB 1: STOCK ====================
@@ -96,7 +175,7 @@
     const p = new URLSearchParams();
     if (state.stock.q)           p.set('q', state.stock.q);
     if (state.stock.stock_state) p.set('stock_state', state.stock.stock_state);
-    if (state.stock.cat)         p.set('category', state.stock.cat);
+    if (state.stock.cat_id)      p.set('category_id', state.stock.cat_id);
     if (state.stock.qty_min !== '') p.set('qty_min', state.stock.qty_min);
     if (state.stock.qty_max !== '') p.set('qty_max', state.stock.qty_max);
     p.set('page', state.stock.page);
@@ -110,36 +189,73 @@
     $('stockPrev').disabled = state.stock.page <= 1;
     $('stockNext').disabled = state.stock.page >= totalPage;
   }
+
   function renderStock(items) {
     if (!items.length) {
-      $('tbody-stock').innerHTML = `<tr><td colspan="9" class="text-center text-muted" style="padding:30px">Chưa có sản phẩm</td></tr>`;
+      $('tbody-stock').innerHTML = `<tr><td colspan="7" class="text-center text-muted" style="padding:30px">Chưa có sản phẩm nào</td></tr>`;
       return;
     }
     $('tbody-stock').innerHTML = items.map(p => `
       <tr>
-        <td>${thumbCell(p)}</td>
-        <td data-label="Mã TB"><b>${escape(p.code)}</b></td>
-        <td data-label="Tên sản phẩm">${escape(p.name)}</td>
-        <td data-label="Danh mục">${escape(p.category_name || '—')}</td>
-        <td data-label="Giá gốc">${fmt.format(p.cost_price || 0)}đ</td>
+        <td>
+          <div class="prod-cell">
+            ${thumbCell(p)}
+            <div class="prod-info">
+              <div class="prod-name">${escape(p.name)}</div>
+              ${p.description ? `<div class="prod-desc">${escape(p.description)}</div>` : `<div class="prod-desc" style="color:#cbd5e1">${escape(p.code)}</div>`}
+            </div>
+          </div>
+        </td>
+        <td data-label="Danh mục">${catPill(p.category_name)}</td>
+        <td data-label="Giá gốc" style="font-size:13px">${fmt.format(p.cost_price || 0)}đ</td>
         <td data-label="Tồn">${stockBadge(Number(p.quantity))}</td>
-        <td data-label="KTV giữ">${p.held_qty > 0 ? `<span class="pill blue">${p.held_qty}</span>` : '0'}</td>
-        <td data-label="Bán 30d">${p.sold_30d > 0 ? `<b>${p.sold_30d}</b>` : '<span class="text-muted">0</span>'}</td>
-        <td data-label="Hành động">
-          <button class="btn ghost sm" data-act="history" data-id="${p.product_id}" data-name="${escape(p.code + ' — ' + p.name)}" title="Lịch sử">📜</button>
-          <button class="btn ghost sm" data-act="adjust" data-id="${p.product_id}" data-name="${escape(p.code + ' — ' + p.name)}" title="Cân kho">➕</button>
+        <td data-label="KTV giữ">${p.held_qty > 0 ? `<span class="pill blue" style="font-size:11px">${p.held_qty}</span>` : '<span style="color:#94a3b8">0</span>'}</td>
+        <td data-label="Bán 30d">${p.sold_30d > 0 ? `<b>${p.sold_30d}</b>` : '<span style="color:#94a3b8">0</span>'}</td>
+        <td data-label="Hành động" style="white-space:nowrap">
+          <button class="icon-btn" data-act="history" data-id="${p.product_id}" data-name="${escape(p.code + ' — ' + p.name)}" title="Lịch sử nhập/xuất">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </button>
+          <button class="icon-btn" data-act="adjust" data-id="${p.product_id}" data-name="${escape(p.code + ' — ' + p.name)}" data-qty="${p.quantity}" title="Cân kho" style="margin-left:4px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 1 0 0 14.14"/><line x1="22" y1="2" x2="11" y2="13"/><polyline points="22 2 15 2 22 9"/></svg>
+          </button>
         </td>
       </tr>
     `).join('');
   }
+
   $('tbody-stock').addEventListener('click', (ev) => {
     const btn = ev.target.closest('button[data-act]');
     if (!btn) return;
     const id = Number(btn.dataset.id);
     const name = btn.dataset.name;
     if (btn.dataset.act === 'history') openHistory(id, name);
-    else if (btn.dataset.act === 'adjust') openAdjust(id, name);
+    else if (btn.dataset.act === 'adjust') openAdjust(id, name, Number(btn.dataset.qty));
   });
+
+  // Export CSV
+  async function exportCsv() {
+    const p = new URLSearchParams();
+    if (state.stock.q)           p.set('q', state.stock.q);
+    if (state.stock.stock_state) p.set('stock_state', state.stock.stock_state);
+    if (state.stock.cat_id)      p.set('category_id', state.stock.cat_id);
+    if (state.stock.qty_min !== '') p.set('qty_min', state.stock.qty_min);
+    if (state.stock.qty_max !== '') p.set('qty_max', state.stock.qty_max);
+    p.set('page', 1);
+    p.set('limit', 500);
+    const res = await api.get('/admin/inventory/stock?' + p.toString(), { silent: true }).catch(() => null);
+    if (!res || !res.items.length) { ui.toast('Không có dữ liệu', 'warning'); return; }
+    const rows = [['Mã TB', 'Tên sản phẩm', 'Danh mục', 'Giá gốc', 'Tồn kho', 'KTV giữ', 'Bán 30d']];
+    res.items.forEach(p => rows.push([
+      p.code, p.name, p.category_name || '',
+      p.cost_price || 0, p.quantity, p.held_qty, p.sold_30d,
+    ]));
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'ton-kho.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }
 
   // ==================== TAB 2/3: RECEIPTS ====================
   async function loadReceipts(kind) {
@@ -204,21 +320,17 @@
     const res = await api.get('/admin/inventory/staff-holdings?' + p.toString()).catch(() => null);
     if (!res) return;
     if (!res.items.length) {
-      $('tbody-hold').innerHTML = `<tr><td colspan="6" class="text-center text-muted" style="padding:30px">Không có KTV nào đang giữ thiết bị</td></tr>`;
+      $('tbody-hold').innerHTML = `<tr><td colspan="5" class="text-center text-muted" style="padding:30px">Không có KTV nào đang giữ thiết bị</td></tr>`;
       return;
     }
-    $('tbody-hold').innerHTML = res.items.map(h => {
-      const dayCls = h.days_held > 3 ? 'style="color:#dc2626;font-weight:600"' : '';
-      return `
+    $('tbody-hold').innerHTML = res.items.map(h => `
         <tr>
           <td data-label="KTV"><b>${escape(h.staff_name)}</b></td>
-          <td data-label="Mã TB">${escape(h.product_code)}</td>
+          <td data-label="Mã TB"><code style="font-size:12px">${escape(h.product_code)}</code></td>
           <td data-label="Sản phẩm">${escape(h.product_name)}</td>
-          <td data-label="Số lượng"><b>${h.qty}</b></td>
+          <td data-label="SL"><b>${h.qty}</b></td>
           <td data-label="Ngày nhận">${fmtDate(h.first_held_at)}</td>
-          <td data-label="Số ngày" ${dayCls}>${h.days_held} ngày</td>
-        </tr>`;
-    }).join('');
+        </tr>`).join('');
   }
 
   // ==================== TAB SWITCH ====================
@@ -226,11 +338,13 @@
     state.activeTab = tab;
     document.querySelectorAll('.inv-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     document.querySelectorAll('.inv-pane').forEach(p => p.classList.toggle('active', p.dataset.pane === tab));
-    if (tab === 'stock')        loadStock();
+    const statsRow = document.getElementById('inv-stats-row');
+    if (statsRow) statsRow.style.display = tab === 'stock' ? '' : 'none';
+    if (tab === 'stock')              loadStock();
     else if (tab === 'receipts-in')  loadReceipts('in');
     else if (tab === 'receipts-out') loadReceipts('out');
-    else if (tab === 'holdings') loadHoldings();
-    else if (tab === 'stocktakes') loadTakes();
+    else if (tab === 'holdings')     loadHoldings();
+    else if (tab === 'stocktakes')   loadTakes();
   }
 
   // ==================== MODAL: TẠO PHIẾU ====================
@@ -238,26 +352,18 @@
     state.receiptDraft = { kind, lines: [] };
     $('r_kind').value = kind;
     $('receiptModalTitle').textContent = kind === 'in' ? 'Tạo phiếu nhập' : 'Tạo phiếu xuất';
-
-    // Reason options
     const reasons = kind === 'in' ? ADMIN_REASONS_IN : ADMIN_REASONS_OUT;
     $('r_reason').innerHTML = reasons.map(r =>
       `<option value="${r}">${escape(REASON_LABELS[r])}</option>`).join('');
     if (presetReason) $('r_reason').value = presetReason;
     toggleSupplierField();
-
-    // Hiện/ẩn cột giá / IMEI
     document.querySelectorAll('#r_lines_table .r-price').forEach(el => el.style.display = kind === 'in' ? '' : 'none');
     document.querySelectorAll('#r_lines_table .r-imei').forEach(el => el.style.display = kind === 'out' ? '' : 'none');
-
-    // NCC dropdown
     $('r_supplier_id').innerHTML = '<option value="">— Không chọn —</option>'
       + state.suppliers.map(s => `<option value="${s.id}">${escape(s.name)}</option>`).join('');
-
     $('r_reason_text').value = '';
     $('r_lines_body').innerHTML = '';
     addLine();
-
     $('receiptModal').classList.add('open');
   }
   function toggleSupplierField() {
@@ -320,7 +426,7 @@
       items: lines,
     };
     const res = await api.post('/admin/inventory/receipts', body, {
-      successMessage: `Đã lưu phiếu ${body.reason_code === 'import_supplier' ? 'nhập' : ''}`,
+      successMessage: `Đã lưu phiếu`,
     }).catch(() => null);
     if (!res) return;
     $('receiptModal').classList.remove('open');
@@ -355,8 +461,7 @@
     `;
     $('rdItems').innerHTML = !r.items.length
       ? `<div style="padding:14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;color:#0369a1">
-           <b>Phiếu rỗng — không có vật tư.</b><br>
-           <small>Đơn liên quan không có sản phẩm nào, phiếu này được tạo để ghi nhận QTV đã xử lý đơn.</small>
+           <b>Phiếu rỗng — không có vật tư.</b>
          </div>`
       : `
         <table class="data" style="font-size:13px">
@@ -379,8 +484,6 @@
           </tbody>
         </table>
       `;
-    // Cho phep void neu la phieu admin tu tao + chua voided + duoi 24h
-    // KHONG cho void neu phieu thuoc phien kiem ke (ref_stock_take_id != null)
     const allowVoid = !r.is_voided
       && !r.ref_stock_take_id
       && [...ADMIN_REASONS_IN, ...ADMIN_REASONS_OUT].includes(r.reason_code)
@@ -452,13 +555,67 @@
     `;
   }
 
-  function openAdjust(productId, name) {
-    // Mo modal tao phieu voi 1 line da preset product
-    openReceiptModal('in', 'adjust_plus');
-    setTimeout(() => {
-      const sel = $('r_lines_body').querySelector('.line-product');
-      if (sel) sel.value = String(productId);
-    }, 50);
+  // ==================== MODAL: CÂN KHO ====================
+  function openAdjust(productId, name, currentQty) {
+    $('adj_product_id').value = productId;
+    $('adjTitle').textContent = `Cân kho — ${name}`;
+    $('adj_qty').value = 1;
+    $('adj_note').value = '';
+    $('adjCurrentQty').textContent = currentQty ?? '…';
+    state._adjCurrentQty = currentQty ?? 0;
+    state._adjDir = 'plus';
+    syncAdjDirUI();
+    updateAdjPreview();
+    $('adjustModal').classList.add('open');
+    setTimeout(() => $('adj_qty').focus(), 50);
+  }
+
+  function syncAdjDirUI() {
+    const isPlus = state._adjDir === 'plus';
+    $('adjBtnPlus').classList.toggle('active', isPlus);
+    $('adjBtnMinus').classList.toggle('active', !isPlus);
+    $('adjSubmit').className = `btn adj-submit-btn ${isPlus ? 'plus-mode' : 'minus-mode'}`;
+  }
+
+  function updateAdjPreview() {
+    const dir    = state._adjDir;
+    const qty    = Math.max(1, parseInt($('adj_qty').value) || 1);
+    const cur    = state._adjCurrentQty ?? 0;
+    const result = dir === 'plus' ? cur + qty : cur - qty;
+    const isNeg  = result < 0;
+    const cls    = isNeg ? 'neg' : (dir === 'plus' ? 'plus' : 'minus');
+    $('adjResultCard').className  = `adj-flow-card adj-flow-result-card ${cls}`;
+    $('adjResultQty').textContent = result;
+    $('adjPreview').className     = `adj-preview-badge ${cls}`;
+    $('adjPreviewLabel').textContent = dir === 'plus' ? `Thêm +${qty} vào kho` : `Trừ −${qty} khỏi kho`;
+  }
+
+  async function submitAdjust(ev) {
+    ev.preventDefault();
+    const productId = Number($('adj_product_id').value);
+    const dir  = state._adjDir;
+    const qty  = Math.max(1, parseInt($('adj_qty').value) || 1);
+    const note = $('adj_note').value.trim() || null;
+    if (!productId) return;
+    const cur = state._adjCurrentQty ?? 0;
+    if (dir === 'minus' && qty > cur) {
+      ui.toast(`Không thể trừ ${qty} khi tồn chỉ còn ${cur}`, 'warning');
+      return;
+    }
+    const res = await api.post('/admin/inventory/receipts', {
+      kind: dir === 'plus' ? 'in' : 'out',
+      reason_code: dir === 'plus' ? 'adjust_plus' : 'adjust_minus',
+      reason_text: note,
+      items: [{ product_id: productId, qty, note }],
+    }, {
+      successMessage: `Đã cân kho ${dir === 'plus' ? '+' : '−'}${qty}`,
+    }).catch(() => null);
+    if (!res) return;
+    $('adjustModal').classList.remove('open');
+    loadStats();
+    if (state.activeTab === 'stock')             loadStock();
+    else if (state.activeTab === 'receipts-in')  loadReceipts('in');
+    else if (state.activeTab === 'receipts-out') loadReceipts('out');
   }
 
   // ==================== TAB 5: STOCKTAKES ====================
@@ -557,7 +714,6 @@
       <div><div class="lbl">Tổng |chênh lệch|</div><div class="val">${t.total_variance_abs}</div></div>
       ` : ''}
     `;
-
     $('st_note').value = t.note || '';
     $('st_note').disabled = !isDraft;
     $('stNoteField').style.display = isDraft || (t.note || '') ? '' : 'none';
@@ -566,7 +722,6 @@
     $('btnStFinish').style.display    = isDraft ? '' : 'none';
     $('btnStCancelTake').style.display = isDraft ? '' : 'none';
 
-    // Cảnh báo nếu có line system_qty != current_qty (tồn HT đã đổi từ lúc snapshot)
     if (isDraft) {
       const driftedNames = state.currentTake.lines
         .filter(l => l.system_qty !== l.current_qty)
@@ -640,7 +795,6 @@
         if (counted) counted.addEventListener('input', () => {
           const v = Math.max(0, parseInt(counted.value) || 0);
           state.currentTake.lines[idx].counted_qty = v;
-          // Cập nhật cell variance + cell counted_qty không re-render full để giữ focus
           const refQty = state.currentTake.lines[idx].current_qty;
           const variance = v - refQty;
           tr.children[4].innerHTML = (variance > 0
@@ -671,7 +825,6 @@
       ui.toast('SP đã có trong phiên', 'warning');
       return;
     }
-    // Lookup tồn HT hiện tại từ /stock?q=code
     api.get(`/admin/inventory/stock?q=${encodeURIComponent(p.code)}`, { silent: true })
       .then(r => {
         const found = r && r.items ? r.items.find(s => s.product_id === productId) : null;
@@ -702,20 +855,17 @@
       counted_qty: Number(l.counted_qty) || 0,
       note: l.note || null,
     }));
-    // Lưu note phiên: hiện tại API không hỗ trợ update note ở /lines, để client side giữ.
     const r = await api.put(`/admin/inventory/stocktakes/${t.id}/lines`, { lines }, {
       successMessage: 'Đã lưu nháp',
     }).catch(() => null);
     if (!r) return;
-    await openTake(t.id);  // reload để cập nhật current_qty mới nhất
+    await openTake(t.id);
   }
 
   async function finishTake() {
     const t = state.currentTake;
     if (!t || t.status !== 'draft') return;
     if (!t.lines.length) return ui.toast('Phiên chưa có SP nào', 'warning');
-
-    // Save trước rồi finish (đảm bảo BE có lines mới nhất)
     const lines = t.lines.map(l => ({
       product_id: l.product_id,
       counted_qty: Number(l.counted_qty) || 0,
@@ -723,13 +873,8 @@
     }));
     const saved = await api.put(`/admin/inventory/stocktakes/${t.id}/lines`, { lines }, { silent: true })
       .catch(() => null);
-    if (!saved) {
-      ui.toast('Không lưu được trước khi chốt', 'error');
-      return;
-    }
-
+    if (!saved) { ui.toast('Không lưu được trước khi chốt', 'error'); return; }
     if (!window.confirm('Hoàn tất phiên kiểm kê? Hệ thống sẽ tự sinh phiếu cân kho cho từng SP chênh lệch và cập nhật tồn kho.')) return;
-
     const r = await api.post(`/admin/inventory/stocktakes/${t.id}/finish`, {}, {
       successMessage: 'Đã hoàn tất phiên kiểm kê',
     }).catch(() => null);
@@ -762,15 +907,7 @@
     ]);
     state.products = pRes ? pRes.items : [];
     state.suppliers = sRes ? (sRes.items || sRes) : [];
-
-    // Populate danh mục filter từ danh sách sản phẩm
-    const cats = [...new Set(state.products.map(p => p.category).filter(Boolean))].sort();
-    const sel = $('f_stock_cat');
-    cats.forEach(c => {
-      const o = document.createElement('option');
-      o.value = c; o.textContent = c;
-      sel.appendChild(o);
-    });
+    buildCatList();
   }
 
   function bindEvents() {
@@ -778,39 +915,55 @@
       btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
 
-    // Tab 1 filters
+    // Topnav search → live filter
     $('f_stock_q').addEventListener('input', debounce(() => {
       state.stock.q = $('f_stock_q').value.trim();
-      state.stock.page = 1; loadStock();
+      state.stock.page = 1;
+      if (state.activeTab === 'stock') loadStock();
     }, 300));
-    $('f_stock_cat').addEventListener('change', () => {
-      state.stock.cat = $('f_stock_cat').value;
-      state.stock.page = 1; loadStock();
-    });
-    $('f_stock_state').addEventListener('change', () => {
+
+    // Sidebar apply button
+    $('btnApplyFilter').addEventListener('click', () => {
+      state.stock.cat_id      = $('f_stock_cat').value;
       state.stock.stock_state = $('f_stock_state').value;
-      state.stock.page = 1; loadStock();
+      state.stock.qty_min     = $('f_stock_qty_min').value;
+      state.stock.qty_max     = $('f_stock_qty_max').value;
+      state.stock.page = 1;
+      buildCatList();
+      loadStock();
     });
-    $('f_stock_qty_min').addEventListener('input', debounce(() => {
-      state.stock.qty_min = $('f_stock_qty_min').value;
-      state.stock.page = 1; loadStock();
-    }, 400));
-    $('f_stock_qty_max').addEventListener('input', debounce(() => {
-      state.stock.qty_max = $('f_stock_qty_max').value;
-      state.stock.page = 1; loadStock();
-    }, 400));
+
+    // Đặt lại
+    $('btnResetFilter').addEventListener('click', () => {
+      $('f_stock_q').value       = '';
+      $('f_stock_cat').value     = '';
+      $('f_stock_state').value   = '';
+      $('f_stock_qty_min').value = '';
+      $('f_stock_qty_max').value = '';
+      state.stock = { ...state.stock, q: '', stock_state: '', cat_id: '', qty_min: '', qty_max: '', page: 1 };
+      buildCatList();
+      loadStock();
+    });
+
+    // Per-page
+    $('stockPerPage').addEventListener('change', () => {
+      state.stock.limit = Number($('stockPerPage').value);
+      state.stock.page = 1;
+      loadStock();
+    });
+
     $('stockPrev').addEventListener('click', () => { if (state.stock.page > 1) { state.stock.page--; loadStock(); }});
     $('stockNext').addEventListener('click', () => { state.stock.page++; loadStock(); });
+
+    // Export
+    $('btnExportCsv').addEventListener('click', exportCsv);
 
     // Tab 2 (in)
     $('f_in_q').addEventListener('input', debounce(() => {
       state.inR.q = $('f_in_q').value.trim();
       state.inR.page = 1; loadReceipts('in');
     }, 300));
-    $('f_in_reason').addEventListener('change', () => {
-      state.inR.reason = $('f_in_reason').value;
-      state.inR.page = 1; loadReceipts('in');
-    });
+    $('f_in_reason').addEventListener('change', () => { state.inR.reason = $('f_in_reason').value; state.inR.page = 1; loadReceipts('in'); });
     $('f_in_from').addEventListener('change', () => { state.inR.from = $('f_in_from').value; state.inR.page = 1; loadReceipts('in'); });
     $('f_in_to').addEventListener('change',   () => { state.inR.to = $('f_in_to').value;     state.inR.page = 1; loadReceipts('in'); });
     $('inPrev').addEventListener('click', () => { if (state.inR.page > 1) { state.inR.page--; loadReceipts('in'); }});
@@ -822,10 +975,7 @@
       state.outR.q = $('f_out_q').value.trim();
       state.outR.page = 1; loadReceipts('out');
     }, 300));
-    $('f_out_reason').addEventListener('change', () => {
-      state.outR.reason = $('f_out_reason').value;
-      state.outR.page = 1; loadReceipts('out');
-    });
+    $('f_out_reason').addEventListener('change', () => { state.outR.reason = $('f_out_reason').value; state.outR.page = 1; loadReceipts('out'); });
     $('f_out_from').addEventListener('change', () => { state.outR.from = $('f_out_from').value; state.outR.page = 1; loadReceipts('out'); });
     $('f_out_to').addEventListener('change',   () => { state.outR.to = $('f_out_to').value;     state.outR.page = 1; loadReceipts('out'); });
     $('outPrev').addEventListener('click', () => { if (state.outR.page > 1) { state.outR.page--; loadReceipts('out'); }});
@@ -855,18 +1005,9 @@
     $('hsCloseBtn').addEventListener('click', () => $('historyModal').classList.remove('open'));
 
     // Tab 5: Stocktakes
-    $('f_st_status').addEventListener('change', () => {
-      state.takes.status = $('f_st_status').value;
-      state.takes.page = 1; loadTakes();
-    });
-    $('f_st_from').addEventListener('change', () => {
-      state.takes.from = $('f_st_from').value;
-      state.takes.page = 1; loadTakes();
-    });
-    $('f_st_to').addEventListener('change', () => {
-      state.takes.to = $('f_st_to').value;
-      state.takes.page = 1; loadTakes();
-    });
+    $('f_st_status').addEventListener('change', () => { state.takes.status = $('f_st_status').value; state.takes.page = 1; loadTakes(); });
+    $('f_st_from').addEventListener('change', () => { state.takes.from = $('f_st_from').value; state.takes.page = 1; loadTakes(); });
+    $('f_st_to').addEventListener('change', () => { state.takes.to = $('f_st_to').value; state.takes.page = 1; loadTakes(); });
     $('stPrev').addEventListener('click', () => { if (state.takes.page > 1) { state.takes.page--; loadTakes(); }});
     $('stNext').addEventListener('click', () => { state.takes.page++; loadTakes(); });
     $('btnNewStocktake').addEventListener('click', openNewStocktake);
@@ -878,6 +1019,22 @@
     $('btnStSaveDraft').addEventListener('click', saveTakeDraft);
     $('btnStFinish').addEventListener('click', finishTake);
     $('btnStCancelTake').addEventListener('click', cancelTake);
+
+    // Adjust modal
+    $('adjClose').addEventListener('click',  () => $('adjustModal').classList.remove('open'));
+    $('adjCancel').addEventListener('click', () => $('adjustModal').classList.remove('open'));
+    $('adjFrm').addEventListener('submit', submitAdjust);
+    $('adj_qty').addEventListener('input', updateAdjPreview);
+    $('adjBtnPlus').addEventListener('click',  () => { state._adjDir = 'plus';  syncAdjDirUI(); updateAdjPreview(); });
+    $('adjBtnMinus').addEventListener('click', () => { state._adjDir = 'minus'; syncAdjDirUI(); updateAdjPreview(); });
+    $('adjStepDown').addEventListener('click', () => {
+      $('adj_qty').value = Math.max(1, (parseInt($('adj_qty').value) || 1) - 1);
+      updateAdjPreview();
+    });
+    $('adjStepUp').addEventListener('click', () => {
+      $('adj_qty').value = (parseInt($('adj_qty').value) || 1) + 1;
+      updateAdjPreview();
+    });
 
     // Supplier dialog
     $('btnManageSuppliers').addEventListener('click', openSupplierDialog);
@@ -904,7 +1061,7 @@
 
   // ==================== SUPPLIER DIALOG ====================
   async function loadSuppliersDialog() {
-    const q = ($('sup_search') ? $('sup_search').value.trim() : '');
+    const q = $('sup_search') ? $('sup_search').value.trim() : '';
     const p = new URLSearchParams();
     if (q) p.set('q', q);
     p.set('limit', 200);
@@ -913,7 +1070,7 @@
     const items = res.items || res || [];
     const tb = $('tbody-suppliers');
     if (!items.length) {
-      tb.innerHTML = `<tr><td colspan="6" class="text-center text-muted" style="padding:24px">Ch\u01b0a c\u00f3 nh\u00e0 cung c\u1ea5p n\u00e0o</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="6" class="text-center text-muted" style="padding:24px">Chưa có nhà cung cấp nào</td></tr>`;
       return;
     }
     tb.innerHTML = items.map(s => `
@@ -924,12 +1081,11 @@
         <td>${escape(s.address || '')}</td>
         <td style="font-size:12.5px;color:#64748b">${escape(s.note || '')}</td>
         <td>
-          <button class="btn ghost sm" data-act="sup-edit" data-id="${s.id}">S\u1eeda</button>
-          <button class="btn ghost sm" data-act="sup-del" data-id="${s.id}" style="color:#dc2626">X\u00f3a</button>
+          <button class="btn ghost sm" data-act="sup-edit" data-id="${s.id}">Sửa</button>
+          <button class="btn ghost sm" data-act="sup-del" data-id="${s.id}" style="color:#dc2626">Xóa</button>
         </td>
       </tr>
     `).join('');
-    // Also refresh the supplier dropdown cache
     state.suppliers = items;
   }
 
@@ -938,12 +1094,10 @@
     $('supplierModal').classList.add('open');
     loadSuppliersDialog();
   }
-  function closeSupplierDialog() {
-    $('supplierModal').classList.remove('open');
-  }
+  function closeSupplierDialog() { $('supplierModal').classList.remove('open'); }
 
   function openSupplierForm(s) {
-    $('supFormTitle').textContent = s ? 'S\u1eeda nh\u00e0 cung c\u1ea5p' : 'Th\u00eam nh\u00e0 cung c\u1ea5p';
+    $('supFormTitle').textContent = s ? 'Sửa nhà cung cấp' : 'Thêm nhà cung cấp';
     $('sup_f_id').value      = s ? s.id : '';
     $('sup_f_name').value    = s ? (s.name || '')    : '';
     $('sup_f_phone').value   = s ? (s.phone || '')   : '';
@@ -952,9 +1106,7 @@
     $('supplierFormModal').classList.add('open');
     setTimeout(() => $('sup_f_name').focus(), 50);
   }
-  function closeSupplierForm() {
-    $('supplierFormModal').classList.remove('open');
-  }
+  function closeSupplierForm() { $('supplierFormModal').classList.remove('open'); }
 
   async function handleSupplierSubmit(e) {
     e.preventDefault();
@@ -965,11 +1117,11 @@
       address: $('sup_f_address').value.trim() || null,
       note:    $('sup_f_note').value.trim() || null,
     };
-    if (!data.name) return ui.toast('Thi\u1ebfu t\u00ean NCC', 'warning');
+    if (!data.name) return ui.toast('Thiếu tên NCC', 'warning');
     $('btnSaveSupplier').disabled = true;
     const ok = await (id
-      ? api.put('/admin/suppliers/' + id, data, { successMessage: '\u0110\u00e3 c\u1eadp nh\u1eadt NCC', loading: true })
-      : api.post('/admin/suppliers',     data, { successMessage: '\u0110\u00e3 t\u1ea1o NCC',     loading: true })
+      ? api.put('/admin/suppliers/' + id, data, { successMessage: 'Đã cập nhật NCC', loading: true })
+      : api.post('/admin/suppliers',     data, { successMessage: 'Đã tạo NCC',     loading: true })
     ).catch(() => null);
     $('btnSaveSupplier').disabled = false;
     if (!ok) return;
@@ -987,14 +1139,14 @@
       if (s) openSupplierForm(s);
     } else if (act === 'sup-del') {
       const yes = await ui.confirm({
-        title: 'X\u00e1c nh\u1eadn xo\u00e1',
-        message: 'Xo\u00e1 nh\u00e0 cung c\u1ea5p n\u00e0y?',
+        title: 'Xác nhận xoá',
+        message: 'Xoá nhà cung cấp này?',
         type: 'warning',
-        okText: 'Xo\u00e1',
+        okText: 'Xoá',
       });
       if (!yes) return;
       const ok = await api.delete('/admin/suppliers/' + id, {
-        successMessage: '\u0110\u00e3 xo\u00e1 NCC',
+        successMessage: 'Đã xoá NCC',
       }).catch(() => null);
       if (ok) loadSuppliersDialog();
     }

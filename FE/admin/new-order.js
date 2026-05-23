@@ -426,7 +426,7 @@
               </div>
             </div>
             <div class="cell"><input type="text" inputmode="numeric" class="ic-input num qty" value="${fmtNum(it.qty || 1)}"></div>
-            <div class="cell"><input type="text" inputmode="numeric" class="ic-input num price" value="${fmtNum(it.unit_price || 0)}"></div>
+            <div class="cell"><input type="text" inputmode="numeric" class="ic-input num price" value="${it.unit_price ? fmtNum(it.unit_price) : ''}" placeholder="Nhập giá..."></div>
             <div class="cell line-total">${fmtVnd(lineTotal)}</div>
             <div class="cell"><button type="button" class="btn-x" data-act="del-item">×</button></div>
           </div>
@@ -502,7 +502,7 @@
         </div>
         <div class="line-body">
           <div class="line-section">
-            <div class="sh">Sản phẩm <button type="button" class="add" data-act="add-item">+ Thêm SP</button></div>
+            <div class="sh">Sản phẩm</div>
             <div class="ic-table">
               <div class="ic-thead items-grid">
                 <div class="cell">Sản phẩm</div>
@@ -513,6 +513,7 @@
               </div>
               <div class="line-items">${itemsHtml}</div>
             </div>
+            <button type="button" class="add-item-cta" data-act="add-item">＋ Thêm sản phẩm</button>
           </div>
 
           <div class="line-section">
@@ -558,10 +559,23 @@
       }
       dd.innerHTML = items.map((p, i) => {
         const price = Number(p.price) || 0;
-        const code = p.code ? `<span style="color:var(--muted);font-size:10.5px"> · ${esc(p.code)}</span>` : '';
+        const stock = Number(p.stock_qty) || 0;
+        const img = p.thumbnail_url || p.image_url;
+        const imgHtml = img
+          ? `<img src="${esc(img)}" class="prod-dd-img" onerror="this.style.display='none'">`
+          : `<span class="prod-dd-no-img">📦</span>`;
+        const code = p.code ? `<span class="prod-dd-code"> · ${esc(p.code)}</span>` : '';
+        const stockCls = stock === 0 ? 'prod-dd-stock out' : 'prod-dd-stock';
+        const stockTxt = stock === 0 ? 'Hết hàng' : `Tồn: ${stock}`;
         return `<div class="opt ${i === activeIdx ? 'active' : ''}" data-pid="${p.id}">
-          <div class="nm">${esc(p.name)}${code}</div>
-          <div class="px">${fmtVnd(price)}</div>
+          ${imgHtml}
+          <div class="prod-dd-info">
+            <div class="nm">${esc(p.name)}${code}</div>
+            <div class="prod-dd-bottom">
+              <span class="px">${fmtVnd(price)}</span>
+              <span class="${stockCls}">${stockTxt}</span>
+            </div>
+          </div>
         </div>`;
       }).join('');
       dd.querySelectorAll('.opt').forEach(opt => {
@@ -576,7 +590,7 @@
       const r = inp.getBoundingClientRect();
       dd.style.left = r.left + 'px';
       dd.style.top = (r.bottom + 2) + 'px';
-      dd.style.width = Math.max(r.width, 240) + 'px';
+      dd.style.width = Math.max(r.width, 300) + 'px';
     }
     let scrollHandler = null;
     function openDd() {
@@ -798,8 +812,8 @@
           it.unit_price = Math.max(0, parseNum(e.target.value));
           updateLineTotals(card, ln);
         });
-        priceEl.addEventListener('blur', (e) => { e.target.value = fmtNum(it.unit_price); });
-        priceEl.addEventListener('focus', (e) => { e.target.value = String(it.unit_price); e.target.select(); });
+        priceEl.addEventListener('blur', (e) => { e.target.value = it.unit_price ? fmtNum(it.unit_price) : ''; });
+        priceEl.addEventListener('focus', (e) => { e.target.value = it.unit_price ? String(it.unit_price) : ''; e.target.select(); });
 
         block.querySelector('[data-act=del-item]').addEventListener('click', () => {
           ln.items.splice(ii, 1);
@@ -969,13 +983,15 @@
     state.products = (res && res.items) || [];
   }
   async function loadStaff() {
-    // Lay tat ca nhan vien khong phan biet role (admin, kithuat, staff)
     const res = await api.get('/admin/staff?limit=500').catch(() => null);
     state.staffList = (res && res.items) || [];
+    // Giu select an de submit code doc .value va selectedOptions[0].text
     const $sel = document.getElementById('f_staff');
     $sel.innerHTML = '<option value="">— Chưa gán —</option>' +
       state.staffList.map(s => `<option value="${s.id}">${esc(s.full_name)} (${esc(s.role)})</option>`).join('');
-    
+
+    renderKtvPicker();
+
     // Cap nhat dropdown cho staff commission inline
     const $scSel = document.getElementById('f_sc_staff');
     if ($scSel) {
@@ -1100,6 +1116,124 @@
     e.target.value = ''; // reset
   }
 
+  // ---- KTV PICKER ---------------------------------------------
+  let _ktvDdBound = false;
+
+  function renderKtvPicker() {
+    const $trigger = document.getElementById('ktvTrigger');
+    if (!$trigger) return;
+    const staffId = Number(document.getElementById('f_staff').value) || 0;
+    const s = staffId ? state.staffList.find(x => x.id === staffId) : null;
+    if (!s) {
+      $trigger.innerHTML = `<span class="ktv-placeholder">— Chưa gán kỹ thuật viên —</span><span class="ktv-caret">▾</span>`;
+      return;
+    }
+    const avInner = s.avatar_url
+      ? `<img src="${esc(s.avatar_url)}" onerror="this.style.display='none'">${esc(initial(s.full_name))}`
+      : esc(initial(s.full_name));
+    const isOnline = s.online_status === 'online';
+    const roleLabel = s.role === 'kithuat' ? 'KTV' : s.role === 'admin' ? 'Admin' : (s.role || 'NV').toUpperCase();
+    const active = Number(s.active_tasks) || 0;
+    const badgeCls = active >= 3 ? 'busy' : active > 0 ? '' : 'free';
+    const badgeTxt = active > 0 ? `${active} đơn đang làm` : 'Rảnh';
+    $trigger.innerHTML = `
+      <div class="ktv-av">${avInner}<span class="ktv-online-dot ${isOnline ? 'online' : ''}"></span></div>
+      <div style="flex:1;min-width:0">
+        <div class="ktv-sel-name">${esc(s.full_name)}</div>
+        <div class="ktv-sel-meta">
+          <span class="ktv-role-tag">${roleLabel}</span>
+          <span class="ktv-orders-badge ${badgeCls}">${badgeTxt}</span>
+        </div>
+      </div>
+      <button type="button" class="ktv-x-btn" id="ktvClearBtn">Đổi</button>
+      <span class="ktv-caret">▾</span>`;
+    document.getElementById('ktvClearBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.getElementById('f_staff').value = '';
+      renderKtvPicker();
+    });
+  }
+
+  function renderKtvDdList(q) {
+    const $list = document.getElementById('ktvDdList');
+    if (!$list) return;
+    const norm = (q || '').trim().toLowerCase();
+    const items = state.staffList.filter(s =>
+      s.role === 'kithuat' &&
+      (!norm || s.full_name.toLowerCase().includes(norm) || (s.username || '').toLowerCase().includes(norm))
+    );
+    if (!items.length) {
+      $list.innerHTML = '<div class="ktv-dd-none">Không tìm thấy</div>';
+      return;
+    }
+    const curId = Number(document.getElementById('f_staff').value) || 0;
+    $list.innerHTML = items.map(s => {
+      const avInner = s.avatar_url
+        ? `<img src="${esc(s.avatar_url)}" onerror="this.style.display='none'">${esc(initial(s.full_name))}`
+        : esc(initial(s.full_name));
+      const isOnline = s.online_status === 'online';
+      const roleLabel = s.role === 'kithuat' ? 'KTV' : s.role === 'admin' ? 'Admin' : (s.role || 'NV').toUpperCase();
+      const active = Number(s.active_tasks) || 0;
+      const badgeCls = active >= 3 ? 'busy' : active > 0 ? '' : 'free';
+      const badgeTxt = active > 0 ? `${active} đơn đang làm` : 'Rảnh';
+      return `
+        <div class="ktv-dd-item ${s.id === curId ? 'active' : ''}" data-sid="${s.id}">
+          <div class="ktv-av" style="width:32px;height:32px;font-size:13px">
+            ${avInner}
+            <span class="ktv-online-dot ${isOnline ? 'online' : ''}"></span>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div class="ktv-dd-name">${esc(s.full_name)}</div>
+            <div class="ktv-dd-sub">
+              <span class="ktv-role-tag">${roleLabel}</span>
+              <span class="ktv-orders-badge ${badgeCls}">${badgeTxt}</span>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+    $list.querySelectorAll('.ktv-dd-item').forEach(item => {
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        document.getElementById('f_staff').value = Number(item.dataset.sid);
+        closeKtvDd();
+        renderKtvPicker();
+      });
+    });
+  }
+
+  function openKtvDd() {
+    const $dd = document.getElementById('ktvDd');
+    if (!$dd) return;
+    $dd.hidden = false;
+    renderKtvDdList('');
+    const $s = document.getElementById('ktvSearch');
+    if ($s) { $s.value = ''; setTimeout(() => $s.focus(), 30); }
+  }
+
+  function closeKtvDd() {
+    const $dd = document.getElementById('ktvDd');
+    if ($dd) $dd.hidden = true;
+  }
+
+  function bindKtvPicker() {
+    if (_ktvDdBound) return;
+    _ktvDdBound = true;
+    const $trigger = document.getElementById('ktvTrigger');
+    const $search  = document.getElementById('ktvSearch');
+    if (!$trigger) return;
+    $trigger.addEventListener('click', () => {
+      const $dd = document.getElementById('ktvDd');
+      if ($dd && !$dd.hidden) closeKtvDd(); else openKtvDd();
+    });
+    if ($search) {
+      $search.addEventListener('input', (e) => renderKtvDdList(e.target.value));
+    }
+    document.addEventListener('click', (e) => {
+      const picker = document.getElementById('ktvPicker');
+      if (picker && !picker.contains(e.target)) closeKtvDd();
+    }, true);
+  }
+
   // ---- COMMISSIONS --------------------------------------------
   function renderStaffCommissions() {
     const $box = document.getElementById('staffCommBox');
@@ -1173,7 +1307,7 @@
   function addStaffCommissionRow() {
     try {
       const staffId = Number(document.getElementById('f_sc_staff').value);
-      const amount  = parseNum(document.getElementById('f_sc_amt').value);
+      const amount  = Money.get(document.getElementById('f_sc_amt'));
       const note    = document.getElementById('f_sc_note').value.trim();
 
       if (!staffId) { ui.toast('Vui lòng chọn nhân viên', 'warning'); return; }
@@ -1183,7 +1317,7 @@
       renderStaffCommissions();
 
       document.getElementById('f_sc_staff').value = '';
-      document.getElementById('f_sc_amt').value = '0';
+      Money.set(document.getElementById('f_sc_amt'), 0);
       document.getElementById('f_sc_note').value = '';
 
       document.getElementById('staffCommBox').lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1198,6 +1332,7 @@
   document.addEventListener('DOMContentLoaded', async () => {
     adminShell.init('new-order');
     renderCustomer();
+    bindKtvPicker();
 
     document.getElementById('btnAddLine').addEventListener('click', () => addLine());
     document.getElementById('f_pay').addEventListener('change', updateBill);
@@ -1208,17 +1343,8 @@
     renderPhotos();
 
     // Commissions
-    const scAmtEl = document.getElementById('f_sc_amt');
-    scAmtEl.addEventListener('blur',  (e) => { e.target.value = fmtNum(parseNum(e.target.value)); });
-    scAmtEl.addEventListener('focus', (e) => { e.target.value = String(parseNum(e.target.value)); e.target.select(); });
-
     document.getElementById('btnAddStaffComm').addEventListener('click', addStaffCommissionRow);
     renderStaffCommissions();
-
-    // Format tien cong KTV
-    const wageEl = document.getElementById('f_wage');
-    wageEl.addEventListener('blur',  (e) => { e.target.value = fmtNum(parseNum(e.target.value)); });
-    wageEl.addEventListener('focus', (e) => { e.target.value = String(parseNum(e.target.value)); e.target.select(); });
 
     document.getElementById('frm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1255,7 +1381,7 @@
       }
 
       const staffId = Number(document.getElementById('f_staff').value) || null;
-      const wage    = Math.max(0, parseNum(document.getElementById('f_wage').value));
+      const wage    = Math.max(0, Money.get(document.getElementById('f_wage')));
 
       const body = {
         customer_id: customerId,

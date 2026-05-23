@@ -193,21 +193,52 @@
   .prod-dd {
     position:fixed; z-index:9999;
     background:#fff; border:1px solid var(--border); border-radius:6px;
-    box-shadow:0 6px 20px rgba(0,0,0,.12); max-height:260px; overflow:auto;
+    box-shadow:0 6px 20px rgba(0,0,0,.12); max-height:340px; overflow:auto;
     display:none;
   }
   .prod-dd.on { display:block; }
   .prod-dd .opt {
-    padding:6px 10px; font-size:12.5px; cursor:pointer;
+    display:flex; align-items:center; gap:9px;
+    padding:7px 10px; font-size:12.5px; cursor:pointer;
     border-bottom:1px solid #f1f5f9; line-height:1.3;
   }
   .prod-dd .opt:last-child { border-bottom:0; }
   .prod-dd .opt:hover, .prod-dd .opt.active { background:#f4f8ff; }
   .prod-dd .opt .nm { color:var(--text); font-weight:500; }
-  .prod-dd .opt .px { font-size:11px; color:var(--muted); margin-top:1px;
-    font-variant-numeric:tabular-nums; }
   .prod-dd .empty { padding:10px; text-align:center; color:var(--muted);
     font-size:12px; font-style:italic; }
+
+  /* Product dropdown — ảnh + thông tin */
+  .prod-dd-img {
+    width:40px; height:40px; object-fit:cover;
+    border-radius:5px; border:1px solid var(--border); flex-shrink:0;
+  }
+  .prod-dd-no-img {
+    width:40px; height:40px; border-radius:5px; border:1px solid var(--border);
+    background:#f1f5f9; display:grid; place-items:center;
+    font-size:18px; flex-shrink:0;
+  }
+  .prod-dd-info { flex:1; min-width:0; }
+  .prod-dd-bottom { display:flex; align-items:center; gap:8px; margin-top:2px; }
+  .prod-dd-bottom .px { font-size:11px; color:var(--muted);
+    font-variant-numeric:tabular-nums; }
+  .prod-dd-code { color:var(--muted); font-size:10.5px; }
+  .prod-dd-stock {
+    font-size:10.5px; padding:1px 7px; border-radius:999px;
+    background:#dcfce7; color:#166534; font-weight:600;
+  }
+  .prod-dd-stock.out { background:#fee2e2; color:#991b1b; }
+
+  /* Nút thêm sản phẩm nổi bật dưới danh sách */
+  .add-item-cta {
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    width:100%; padding:9px 12px; margin-top:6px;
+    background:var(--primary-soft); border:2px dashed var(--primary);
+    border-radius:8px; color:var(--primary);
+    font-size:13px; font-weight:700; cursor:pointer; transition:.15s;
+    box-sizing:border-box;
+  }
+  .add-item-cta:hover { background:var(--primary); color:#fff; border-style:solid; }
 
   /* VAT label combobox dropdown */
   .vat-lbl-dd {
@@ -393,10 +424,155 @@
     gap: 8px; align-items: end; padding: 10px;
   }
 
+  /* ===== KTV section ===== */
+  .ktv-section {
+    background: linear-gradient(160deg, #f0f9ff, #e8f4fd);
+    border: 1.5px solid #38bdf8; border-radius: 10px;
+    margin-bottom: 10px;
+  }
+  .ktv-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    background: linear-gradient(135deg, #e0f2fe, #bae6fd);
+    border-bottom: 1px solid #7dd3fc;
+  }
+  .ktv-icon { font-size: 18px; line-height: 1; }
+  .ktv-title { font-size: 13.5px; font-weight: 700; color: #0c4a6e; }
+  .ktv-body { padding: 10px 12px; display: grid; grid-template-columns: 1fr 220px; gap: 10px; align-items: start; }
+  .ktv-lbl {
+    font-size: 10.5px; color: #0369a1; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .4px;
+    margin-bottom: 5px;
+  }
+  .ktv-lbl-hint { font-weight: 400; color: #64748b; text-transform: none; letter-spacing: 0; font-size: 11px; }
+
+  /* KTV picker trigger */
+  .ktv-picker { position: relative; }
+  .ktv-trigger {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; background: #fff;
+    border: 1.5px solid #7dd3fc; border-radius: 8px;
+    cursor: pointer; transition: .15s; min-height: 50px; box-sizing: border-box;
+  }
+  .ktv-trigger:hover { border-color: #0ea5e9; background: #f0f9ff; }
+  .ktv-placeholder { color: #94a3b8; font-size: 12.5px; font-style: italic; flex: 1; }
+  .ktv-av {
+    width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    color: #fff; font-weight: 800; font-size: 14px;
+    display: grid; place-items: center; position: relative; overflow: hidden;
+    box-shadow: 0 2px 6px rgba(14,165,233,.25);
+  }
+  .ktv-av img { width: 100%; height: 100%; object-fit: cover; }
+  .ktv-online-dot {
+    position: absolute; bottom: 0; right: 0;
+    width: 10px; height: 10px; border-radius: 50%; border: 2px solid #fff;
+    background: #94a3b8;
+  }
+  .ktv-online-dot.online { background: #22c55e; }
+  .ktv-sel-name { font-size: 13px; font-weight: 600; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ktv-sel-meta { display: flex; gap: 5px; align-items: center; margin-top: 3px; flex-wrap: wrap; }
+  .ktv-role-tag {
+    font-size: 10px; font-weight: 700; color: #0369a1;
+    background: #e0f2fe; padding: 1px 5px; border-radius: 8px; letter-spacing: .3px;
+  }
+  .ktv-orders-badge {
+    font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 999px;
+    background: #fef3c7; color: #92400e; border: 1px solid #fde68a;
+  }
+  .ktv-orders-badge.busy { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+  .ktv-orders-badge.free { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+  .ktv-caret { color: #94a3b8; font-size: 11px; flex-shrink: 0; }
+  .ktv-x-btn {
+    background: transparent; border: 1px solid #bae6fd; border-radius: 5px;
+    padding: 2px 7px; font-size: 11px; color: #0369a1; cursor: pointer; flex-shrink: 0;
+  }
+  .ktv-x-btn:hover { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+
+  /* KTV dropdown */
+  .ktv-dd {
+    position: absolute; left: 0; right: 0; top: calc(100% + 4px);
+    background: #fff; border: 1.5px solid #38bdf8; border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(14,165,233,.18); z-index: 100;
+    max-height: 280px; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .ktv-dd[hidden] { display: none; }
+  .ktv-dd-search { padding: 7px 9px; border-bottom: 1px solid #e0f2fe; flex-shrink: 0; }
+  .ktv-dd-search input {
+    width: 100%; border: 1px solid #bae6fd; border-radius: 6px;
+    padding: 5px 8px; font-size: 12.5px; background: #f0f9ff; box-sizing: border-box;
+  }
+  .ktv-dd-search input:focus { outline: none; border-color: #0ea5e9; background: #fff; }
+  .ktv-dd-list { overflow-y: auto; flex: 1; }
+  .ktv-dd-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 11px; cursor: pointer; border-bottom: 1px solid #f0f9ff;
+  }
+  .ktv-dd-item:last-child { border-bottom: 0; }
+  .ktv-dd-item:hover, .ktv-dd-item.active { background: #f0f9ff; }
+  .ktv-dd-name { font-size: 13px; font-weight: 600; color: #0f172a; }
+  .ktv-dd-sub { display: flex; gap: 5px; align-items: center; margin-top: 2px; flex-wrap: wrap; }
+  .ktv-dd-none { padding: 14px; text-align: center; color: #94a3b8; font-size: 13px; font-style: italic; }
+
+  /* Wage input */
+  .ktv-wage-wrap { position: relative; }
+  .ktv-wage-inp {
+    font-size: 14px !important; font-weight: 700; color: #0c4a6e !important;
+    text-align: right; font-variant-numeric: tabular-nums;
+    border-color: #7dd3fc !important; background: #fff;
+    padding-right: 26px !important;
+  }
+  .ktv-wage-inp:focus { border-color: #0ea5e9 !important; }
+  .ktv-wage-unit {
+    position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
+    font-size: 13px; color: #0369a1; font-weight: 700; pointer-events: none;
+  }
+
+  @media (max-width: 700px) { .ktv-body { grid-template-columns: 1fr; } }
+
   @media (max-width: 1100px) {
     .bill-col { position:static; height:auto; }
     .bill { height:auto; }
     .bill-body { max-height:none; }
+  }
+
+  /* ===== Mobile: items-grid 2 hàng (sản phẩm full-width ở trên, sl/giá/tổng/xóa ở dưới) ===== */
+  @media (max-width: 700px) {
+    .no-wrap { padding:10px; }
+
+    /* Ẩn header thead của bảng sản phẩm — placeholder input đã đủ gợi ý */
+    .ic-thead.items-grid { display:none; }
+
+    /* Đổi items-grid thành 2 hàng */
+    .ic-row.items-grid {
+      grid-template-columns: 52px 1fr 80px 28px;
+      grid-template-rows: auto auto;
+      gap:0;
+    }
+    /* Ô sản phẩm: hàng 1, chiếm toàn bộ chiều ngang */
+    .ic-row.items-grid .cell:nth-child(1) {
+      grid-column: 1 / -1;
+      grid-row: 1;
+      padding: 6px 6px 4px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    /* SL — hàng 2 cột 1 */
+    .ic-row.items-grid .cell:nth-child(2) { grid-row:2; grid-column:1; }
+    /* Đơn giá — hàng 2 cột 2 */
+    .ic-row.items-grid .cell:nth-child(3) { grid-row:2; grid-column:2; }
+    /* Thành tiền — hàng 2 cột 3 */
+    .ic-row.items-grid .cell.line-total   { grid-row:2; grid-column:3; font-size:12px; }
+    /* Nút xóa — hàng 2 cột 4 */
+    .ic-row.items-grid .cell:last-child   { grid-row:2; grid-column:4; }
+
+    /* Charges grid gọn hơn trên mobile */
+    .ic-thead.charges-grid { display:none; }
+    .charges-grid { grid-template-columns: 72px 1fr 80px 28px; }
+
+    /* sc-add-row gọn hơn */
+    .sc-add-row { grid-template-columns: 1fr 90px auto; gap:6px; padding:8px; }
+    .sc-card-top { grid-template-columns: 32px 1fr auto auto; gap:6px; }
+    .sc-amt-inp { width:80px; }
   }
 </style>
 </head>
@@ -417,27 +593,45 @@
             <div class="no-card" style="padding:10px">
               <div id="custBox"></div>
               <input type="hidden" id="f_customer_id">
-              <div class="hdr-grid" style="display:grid;grid-template-columns:140px 1fr 1fr;gap:6px;margin-top:8px">
-                <select id="f_pay" class="select" style="padding:5px 8px;font-size:13px" title="Phương thức thanh toán">
-                  <option value="debt" selected>📒 Ghi nợ (mặc định)</option>
-                  <option value="cash">💵 Tiền mặt</option>
-                  <option value="transfer">🏦 Chuyển khoản</option>
-                </select>
-                <input type="text" id="f_address" class="input" placeholder="📍 Địa chỉ" style="padding:5px 8px;font-size:13px">
-                <input type="text" id="f_note" class="input" placeholder="📝 Ghi chú nội bộ" style="padding:5px 8px;font-size:13px">
-              </div>
+              <input type="hidden" id="f_pay" value="debt">
+              <input type="hidden" id="f_address" value="">
+              <input type="hidden" id="f_note" value="">
             </div>
 
             <!-- Lines section -->
             <div id="linesBox"></div>
             <button type="button" class="add-line-btn" id="btnAddLine">+ Thêm dòng công việc</button>
 
-            <div class="no-card" style="padding:10px">
-              <div style="display:grid;grid-template-columns:1fr 130px;gap:8px;align-items:center">
-                <select id="f_staff" class="select" style="padding:5px 8px;font-size:13px" title="Gán KTV">
-                  <option value="">— Chưa gán KTV —</option>
-                </select>
-                <input type="text" inputmode="numeric" id="f_wage" class="input" value="0" placeholder="Tiền công KTV" style="padding:5px 8px;font-size:13px;text-align:right" title="Tiền công KTV (không cộng vào hoá đơn)">
+            <!-- KTV section -->
+            <div class="ktv-section">
+              <div class="ktv-head">
+                <span class="ktv-icon">🔧</span>
+                <span class="ktv-title">Kỹ thuật viên phụ trách</span>
+              </div>
+              <div class="ktv-body">
+                <div>
+                  <div class="ktv-lbl">Chọn kỹ thuật viên</div>
+                  <div class="ktv-picker" id="ktvPicker">
+                    <div class="ktv-trigger" id="ktvTrigger">
+                      <span class="ktv-placeholder">— Chưa gán kỹ thuật viên —</span>
+                      <span class="ktv-caret">▾</span>
+                    </div>
+                    <div class="ktv-dd" id="ktvDd" hidden>
+                      <div class="ktv-dd-search">
+                        <input type="text" id="ktvSearch" placeholder="🔍 Tìm kỹ thuật viên..." autocomplete="off">
+                      </div>
+                      <div class="ktv-dd-list" id="ktvDdList"></div>
+                    </div>
+                  </div>
+                  <select id="f_staff" style="display:none"></select>
+                </div>
+                <div>
+                  <div class="ktv-lbl">Tiền công <span class="ktv-lbl-hint">(không hiện trên hoá đơn)</span></div>
+                  <div class="ktv-wage-wrap">
+                    <input type="text" inputmode="numeric" id="f_wage" class="input money-input ktv-wage-inp" value="0" placeholder="0">
+                    <span class="ktv-wage-unit">đ</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -471,7 +665,7 @@
                 </div>
                 <div class="field" style="margin:0">
                   <label>Số tiền (VND)</label>
-                  <input type="text" inputmode="numeric" id="f_sc_amt" class="input" value="0" placeholder="0" style="font-size:13px;text-align:right">
+                  <input type="text" inputmode="numeric" id="f_sc_amt" class="input money-input" value="0" placeholder="0" style="font-size:13px;text-align:right">
                 </div>
                 <button type="button" class="btn sm" id="btnAddStaffComm" style="margin-bottom:0">+ Thêm</button>
               </div>
