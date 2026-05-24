@@ -281,6 +281,39 @@ router.post('/', staffAllowed, async (req, res, next) => {
       );
     }
 
+    // Auto-supersede tat ca phieu pending/partially_paid con lai cua khach (khong phai phieu vua tao)
+    // Dong thoi reset debt_carried_at cho don hang trong cac phieu bi supersede nhung KHONG duoc carry vao phieu moi
+    const [supersededRows] = await conn.query(
+      `SELECT id FROM payment_requests
+        WHERE customer_id = ? AND status IN ('pending','partially_paid') AND id != ? AND is_deleted = 0`,
+      [customer_id, requestId]
+    );
+    if (supersededRows.length > 0) {
+      const supersededIds = supersededRows.map(r => r.id);
+      // Don hang trong phieu bi supersede nhung khong duoc carry vao phieu moi -> reset debt_carried_at
+      const carriedOrderIds = new Set(orderIdsToMark);
+      const phSup = supersededIds.map(() => '?').join(',');
+      const [ordersInOld] = await conn.query(
+        `SELECT pri.target_id AS order_id
+           FROM payment_request_items pri
+          WHERE pri.request_id IN (${phSup}) AND pri.target_type = 'order'`,
+        supersededIds
+      );
+      const toReset = ordersInOld.map(r => r.order_id).filter(id => !carriedOrderIds.has(id));
+      if (toReset.length > 0) {
+        const phReset = toReset.map(() => '?').join(',');
+        await conn.query(
+          `UPDATE orders SET debt_carried_at = NULL WHERE id IN (${phReset})`,
+          toReset
+        );
+      }
+      // Chuyen phieu cu sang trang thai superseded
+      await conn.query(
+        `UPDATE payment_requests SET status = 'superseded' WHERE id IN (${phSup})`,
+        supersededIds
+      );
+    }
+
     await conn.commit();
     res.json({ success: true, request_id: requestId, code, skipped_orders: warnings });
   } catch (err) {
@@ -325,6 +358,7 @@ router.get('/', async (req, res, next) => {
     const dateFrom  = req.query.date_from || null;
     const dateTo    = req.query.date_to   || null;
     const hasRemain = req.query.has_remaining === '1';
+    const orderCode = (req.query.order_code || '').trim();
 
     const conds = ['pr.is_deleted = 0'];
     const params = [];
@@ -346,6 +380,10 @@ router.get('/', async (req, res, next) => {
     if (dateFrom) { conds.push(`DATE(pr.created_at) >= ?`); params.push(dateFrom); }
     if (dateTo)   { conds.push(`DATE(pr.created_at) <= ?`); params.push(dateTo); }
     if (hasRemain){ conds.push(`pr.remaining > 0`); }
+    if (orderCode) {
+      conds.push(`EXISTS (SELECT 1 FROM payment_request_items pri2 JOIN orders o2 ON o2.id = pri2.target_id WHERE pri2.request_id = pr.id AND pri2.target_type = 'order' AND o2.code LIKE ?)`);
+      params.push(`%${orderCode}%`);
+    }
 
     const [rows] = await db.query(
       `SELECT pr.id, pr.code, pr.total_amount, pr.paid_amount, pr.remaining,
@@ -713,6 +751,11 @@ router.post('/:id/cancel', staffAllowed, async (req, res, next) => {
       await conn.rollback();
       conn.release();
       return res.status(400).json({ error: 'Khong the huy phieu da thanh toan day du' });
+    }
+    if (pr.status === 'superseded') {
+      await conn.rollback();
+      conn.release();
+      return res.status(400).json({ error: 'Phieu nay da bi thay the boi phieu moi, khong the huy' });
     }
     if (Number(pr.paid_amount) > 0) {
       await conn.rollback();

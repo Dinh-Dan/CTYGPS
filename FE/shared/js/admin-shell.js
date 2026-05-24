@@ -18,7 +18,8 @@
     { type: 'item', href: '/admin/customers.html', icon: '👥', label: 'Khách hàng', key: 'customers', badgeKey: 'customers' },
     { type: 'sep',  label: 'Bán hàng' },
     { type: 'item', href: '/admin/orders.html',    icon: '🛒', label: 'Đơn hàng',   key: 'orders',    badgeKey: 'orders' },
-    { type: 'item', href: '/admin/debts.html',     icon: '💳', label: 'Công nợ',    key: 'debts',     badgeKey: 'debts' },
+    { type: 'item', href: '/admin/debts.html',          icon: '💳', label: 'Công nợ',       key: 'debts',         badgeKey: 'debts' },
+    { type: 'item', href: '/admin/staff-receipts.html', icon: '💵', label: 'Đối soát tiền', key: 'staff-receipts', badgeKey: 'staff_receipts', adminOnly: true },
     { type: 'sep',  label: 'Vận hành' },
     { type: 'item', href: '/admin/products.html',    icon: '🏷', label: 'Sản phẩm',     key: 'products' },
     { type: 'item', href: '/admin/inventory.html',   icon: '📦', label: 'Kho thiết bị', key: 'inventory' },
@@ -81,6 +82,32 @@
         60%{transform:rotate(-6deg)}
         80%{transform:rotate(4deg)}
       }
+
+      /* ---- Daily summary dialog ---- */
+      .ds-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}
+      .ds-card{
+        border-radius:8px;padding:12px 10px;text-align:center;cursor:default;
+        border:1px solid transparent;transition:filter .12s;
+      }
+      .ds-card.link{cursor:pointer}
+      .ds-card.link:hover{filter:brightness(.93)}
+      .ds-card .ds-ico{font-size:20px;margin-bottom:4px}
+      .ds-card .ds-val{font-size:24px;font-weight:700;line-height:1.1}
+      .ds-card .ds-lbl{font-size:11px;opacity:.75;margin-top:3px}
+      .ds-card-blue  {background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}
+      .ds-card-amber {background:#fffbeb;border-color:#fde68a;color:#b45309}
+      .ds-card-sky   {background:#f0f9ff;border-color:#bae6fd;color:#0369a1}
+      .ds-card-green {background:#f0fdf4;border-color:#bbf7d0;color:#166534}
+      .ds-card-red   {background:#fff1f2;border-color:#fecdd3;color:#b91c1c}
+      .ds-card-purple{background:#faf5ff;border-color:#e9d5ff;color:#7c3aed}
+      .ds-card-orange{background:#fff7ed;border-color:#fed7aa;color:#c2410c}
+      .ds-wide{grid-column:span 3}
+      .ds-wide2{grid-column:span 2}
+      #ds-summary-btn{
+        font-size:12px;padding:3px 9px;border:1px solid #e2e8f0;background:#f8fafc;
+        border-radius:6px;cursor:pointer;color:#475569;transition:background .1s;
+      }
+      #ds-summary-btn:hover{background:#e2e8f0}
       #notif-bell-badge{
         position:absolute;top:0;right:0;
         background:#dc2626;color:#fff;border-radius:999px;
@@ -217,6 +244,11 @@
         <div class="notif-empty" id="notif-empty" style="display:none">Chưa có thông báo</div>
       </div>
     `;
+    // Nut "Tong quan hom nay" trong header dropdown
+    wrap.querySelector('.notif-head div').insertAdjacentHTML(
+      'afterbegin',
+      `<button id="ds-summary-btn" type="button" title="Tổng quan hôm nay">📊 Hôm nay</button>`
+    );
     topnav.appendChild(wrap);
     bindBellEvents();
     syncMuteIcon();
@@ -242,6 +274,11 @@
       const muted = localStorage.getItem('notif.mute') === '1';
       localStorage.setItem('notif.mute', muted ? '0' : '1');
       syncMuteIcon();
+    });
+    document.getElementById('ds-summary-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      dd.classList.remove('open');
+      showDailySummary();
     });
     document.getElementById('notif-read-all').addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -473,44 +510,130 @@
     });
   }
 
-  // Hien dialog chao mung sau khi dang nhap (chi 1 lan moi phien).
+  function fmtMoney(n) {
+    const v = Number(n) || 0;
+    if (v === 0) return '0';
+    if (v >= 1_000_000) return (v / 1_000_000).toFixed(v % 1_000_000 === 0 ? 0 : 1) + 'M';
+    if (v >= 1_000)     return (v / 1_000).toFixed(v % 1_000 === 0 ? 0 : 0) + 'K';
+    return String(v);
+  }
+
+  function buildSummaryDialog(s, u) {
+    const today = new Date().toLocaleDateString('vi-VN', { day:'2-digit', month:'2-digit', year:'numeric' });
+    const name  = escape(u ? (u.full_name || u.username || '') : '');
+    const greeting = name ? `, ${name}` : '';
+    const num = k => `<div class="ds-val">${Number(s[k]) || 0}</div>`;
+
+    const bg = document.createElement('div');
+    bg.className = 'ui-dialog-bg';
+    bg.innerHTML = `
+      <div class="ui-dialog" style="max-width:520px">
+        <div class="ui-dialog-head">
+          <h3 class="ui-dialog-title">📊 Tổng quan hôm nay${greeting ? ' — ' + greeting : ''}</h3>
+          <button class="modal-close" data-act="ok" aria-label="Đóng">×</button>
+        </div>
+        <div class="ui-dialog-body" style="padding:16px">
+          <div style="font-size:12px;color:#94a3b8;margin-bottom:12px">${today}</div>
+
+          <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px">Đơn hàng</div>
+          <div class="ds-grid">
+            <div class="ds-card ds-card-blue link ds-wide" data-nav="/admin/orders.html" style="text-align:left;display:flex;align-items:center;gap:14px">
+              <div style="font-size:28px">🛒</div>
+              <div style="flex:1">
+                <div style="font-size:11px;opacity:.7;margin-bottom:2px">Đã thu / Tổng giá trị (trừ huỷ)</div>
+                <div style="font-size:20px;font-weight:700;line-height:1.2">${fmtMoney(s.orders_paid_amount)}</div>
+                <div style="font-size:12px;opacity:.8;margin-top:1px">/ ${fmtMoney(s.orders_total_amount)} — ${Number(s.orders_today)||0} đơn</div>
+              </div>
+            </div>
+            <div class="ds-card ds-card-blue link" data-nav="/admin/orders.html" style="grid-column:span 1">
+              <div class="ds-ico">🛒</div>
+              ${num('orders_today')}
+              <div class="ds-lbl">Đơn mới hôm nay</div>
+            </div>
+            <div class="ds-card ds-card-amber link" data-nav="/admin/orders.html?status=pending">
+              <div class="ds-ico">⏳</div>
+              ${num('orders_pending')}
+              <div class="ds-lbl">Chờ xử lý</div>
+            </div>
+            <div class="ds-card ds-card-sky link" data-nav="/admin/orders.html?status=confirmed">
+              <div class="ds-ico">✔</div>
+              ${num('orders_confirmed')}
+              <div class="ds-lbl">Đã xác nhận</div>
+            </div>
+            <div class="ds-card ds-card-purple link" data-nav="/admin/orders.html?status=in_progress">
+              <div class="ds-ico">🔧</div>
+              ${num('orders_in_progress')}
+              <div class="ds-lbl">Đang làm</div>
+            </div>
+            <div class="ds-card ds-card-green link" data-nav="/admin/orders.html?status=done">
+              <div class="ds-ico">✅</div>
+              ${num('orders_done')}
+              <div class="ds-lbl">Hoàn thành</div>
+            </div>
+            <div class="ds-card ds-card-red link" data-nav="/admin/orders.html?status=cancelled">
+              <div class="ds-ico">❌</div>
+              ${num('orders_cancelled')}
+              <div class="ds-lbl">Bị huỷ</div>
+            </div>
+          </div>
+
+          <div style="font-size:12px;font-weight:600;color:#475569;margin:14px 0 8px;text-transform:uppercase;letter-spacing:.4px">Tài chính</div>
+          <div class="ds-grid">
+            <div class="ds-card ds-card-amber link ds-wide2" data-nav="/admin/payment-request-detail.html">
+              <div class="ds-ico">💰</div>
+              ${num('payment_requests_pending')}
+              <div class="ds-lbl">Yêu cầu ứng tiền chờ duyệt</div>
+            </div>
+            <div class="ds-card ds-card-orange link" data-nav="/admin/staff-receipts.html">
+              <div class="ds-ico">💵</div>
+              <div class="ds-val">${fmtMoney(s.receipts_amount)}</div>
+              <div class="ds-lbl">${Number(s.receipts_unreviewed) || 0} phiếu chưa đối soát</div>
+            </div>
+          </div>
+
+          <div style="font-size:12px;font-weight:600;color:#475569;margin:14px 0 8px;text-transform:uppercase;letter-spacing:.4px">Kho hôm nay</div>
+          <div class="ds-grid">
+            <div class="ds-card ds-card-green link ds-wide2" data-nav="/admin/inventory.html?kind=in">
+              <div class="ds-ico">📥</div>
+              ${num('stock_in_today')}
+              <div class="ds-lbl">Phiếu nhập kho</div>
+            </div>
+            <div class="ds-card ds-card-purple link" data-nav="/admin/inventory.html?kind=out">
+              <div class="ds-ico">📤</div>
+              ${num('stock_out_today')}
+              <div class="ds-lbl">Phiếu xuất kho</div>
+            </div>
+          </div>
+        </div>
+        <div class="ui-dialog-actions">
+          <button class="btn" data-act="ok">Bắt đầu làm việc</button>
+        </div>
+      </div>`;
+    bg.addEventListener('click', (e) => {
+      if (e.target.closest('button[data-act="ok"]') || e.target === bg) bg.remove();
+      const card = e.target.closest('.ds-card.link');
+      if (card && card.dataset.nav) { bg.remove(); location.href = card.dataset.nav; }
+    });
+    return bg;
+  }
+
+  async function showDailySummary(u) {
+    const s = await api.get('/admin/notifications/daily-summary', { silent: true }).catch(() => null);
+    if (!s) return;
+    document.querySelector('.ui-dialog-bg[data-ds]')?.remove();
+    const bg = buildSummaryDialog(s, u || auth.user());
+    bg.dataset.ds = '1';
+    document.body.appendChild(bg);
+  }
+
+  // Hien panel thong ke sau khi dang nhap (chi 1 lan moi phien).
   function maybeShowWelcome(u) {
     if (!u) return;
     let flag = null;
     try { flag = sessionStorage.getItem('gpsviet_just_logged_in'); } catch (_) {}
     if (flag !== '1') return;
     try { sessionStorage.removeItem('gpsviet_just_logged_in'); } catch (_) {}
-
-    const isAdmin = u.role === 'admin';
-    const perms = filterNav(isAdmin)
-      .filter(n => n.type === 'item' && !n.disabled)
-      .map(n => `<li>${n.icon} ${escape(n.label)}</li>`)
-      .join('');
-    const roleText = isAdmin ? 'Quản trị (admin)' : (u.role === 'staff' ? 'Nhân viên quản lý (staff)' : escape(u.role || ''));
-    const name = escape(u.full_name || u.username || '');
-
-    const bg = document.createElement('div');
-    bg.className = 'ui-dialog-bg';
-    bg.innerHTML = `
-      <div class="ui-dialog ui-dialog-info" style="max-width:480px">
-        <div class="ui-dialog-head">
-          <h3 class="ui-dialog-title">👋 Chào mừng${name ? ', ' + name : ''}</h3>
-          <button class="modal-close" data-act="ok" aria-label="Đóng">×</button>
-        </div>
-        <div class="ui-dialog-body">
-          <p style="margin:0 0 8px">Bạn đã đăng nhập với quyền <b>${roleText}</b>.</p>
-          <p style="margin:0 0 6px">Bạn có thể truy cập các mục:</p>
-          <ul style="margin:0;padding-left:20px;line-height:1.7">${perms}</ul>
-          ${isAdmin ? '' : '<p style="margin:10px 0 0;color:#64748b;font-size:13px">⚠ Mục <b>Cài đặt hệ thống</b> chỉ dành cho Quản trị.</p>'}
-        </div>
-        <div class="ui-dialog-actions">
-          <button class="btn" data-act="ok">OK</button>
-        </div>
-      </div>`;
-    document.body.appendChild(bg);
-    bg.addEventListener('click', (e) => {
-      if (e.target.closest('button[data-act="ok"]') || e.target === bg) bg.remove();
-    });
+    showDailySummary(u);
   }
 
   function init(activeKey) {
@@ -557,5 +680,6 @@
     refreshNotifications: loadNotifications,
     refreshChatBadge,
     refreshFeed: loadFeed,
+    showDailySummary,
   };
 })(window);

@@ -71,12 +71,37 @@ async function calcCustomerDebt(conn, customerId) {
     });
   }
 
+  // Tru phan don da duoc phieu YC dang cho thu bao phu, tranh dem 2 lan
+  const [coveredRows] = await conn.query(
+    `SELECT pri.target_id AS order_id, SUM(pri.amount) AS covered
+       FROM payment_request_items pri
+       JOIN payment_requests pr ON pr.id = pri.request_id
+      WHERE pri.target_type = 'order'
+        AND pr.customer_id = ?
+        AND pr.status IN ('pending','partially_paid')
+        AND pr.is_deleted = 0
+      GROUP BY pri.target_id`,
+    [customerId]
+  );
+  const coveredMap = new Map(coveredRows.map(r => [r.order_id, Number(r.covered)]));
+
+  let adjustedOrderDebt = 0;
+  const adjustedPendingOrders = [];
+  for (const o of pendingOrders) {
+    const covered = coveredMap.get(o.id) || 0;
+    const effective = Math.max(0, o.remaining - covered);
+    if (effective > 0) {
+      adjustedOrderDebt += effective;
+      adjustedPendingOrders.push({ ...o, remaining: effective });
+    }
+  }
+
   return {
     opening_balance: opening,
-    order_debt: orderDebt,
+    order_debt: adjustedOrderDebt,
     request_debt: prDebt,
-    total_debt: opening + orderDebt + prDebt,
-    pending_orders: pendingOrders,
+    total_debt: opening + adjustedOrderDebt + prDebt,
+    pending_orders: adjustedPendingOrders,
     pending_requests: pendingRequests,
     pending_warranty: [],
   };

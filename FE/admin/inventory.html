@@ -302,7 +302,321 @@
   .days-warn{ color:#dc2626;font-weight:700; }
   .days-ok  { color:#64748b; }
 
+  /* ===== RECEIPT MODAL REDESIGN ===== */
+  .rm-modal{ max-width:800px; }
+  .rm-body{ padding:0;display:flex;flex-direction:column; }
+  .rm-kind-badge{
+    display:inline-block;padding:2px 10px;border-radius:20px;font-size:10.5px;
+    font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;
+  }
+  .rm-kind-badge.in{ background:#dcfce7;color:#15803d; }
+  .rm-kind-badge.out{ background:#fee2e2;color:#991b1b; }
+  .rm-section{
+    padding:16px 20px;border-bottom:1px solid #f1f5f9;
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .rm-section:last-of-type{ border-bottom:none; }
+  .rm-section-label{
+    font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+    color:#94a3b8;
+  }
+  .rm-info-grid{ display:grid;grid-template-columns:1fr 1fr;gap:10px; }
+  .rm-info-grid .field{ margin:0; }
+
+  /* Drop zone ảnh */
+  .r-drop-zone{
+    border:2px dashed #e2e8f0;border-radius:12px;padding:10px;
+    background:#fafbfc;cursor:pointer;display:flex;flex-direction:column;gap:8px;
+    transition:border-color .15s,background .15s;
+  }
+  .r-drop-zone:hover,.r-drop-zone.drag-over{
+    border-color:#3b82f6;background:#eff6ff;
+  }
+  .r-drop-hint{
+    display:flex;align-items:center;gap:8px;color:#94a3b8;font-size:13px;padding:6px 8px;
+  }
+  .r-photos-grid{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;
+  }
+  .r-photo-wrap{
+    position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;
+    background:#f1f5f9;border:1px solid #e2e8f0;cursor:pointer;
+  }
+  .r-photo-wrap img{ width:100%;height:100%;object-fit:cover;display:block; }
+  .r-photo-wrap .r-photo-rm{
+    position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;
+    background:rgba(0,0,0,.55);color:#fff;border:none;cursor:pointer;
+    font-size:13px;display:flex;align-items:center;justify-content:center;line-height:1;padding:0;
+  }
+  .r-photo-uploading{
+    aspect-ratio:1;border-radius:8px;background:#f8fafc;border:1px dashed #cbd5e1;
+    display:flex;align-items:center;justify-content:center;
+    color:#94a3b8;font-size:11px;flex-direction:column;gap:4px;
+  }
+
+  /* Line card */
+  .r-line-card{
+    background:#fff;border:1.5px solid #e2e8f0;border-radius:14px;
+    overflow:hidden;transition:border-color .15s,box-shadow .15s;
+  }
+  .r-line-card:hover{ border-color:#cbd5e1;box-shadow:0 2px 10px rgba(0,0,0,.06); }
+  .r-line-card+.r-line-card{ margin-top:10px; }
+
+  .r-line-head{
+    display:flex;align-items:center;gap:10px;
+    padding:10px 12px 10px 14px;background:#f8fafc;
+    border-bottom:1px solid #f1f5f9;
+  }
+  .r-line-select-wrap{ flex:1;min-width:0; }
+  .r-line-select-wrap .select{
+    width:100%;border:none;background:transparent;font-size:13.5px;
+    color:#0f172a;padding:4px 2px;cursor:pointer;font-weight:500;
+  }
+  .r-line-select-wrap .select:focus{ outline:none; }
+
+  .r-line-preview{
+    display:flex;align-items:center;gap:12px;padding:10px 14px;
+    border-bottom:1px solid #f1f5f9;
+  }
+  .r-line-thumb{
+    width:46px;height:46px;border-radius:10px;object-fit:cover;
+    flex-shrink:0;border:1px solid #e2e8f0;
+  }
+  .r-line-thumb-fb{
+    width:46px;height:46px;border-radius:10px;background:#ede9fe;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    color:#5b21b6;font-size:15px;font-weight:800;
+  }
+  .r-line-pname{ font-size:14px;font-weight:600;color:#0f172a;line-height:1.3; }
+  .r-line-pcode{ font-size:11.5px;color:#94a3b8;margin-top:1px; }
+  .r-line-stock{
+    margin-top:5px;font-size:11.5px;font-weight:600;
+    display:inline-flex;align-items:center;gap:4px;
+    padding:2px 9px;border-radius:20px;
+  }
+  .r-line-stock.ok{ background:#dcfce7;color:#15803d; }
+  .r-line-stock.low{ background:#fef3c7;color:#92400e; }
+  .r-line-stock.out{ background:#fee2e2;color:#991b1b; }
+
+  .r-line-inputs{
+    display:grid;grid-template-columns:140px 1fr 1fr;gap:10px;
+    padding:12px 14px;
+  }
+  .r-line-inputs .field{
+    margin:0;display:flex;flex-direction:column;gap:5px;
+  }
+  .r-line-inputs .field label{
+    font-size:10.5px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.4px;color:#94a3b8;
+  }
+
+  /* Qty stepper */
+  .r-qty-stepper{
+    display:flex;align-items:stretch;border:1.5px solid #e2e8f0;
+    border-radius:8px;overflow:hidden;background:#fff;
+  }
+  .r-qty-btn{
+    width:36px;border:none;background:#f8fafc;cursor:pointer;
+    font-size:20px;font-weight:500;color:#64748b;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    padding:0;transition:all .15s;
+  }
+  .r-qty-btn:hover{ background:#dbeafe;color:#1d4ed8; }
+  .r-qty-input{
+    flex:1;border:none;border-left:1.5px solid #e2e8f0;border-right:1.5px solid #e2e8f0;
+    font-size:16px;font-weight:800;text-align:center;color:#0f172a;
+    background:#fff;outline:none;padding:7px 0;min-width:0;
+    -moz-appearance:textfield;
+  }
+  .r-qty-input::-webkit-outer-spin-button,
+  .r-qty-input::-webkit-inner-spin-button{ -webkit-appearance:none; }
+
+  .r-imei-wrap{
+    padding:0 14px 12px;border-top:1px solid #f1f5f9;
+  }
+  .r-imei-wrap label{
+    font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+    color:#94a3b8;display:block;margin-bottom:5px;
+  }
+  .r-imei-wrap .textarea{ min-height:64px;font-family:monospace;font-size:12px; }
+
+  /* Add line btn */
+  .rm-add-line-btn{
+    width:100%;padding:11px;background:#f8fafc;border:1.5px dashed #cbd5e1;
+    border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:#64748b;
+    margin-top:10px;transition:all .15s;display:flex;align-items:center;
+    justify-content:center;gap:6px;
+  }
+  .rm-add-line-btn:hover{ background:#eff6ff;border-color:#3b82f6;color:#2563eb; }
+
+  /* Remove line btn */
+  .r-line-rm{
+    width:28px;height:28px;border-radius:50%;border:1.5px solid #e2e8f0;
+    background:#fff;cursor:pointer;color:#94a3b8;font-size:16px;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;transition:all .15s;
+  }
+  .r-line-rm:hover{ background:#fef2f2;border-color:#fca5a5;color:#dc2626; }
+
+  /* Detail photo grid */
+  .rd-photos-grid{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px;margin-top:6px;
+  }
+  .rd-photo-wrap{
+    aspect-ratio:1;border-radius:8px;overflow:hidden;cursor:pointer;
+    background:#f1f5f9;border:1px solid #e2e8f0;
+  }
+  .rd-photo-wrap img{ width:100%;height:100%;object-fit:cover;display:block; }
+
+  /* ===== YÊU CẦU TRẢ KHO ===== */
+  .rr-stats{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:10px;
+    margin-bottom:14px;flex-shrink:0;
+  }
+  .rr-stat-card{
+    border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;
+    border:1px solid transparent;
+  }
+  .rr-stat-card.pending { background:#f5f3ff;border-color:#ddd6fe; }
+  .rr-stat-card.approved{ background:#f0fdf4;border-color:#bbf7d0; }
+  .rr-stat-card.rejected{ background:#fff1f2;border-color:#fecdd3; }
+  .rr-stat-icon{
+    width:40px;height:40px;border-radius:10px;display:flex;align-items:center;
+    justify-content:center;font-size:18px;flex-shrink:0;
+  }
+  .rr-stat-card.pending  .rr-stat-icon{ background:#ede9fe; }
+  .rr-stat-card.approved .rr-stat-icon{ background:#dcfce7; }
+  .rr-stat-card.rejected .rr-stat-icon{ background:#ffe4e6; }
+  .rr-stat-label{ font-size:11.5px;color:#64748b;margin-bottom:2px; }
+  .rr-stat-num{ font-size:24px;font-weight:800;line-height:1; }
+  .rr-stat-card.pending  .rr-stat-num{ color:#6d28d9; }
+  .rr-stat-card.approved .rr-stat-num{ color:#15803d; }
+  .rr-stat-card.rejected .rr-stat-num{ color:#be123c; }
+
+  .rr-filter-pills{
+    display:flex;gap:6px;margin-bottom:12px;flex-shrink:0;flex-wrap:wrap;
+  }
+  .rr-pill-btn{
+    padding:6px 16px;border-radius:20px;border:1.5px solid #e2e8f0;
+    background:#fff;font-size:13px;font-weight:500;color:#64748b;cursor:pointer;
+    transition:all .15s;white-space:nowrap;
+  }
+  .rr-pill-btn:hover{ border-color:#a5b4fc;color:#4f46e5; }
+  .rr-pill-btn.active{ background:#6d28d9;border-color:#6d28d9;color:#fff;font-weight:600; }
+  .rr-pill-btn.active.approved{ background:#15803d;border-color:#15803d; }
+  .rr-pill-btn.active.rejected{ background:#be123c;border-color:#be123c; }
+  .rr-pill-btn.active.all    { background:#0f172a;border-color:#0f172a; }
+
+  /* Card grid cho pending */
+  .rr-card-grid{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+    gap:12px;overflow-y:auto;flex:1;padding-bottom:6px;
+    align-content:start;
+  }
+  .rr-card{
+    background:#fff;border:1.5px solid #e2e8f0;border-radius:14px;
+    padding:16px;display:flex;flex-direction:column;gap:12px;
+    box-shadow:0 1px 4px rgba(0,0,0,.05);transition:box-shadow .15s,border-color .15s;
+    position:relative;overflow:hidden;
+  }
+  .rr-card:hover{ box-shadow:0 4px 16px rgba(0,0,0,.10);border-color:#c4b5fd; }
+  .rr-card::before{
+    content:'';position:absolute;left:0;top:0;bottom:0;width:4px;
+    background:linear-gradient(180deg,#8b5cf6,#6d28d9);border-radius:14px 0 0 14px;
+  }
+
+  .rr-card-top{ display:flex;align-items:flex-start;gap:10px; }
+  .rr-avatar{
+    width:38px;height:38px;border-radius:10px;
+    background:linear-gradient(135deg,#8b5cf6,#6d28d9);
+    color:#fff;font-weight:700;font-size:15px;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  }
+  .rr-ktv-name{ font-size:13.5px;font-weight:700;color:#0f172a;line-height:1.2; }
+  .rr-time{ font-size:11.5px;color:#94a3b8;margin-top:2px; }
+  .rr-qty-badge{
+    margin-left:auto;background:#ede9fe;color:#6d28d9;
+    font-size:13px;font-weight:800;border-radius:8px;padding:4px 12px;
+    flex-shrink:0;line-height:1.4;text-align:center;
+  }
+  .rr-qty-badge small{ display:block;font-size:10px;font-weight:500;color:#7c3aed; }
+
+  .rr-product{
+    background:#f8fafc;border-radius:8px;padding:9px 12px;
+    display:flex;align-items:center;gap:10px;
+  }
+  .rr-product-icon{
+    width:32px;height:32px;border-radius:8px;background:#e0e7ff;
+    color:#3730a3;font-weight:700;font-size:13px;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  }
+  .rr-product-code{ font-size:11.5px;color:#6366f1;font-weight:600;margin-bottom:1px; }
+  .rr-product-name{ font-size:13px;color:#0f172a;font-weight:500; }
+
+  .rr-holding-row{
+    display:flex;align-items:center;gap:6px;font-size:12.5px;
+  }
+  .rr-holding-ok  { color:#15803d; }
+  .rr-holding-warn{ color:#dc2626;font-weight:700; }
+  .rr-hold-dot{ width:7px;height:7px;border-radius:50%;flex-shrink:0; }
+  .rr-hold-dot.ok  { background:#22c55e; }
+  .rr-hold-dot.warn{ background:#dc2626; }
+
+  .rr-note{
+    font-size:12.5px;color:#475569;background:#f8fafc;border-radius:7px;
+    padding:7px 10px;font-style:italic;border-left:3px solid #e0e7ff;
+  }
+
+  .rr-actions{ display:flex;gap:8px;margin-top:2px; }
+  .rr-btn-approve{
+    flex:1;padding:9px;border-radius:9px;border:none;
+    background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;
+    font-size:13px;font-weight:700;cursor:pointer;transition:opacity .15s;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+  }
+  .rr-btn-approve:hover{ opacity:.88; }
+  .rr-btn-reject{
+    flex:1;padding:9px;border-radius:9px;border:1.5px solid #fca5a5;
+    background:#fff;color:#dc2626;
+    font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+  }
+  .rr-btn-reject:hover{ background:#fef2f2;border-color:#f87171; }
+
+  /* Table view cho approved/rejected/all */
+  .rr-table-view{ flex:1;display:flex;flex-direction:column;min-height:0; }
+
+  .rr-empty{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:10px;color:#94a3b8;padding:40px;
+  }
+  .rr-empty-icon{ font-size:48px;opacity:.5; }
+  .rr-empty p{ font-size:14px;margin:0; }
+
+  @media(max-width:900px){
+    .rr-stats{ grid-template-columns:repeat(2,1fr); }
+    .rr-card-grid{ grid-template-columns:1fr; }
+  }
+
   /* ===== MOBILE ===== */
+  @media(max-width:768px){
+    .modal{ margin:0;border-radius:0;max-width:100% !important;height:100%;
+      max-height:100%;display:flex;flex-direction:column; }
+    .modal-body{ flex:1;overflow-y:auto; }
+    .modal-bg{ align-items:flex-end; }
+    .tab-fc{ gap:6px; }
+    .tab-fc .field.grow{ flex:1 1 100%; }
+    .tab-fc .field.w160,.tab-fc .field.w130{ flex:1 1 calc(50% - 3px);min-width:0; }
+    #inv-stats-row{ grid-template-columns:repeat(2,1fr) !important; }
+    #inv-stats-row .stat:last-child{ grid-column:1/-1; }
+    /* Receipt modal mobile */
+    .rm-info-grid{ grid-template-columns:1fr; }
+    .rm-section{ padding:12px 14px; }
+    .r-line-inputs{ grid-template-columns:120px 1fr; }
+    .r-line-inputs .field:last-child{ grid-column:1/-1; }
+    .r-line-preview{ padding:8px 12px; }
+    .receipt-detail-meta{ grid-template-columns:1fr; }
+  }
   @media(max-width:900px){
     .topnav-btn-lbl{ display:none; }
     .inv-nav-search{ display:none; }
@@ -375,6 +689,7 @@
         <button class="inv-tab" data-tab="receipts-in">Phiếu nhập</button>
         <button class="inv-tab" data-tab="receipts-out">Phiếu xuất</button>
         <button class="inv-tab" data-tab="holdings">KTV đang giữ</button>
+        <button class="inv-tab" data-tab="return-requests">↩ Yêu cầu trả kho <span id="retReqBadge" style="display:none;background:#6366f1;color:#fff;border-radius:10px;padding:0 6px;font-size:11px;margin-left:4px">0</span></button>
         <button class="inv-tab" data-tab="stocktakes">📋 Kiểm kê</button>
       </div>
 
@@ -614,7 +929,46 @@
         </div>
       </div>
 
-      <!-- Tab 5: Kiểm kê -->
+      <!-- Tab 5: Yêu cầu trả kho -->
+      <div class="inv-pane" data-pane="return-requests">
+
+        <!-- Stats mini -->
+        <div class="rr-stats">
+          <div class="rr-stat-card pending">
+            <div class="rr-stat-icon">⏳</div>
+            <div><div class="rr-stat-label">Chờ duyệt</div><div class="rr-stat-num" id="rr-cnt-pending">—</div></div>
+          </div>
+          <div class="rr-stat-card approved">
+            <div class="rr-stat-icon">✅</div>
+            <div><div class="rr-stat-label">Đã duyệt hôm nay</div><div class="rr-stat-num" id="rr-cnt-approved">—</div></div>
+          </div>
+          <div class="rr-stat-card rejected">
+            <div class="rr-stat-icon">❌</div>
+            <div><div class="rr-stat-label">Từ chối hôm nay</div><div class="rr-stat-num" id="rr-cnt-rejected">—</div></div>
+          </div>
+        </div>
+
+        <!-- Filter pills -->
+        <div class="rr-filter-pills">
+          <button class="rr-pill-btn active" data-rr-filter="pending">⏳ Chờ duyệt</button>
+          <button class="rr-pill-btn approved" data-rr-filter="approved">✅ Đã duyệt</button>
+          <button class="rr-pill-btn rejected" data-rr-filter="rejected">❌ Từ chối</button>
+          <button class="rr-pill-btn all" data-rr-filter="">📋 Tất cả</button>
+        </div>
+
+        <!-- Content area (JS swap giữa card-grid và table) -->
+        <div id="rr-content" style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden"></div>
+
+        <div class="tab-pager">
+          <div class="pager">
+            <button id="rrPrev">« Trước</button>
+            <span id="rrPageInfo">Trang 1</span>
+            <button id="rrNext">Sau »</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 6: Kiểm kê -->
       <div class="inv-pane" data-pane="stocktakes">
         <div class="info-banner">
           <span class="info-banner-icon">ℹ️</span>
@@ -679,51 +1033,68 @@
 
 <!-- Modal: Tạo phiếu nhập / xuất -->
 <div id="receiptModal" class="modal-bg">
-  <div class="modal" style="max-width:920px">
+  <div class="modal rm-modal">
     <div class="modal-head">
-      <h3 id="receiptModalTitle">Tạo phiếu</h3>
+      <div>
+        <div id="rm-kind-badge" class="rm-kind-badge out">Phiếu xuất</div>
+        <h3 id="receiptModalTitle" style="margin:0">Tạo phiếu</h3>
+      </div>
       <button type="button" class="modal-close" id="receiptModalClose" aria-label="Đóng">×</button>
     </div>
     <form id="receiptFrm" style="display:contents">
-      <div class="modal-body">
+      <div class="modal-body rm-body">
         <input type="hidden" id="r_kind">
-        <div class="grid cols-2">
-          <div class="field">
-            <label>Lý do *</label>
-            <select id="r_reason" class="select" required></select>
+
+        <!-- Thông tin phiếu -->
+        <div class="rm-section">
+          <div class="rm-section-label">Thông tin phiếu</div>
+          <div class="rm-info-grid">
+            <div class="field" style="margin:0">
+              <label>Lý do *</label>
+              <select id="r_reason" class="select" required></select>
+            </div>
+            <div class="field" id="r_supplier_field" style="margin:0">
+              <label>Nhà cung cấp</label>
+              <select id="r_supplier_id" class="select">
+                <option value="">— Không chọn —</option>
+              </select>
+            </div>
           </div>
-          <div class="field" id="r_supplier_field">
-            <label>Nhà cung cấp</label>
-            <select id="r_supplier_id" class="select">
-              <option value="">— Không chọn —</option>
-            </select>
+          <div class="field" style="margin:0">
+            <label>Ghi chú</label>
+            <textarea id="r_reason_text" class="textarea" placeholder="Ghi chú thêm về phiếu này..." rows="2"></textarea>
           </div>
         </div>
-        <div class="field">
-          <label>Ghi chú</label>
-          <textarea id="r_reason_text" class="textarea" placeholder="Mô tả thêm về phiếu này..." rows="2"></textarea>
+
+        <!-- Ảnh đính kèm -->
+        <div class="rm-section">
+          <div class="rm-section-label">Ảnh đính kèm</div>
+          <label class="r-drop-zone" id="r_drop_zone" for="r_photo_input">
+            <div id="r_photos_preview" class="r-photos-grid"></div>
+            <div id="r_drop_hint" class="r-drop-hint">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+              <span>Bấm hoặc kéo thả ảnh vào đây — chụp nhiều ảnh</span>
+            </div>
+          </label>
+          <input type="file" id="r_photo_input" accept="image/*" multiple style="display:none">
         </div>
-        <h4 style="margin:14px 0 6px">Danh sách sản phẩm</h4>
-        <div class="lines-table-scroll">
-        <table class="lines-table" id="r_lines_table">
-          <thead>
-            <tr>
-              <th style="width:240px">Sản phẩm *</th>
-              <th style="width:80px">Số lượng *</th>
-              <th class="r-price" style="width:130px">Đơn giá</th>
-              <th class="r-imei" style="width:200px">IMEI list</th>
-              <th>Ghi chú</th>
-              <th style="width:40px"></th>
-            </tr>
-          </thead>
-          <tbody id="r_lines_body"></tbody>
-        </table>
+
+        <!-- Sản phẩm -->
+        <div class="rm-section">
+          <div class="rm-section-label">Sản phẩm</div>
+          <div id="r_lines_body"></div>
+          <button type="button" class="rm-add-line-btn" id="btnAddLine">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Thêm sản phẩm
+          </button>
         </div>
-        <button type="button" class="btn ghost sm" id="btnAddLine" style="margin-top:8px">+ Thêm dòng</button>
       </div>
       <div class="modal-foot">
         <button type="button" class="btn ghost" id="receiptCancel">Hủy</button>
-        <button type="submit" class="btn" id="btnSaveReceipt">Lưu phiếu</button>
+        <button type="submit" class="btn" id="btnSaveReceipt" style="gap:6px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+          Lưu phiếu
+        </button>
       </div>
     </form>
   </div>
@@ -738,6 +1109,10 @@
     </div>
     <div class="modal-body">
       <div class="receipt-detail-meta" id="rdMeta"></div>
+      <div id="rdPhotos" style="display:none;margin-bottom:12px">
+        <div style="font-size:11.5px;color:#64748b;text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">Ảnh đính kèm</div>
+        <div id="rdPhotosGrid" class="rd-photos-grid"></div>
+      </div>
       <h4 style="margin:6px 0 8px">Sản phẩm</h4>
       <div id="rdItems"></div>
     </div>
@@ -964,6 +1339,7 @@
 <script src="/shared/js/auth.js"></script>
 <script src="/shared/js/admin-shell.js"></script>
 <script src="/shared/js/order-quick-view.js"></script>
+<script src="/shared/js/imgbb.js"></script>
 <script src="/admin/inventory.js"></script>
 </body>
 </html>

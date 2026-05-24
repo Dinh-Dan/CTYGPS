@@ -7,7 +7,6 @@
 //   GET    /:id                     detail
 //   POST   /                        tao moi
 //   PUT    /:id                     sua metadata
-//   DELETE /:id                     soft delete
 //   PUT    /:id/lines               replace lines
 //   PATCH  /:id/order-charges       replace charges cap don
 //   POST   /:id/approve             pending -> confirmed
@@ -1584,37 +1583,6 @@ router.post('/:id/cancel', async (req, res, next) => {
   } finally {
     conn.release();
   }
-});
-
-// ============================================================
-// SOFT DELETE
-// ============================================================
-router.delete('/:id', async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'id khong hop le' });
-
-    // BX-03: cam xoa don da co payment confirmed (paid_amount > 0)
-    // tru khi force=1 (admin xac nhan da hoan tien thu cong).
-    const [ords] = await db.query(
-      `SELECT id, status, paid_amount FROM orders WHERE id = ? AND is_deleted = 0`, [id]
-    );
-    if (!ords.length) return res.status(404).json({ error: 'Khong tim thay don' });
-    if (ords[0].status === 'done') {
-      return res.status(409).json({ error: 'Don da hoan thanh, khong the xoa' });
-    }
-    if (Number(ords[0].paid_amount) > 0 && req.query.force !== '1') {
-      return res.status(409).json({
-        error: 'Don da co thu tien, vui long hoan tien truoc khi xoa (hoac them ?force=1 neu da xu ly thu cong)',
-      });
-    }
-
-    const [r] = await db.query(
-      `UPDATE orders SET is_deleted = 1 WHERE id = ? AND is_deleted = 0`, [id]
-    );
-    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay don' });
-    res.json({ ok: true });
-  } catch (err) { next(err); }
 });
 
 // ============================================================

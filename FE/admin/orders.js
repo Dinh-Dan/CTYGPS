@@ -1381,22 +1381,24 @@
     if (IS_ADMIN && Number(o.total_amount) > Number(o.paid_amount)) {
       btns.push(`<button class="btn ghost" id="btnMarkPaid">Ghi nhận thanh toán</button>`);
     }
+    if (!IS_ADMIN && Number(o.total_amount) > Number(o.paid_amount) && o.status !== 'cancelled') {
+      btns.push(`<button class="btn" id="btnStaffReceiveOrder" style="background:#2563eb;color:#fff">💵 Nhận tiền</button>`);
+    }
     btns.push(`<button class="btn" id="btnInvoice" style="background:#1e40af">🧾 Hoá đơn báo giá</button>`);
     btns.push(`<button class="btn ghost" id="btnUploadPhoto">+ Ảnh</button>`);
     if (o.status !== 'cancelled') {
       btns.push(`<button class="btn ghost" id="btnCancel" style="color:#dc2626;margin-left:auto">Huỷ đơn</button>`);
     }
-    if (o.status !== 'done') btns.push(`<button class="btn ghost" id="btnDelete" style="color:#dc2626">Xoá</button>`);
 
     $box.innerHTML = btns.join('');
 
     if ($('btnApprove'))      $('btnApprove').addEventListener('click', approveOrder);
     if ($('btnAssignKTV'))    $('btnAssignKTV').addEventListener('click', assignKTV);
-    if ($('btnMarkPaid'))     $('btnMarkPaid').addEventListener('click', markPaid);
-    if ($('btnInvoice'))      $('btnInvoice').addEventListener('click', openInvoice);
+    if ($('btnMarkPaid'))           $('btnMarkPaid').addEventListener('click', markPaid);
+    if ($('btnStaffReceiveOrder'))  $('btnStaffReceiveOrder').addEventListener('click', openStaffReceiveOrderModal);
+    if ($('btnInvoice'))            $('btnInvoice').addEventListener('click', openInvoice);
     if ($('btnUploadPhoto'))  $('btnUploadPhoto').addEventListener('click', uploadStepPhoto);
     if ($('btnCancel'))       $('btnCancel').addEventListener('click', cancelOrder);
-    if ($('btnDelete'))       $('btnDelete').addEventListener('click', deleteOrder);
   }
 
   // ---- ACTIONS ------------------------------------------------
@@ -1653,6 +1655,128 @@
     if (r) { ui.toast('Đã ghi nhận', 'success'); openDetail(o.id); loadList(); }
   }
 
+  async function openStaffReceiveOrderModal() {
+    const o = state.currentDetail;
+    const remain = Math.max(0, Number(o.total_amount) - Number(o.paid_amount));
+    const total = Number(o.total_amount) || 0;
+    const paid  = Number(o.paid_amount)  || 0;
+
+    const html = `
+      <div class="mp-modal">
+        <div class="mp-summary">
+          <div class="mp-sum-row"><span>Tổng đơn</span><b>${fmt(total)}đ</b></div>
+          <div class="mp-sum-row"><span>Đã thu</span><b>${fmt(paid)}đ</b></div>
+          <div class="mp-sum-row mp-remain"><span>Còn lại</span><b>${fmt(remain)}đ</b></div>
+        </div>
+        <div class="mp-field">
+          <label>Số tiền nhận</label>
+          <div class="mp-amt-wrap">
+            <input id="srOrdAmt" type="text" inputmode="numeric" autocomplete="off"
+                   class="input mp-amt" value="${fmt(remain)}" placeholder="0">
+            <span class="mp-amt-unit">đ</span>
+          </div>
+          <div class="mp-quick">
+            <button type="button" data-sro-q="full">Toàn bộ (${fmt(remain)})</button>
+            <button type="button" data-sro-q="0">Xoá</button>
+          </div>
+        </div>
+        <div class="mp-row2">
+          <div class="mp-field">
+            <label>Hình thức</label>
+            <select id="srOrdMethod" class="select">
+              <option value="cash">Tiền mặt</option>
+              <option value="transfer">Chuyển khoản</option>
+              <option value="mixed">Hỗn hợp</option>
+            </select>
+          </div>
+          <div class="mp-field">
+            <label>Ghi chú</label>
+            <input id="srOrdNote" type="text" class="input" placeholder="Ghi chú nếu cần">
+          </div>
+        </div>
+        <div class="mp-field">
+          <label>Ảnh chứng từ <small style="color:#94a3b8">(tuỳ chọn)</small></label>
+          <div id="srOrdProofs" class="mp-proofs"></div>
+          <div class="mp-upload">
+            <label class="mp-upload-btn" for="srOrdFile">+ Thêm ảnh</label>
+            <input id="srOrdFile" type="file" accept="image/*" multiple style="display:none">
+            <span id="srOrdUpStatus" class="mp-upload-status"></span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const proofUrls = [];
+    const ok = await openSimpleModal('Nhận Tiền Từ Khách', html, 'Xác nhận Nhận Tiền', () => {
+      injectMarkPaidStyle();
+      const $amt = document.getElementById('srOrdAmt');
+      const $proofs = document.getElementById('srOrdProofs');
+      const $file   = document.getElementById('srOrdFile');
+      const $upStatus = document.getElementById('srOrdUpStatus');
+
+      const reformatAmt = () => {
+        const raw = ($amt.value || '').replace(/[^\d]/g, '');
+        $amt.value = raw ? new Intl.NumberFormat('vi-VN').format(Number(raw)) : '';
+      };
+      $amt.addEventListener('input', reformatAmt);
+      $amt.addEventListener('focus', () => $amt.select());
+      reformatAmt();
+
+      document.querySelectorAll('[data-sro-q]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const m = btn.dataset.sroQ;
+          if (m === 'full') $amt.value = fmt(remain);
+          else              $amt.value = '';
+        });
+      });
+
+      const renderProofs = () => {
+        if (!proofUrls.length) {
+          $proofs.innerHTML = '<div class="mp-proofs-empty">Chưa có ảnh</div>';
+          return;
+        }
+        $proofs.innerHTML = proofUrls.map((url, i) => `
+          <div class="mp-proof-thumb">
+            <img src="${esc(url)}" alt="">
+            <button type="button" class="mp-proof-x" data-sro-rm="${i}" title="Xoá">×</button>
+          </div>
+        `).join('');
+        $proofs.querySelectorAll('[data-sro-rm]').forEach(b => {
+          b.addEventListener('click', () => { proofUrls.splice(Number(b.dataset.sroRm), 1); renderProofs(); });
+        });
+      };
+      renderProofs();
+
+      $file.addEventListener('change', async () => {
+        const files = Array.from($file.files || []);
+        $file.value = '';
+        if (!files.length) return;
+        for (let i = 0; i < files.length; i++) {
+          $upStatus.textContent = `Đang tải ${i + 1}/${files.length}…`;
+          try {
+            const url = await imgbb.upload(files[i], { name: `sr-ord-${o.id}-${Date.now()}` });
+            proofUrls.push(url);
+            renderProofs();
+          } catch (e) { ui.toast('Lỗi tải ảnh: ' + (e.message || ''), 'error'); }
+        }
+        $upStatus.textContent = '';
+      });
+    });
+
+    if (!ok) return;
+    const amtRaw = (document.getElementById('srOrdAmt').value || '').replace(/[^\d]/g, '');
+    const body = {
+      order_id:   o.id,
+      amount:     Number(amtRaw) || 0,
+      pay_method: document.getElementById('srOrdMethod').value,
+      note:       document.getElementById('srOrdNote').value.trim() || null,
+      proof_urls: proofUrls,
+    };
+    closeSimpleModal();
+    const r = await api.post('/admin/staff-receipts', body, { onError: 'toast' });
+    if (r) { ui.toast(`Đã ghi nhận nhận tiền — ${r.code}`, 'success'); openDetail(o.id); loadList(); }
+  }
+
   function injectMarkPaidStyle() {
     if (document.getElementById('mpStyle')) return;
     const css = document.createElement('style');
@@ -1727,12 +1851,6 @@
     if (ok) { ui.toast('Đã huỷ', 'success'); openDetail(state.currentDetail.id); loadList(); }
   }
 
-  async function deleteOrder() {
-    const yes = await ui.confirm({ title: 'Xoá đơn?', message: 'Đơn sẽ bị ẩn (soft delete).', danger: true, okText: 'Xoá' });
-    if (!yes) return;
-    const ok = await api.delete(`/admin/orders/${state.currentDetail.id}`, { onError: 'toast' });
-    if (ok) { ui.toast('Đã xoá', 'success'); closeDetail(); loadList(); }
-  }
 
   // ---- EDIT: lines ---------------------------------------------
   // Sua toan bo lines (PUT /admin/orders/:id/lines).
@@ -1749,6 +1867,7 @@
       state.templates = (r && r.items) || [];
     }
     const tplCache = state.templateById = state.templateById || {};
+    const prodMap = Object.fromEntries((state.products || []).map(p => [p.id, p]));
 
     // Working copy — items mang field_values riêng
     const wlines = (o.lines || []).map(ln => ({
@@ -1764,7 +1883,8 @@
       charges: (ln.charges || []).map(c => ({ kind: c.kind, label: c.label, amount: c.amount })),
     }));
 
-    const fmtMoney =(n) => Math.round(Number(n) || 0).toLocaleString('vi-VN');
+    const fmtMoney = (n) => Math.round(Number(n) || 0).toLocaleString('vi-VN');
+    const parseMoney = (s) => parseInt(String(s || '').replace(/[^\d]/g, ''), 10) || 0;
     const calcLineTotal = (ln) => {
       const itemSum = (ln.items || []).reduce((s, it) => {
         return s + (Number(it.qty) || 0) * (Number(it.unit_price) || 0);
@@ -1798,6 +1918,27 @@
         </div>`;
     };
 
+    const renderProdPicker = (it) => {
+      const p = prodMap[it.product_id];
+      const thumbSrc = p ? (p.thumbnail_url || p.image_url || '') : '';
+      const pName = p ? p.name : '— Chọn sản phẩm —';
+      const stockQty = p ? Number(p.stock_qty) : null;
+      const stkCls = stockQty === null ? '' : stockQty <= 0 ? 'out' : stockQty <= 3 ? 'low' : 'ok';
+      return `<div class="prod-picker" data-pid="${it.product_id || 0}">
+        <div class="prod-trigger" data-act="open-prod" tabindex="0">
+          <div class="prod-thumb-wrap">
+            ${thumbSrc ? `<img class="prod-thumb-img" src="${esc(thumbSrc)}" loading="lazy">` : `<div class="prod-thumb-ph"></div>`}
+          </div>
+          <div class="prod-trigger-info">
+            <span class="prod-trigger-name">${esc(pName)}</span>
+            ${stockQty !== null ? `<span class="prod-stk-badge ${stkCls}">Kho: ${stockQty}</span>` : ''}
+          </div>
+          <span class="prod-caret-icon">▾</span>
+        </div>
+        <div class="prod-drop" hidden></div>
+      </div>`;
+    };
+
     const renderLine = (ln, idx) => {
       const tpl = tplCache[ln.template_id];
       const lineName = ln.custom_name || (tpl ? tpl.name : '');
@@ -1806,14 +1947,9 @@
         const sub = (Number(it.qty) || 0) * (Number(it.unit_price) || 0);
         return `<div class="item-block" data-ii="${ii}">
           <div class="ic-row el-item items-grid">
-            <div class="cell">
-              <select class="ic-select prod">
-                <option value="">— Sản phẩm —</option>
-                ${state.products.map(p => `<option value="${p.id}" ${p.id === it.product_id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
-              </select>
-            </div>
+            <div class="cell">${renderProdPicker(it)}</div>
             <div class="cell"><input type="number" class="ic-input num qty" value="${it.qty || 1}" min="1"></div>
-            <div class="cell"><input type="number" class="ic-input num price" value="${it.unit_price || 0}" min="0"></div>
+            <div class="cell"><input type="text" class="ic-input price-fmt" value="${fmtMoney(it.unit_price || 0)}" placeholder="0" inputmode="numeric"></div>
             <div class="cell right el-amt-cell">${fmtMoney(sub)}</div>
             <div class="cell"><button type="button" class="btn-x" data-act="del-item">×</button></div>
           </div>
@@ -1881,48 +2017,83 @@
     };
 
     const html = `<style>
-      #simpleModal .modal { max-width: 860px !important; }
+      #simpleModal .modal { max-width: 900px !important; }
       #simpleModal .modal-body { background:#f1f5f9; }
       .el-wrap { padding:14px; }
 
-      /* Line card – khớp trang tạo đơn */
-      .line-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; margin-bottom:14px; overflow:hidden; box-shadow:0 1px 4px rgba(15,23,42,.06); }
-      .line-head { display:flex; align-items:center; gap:8px; padding:8px 12px; background:linear-gradient(135deg,#f1f5ff,#fafbfd); border-bottom:1px solid #e2e8f0; }
-      .line-head .seq { width:24px; height:24px; border-radius:50%; background:#2563eb; color:#fff; font-weight:700; display:grid; place-items:center; font-size:12px; flex-shrink:0; }
+      /* Line card */
+      .line-card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; margin-bottom:14px; overflow:visible; box-shadow:0 2px 8px rgba(15,23,42,.07); }
+      .line-head { display:flex; align-items:center; gap:8px; padding:8px 12px; background:linear-gradient(135deg,#f1f5ff,#fafbfd); border-bottom:1px solid #e2e8f0; border-radius:12px 12px 0 0; }
+      .line-head .seq { width:26px; height:26px; border-radius:50%; background:#2563eb; color:#fff; font-weight:700; display:grid; place-items:center; font-size:12px; flex-shrink:0; }
       .line-head .tpl-combo { flex:1; position:relative; }
       .line-head .tpl-combo .tpl-input { width:100%; font-size:13px; padding:6px 28px 6px 10px; font-weight:600; border:1px solid #e2e8f0; border-radius:6px; background:#fff; box-sizing:border-box; }
       .line-head .tpl-combo .tpl-caret { position:absolute; right:6px; top:50%; transform:translateY(-50%); width:22px; height:22px; border:none; background:transparent; color:#64748b; cursor:pointer; font-size:11px; display:grid; place-items:center; padding:0; }
       .line-head .tpl-combo .tpl-pop { position:absolute; left:0; right:0; top:calc(100% + 4px); background:#fff; border:1px solid #e2e8f0; border-radius:8px; box-shadow:0 8px 24px rgba(15,23,42,.12); max-height:220px; overflow-y:auto; z-index:50; }
       .line-head .tpl-combo .tpl-pop[hidden] { display:none; }
-      .line-head .sub-show { font-size:12px; color:#64748b; font-variant-numeric:tabular-nums; }
-      .line-head .x-btn { background:transparent; border:1px solid #e2e8f0; border-radius:6px; padding:4px 10px; font-size:12px; color:#dc2626; cursor:pointer; }
+      .line-head .sub-show { font-size:12px; color:#64748b; font-variant-numeric:tabular-nums; white-space:nowrap; }
+      .line-head .x-btn { background:transparent; border:1px solid #e2e8f0; border-radius:6px; padding:4px 10px; font-size:12px; color:#dc2626; cursor:pointer; white-space:nowrap; }
       .line-head .x-btn:hover { background:#fee2e2; border-color:#fecaca; }
 
-      .line-body { padding:10px 12px; }
+      .line-body { padding:10px 12px; overflow:visible; }
       .line-section { margin-bottom:10px; }
       .line-section .sh { font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:.3px; font-weight:700; margin-bottom:6px; display:flex; align-items:center; gap:6px; }
       .line-section .sh .add { margin-left:auto; font-size:11.5px; padding:2px 8px; border:1px solid #e2e8f0; border-radius:5px; background:#fff; color:#2563eb; cursor:pointer; }
       .line-section .sh .add:hover { background:#eff6ff; }
 
       /* Bảng sản phẩm / phụ phí */
-      .ic-table { border:1px solid #e2e8f0; border-radius:6px; overflow:hidden; background:#fff; }
-      .ic-thead { background:#f8fafc; font-size:10.5px; color:#94a3b8; text-transform:uppercase; letter-spacing:.3px; font-weight:600; border-bottom:1px solid #e2e8f0; }
-      .ic-row { border-bottom:1px solid #f1f5f9; }
+      .ic-table { border:1px solid #e2e8f0; border-radius:8px; overflow:visible; background:#fff; }
+      .ic-thead { background:#f8fafc; font-size:10.5px; color:#94a3b8; text-transform:uppercase; letter-spacing:.3px; font-weight:600; border-bottom:1px solid #e2e8f0; border-radius:8px 8px 0 0; overflow:hidden; }
+      .ic-row { border-bottom:1px solid #f1f5f9; position:relative; }
       .ic-row:last-child { border-bottom:0; }
       .ic-row .cell, .ic-thead .cell { padding:4px 6px; min-width:0; }
-      .ic-thead .cell.center, .ic-row .cell.center { text-align:center; }
-      .ic-thead .cell.right,  .ic-row .cell.right  { text-align:right; }
-      .items-grid   { display:grid; grid-template-columns:2fr 60px 110px 110px 32px; gap:0; align-items:center; }
-      .charges-grid { display:grid; grid-template-columns:90px 1fr 120px 30px; gap:0; align-items:center; }
+      .ic-thead .cell.right, .ic-row .cell.right { text-align:right; }
+      .items-grid   { display:grid; grid-template-columns:minmax(0,2fr) 64px 130px 110px 32px; gap:0; align-items:center; }
+      .charges-grid { display:grid; grid-template-columns:90px 1fr 130px 30px; gap:0; align-items:center; }
       .ic-input, .ic-select { width:100%; border:1px solid transparent; background:transparent; padding:4px 6px; font-size:12.5px; border-radius:4px; box-sizing:border-box; }
-      .ic-input:focus, .ic-select:focus { outline:none; border-color:#2563eb; background:#fff; }
+      .ic-input:focus, .ic-select:focus { outline:none; border-color:#2563eb; background:#fff; box-shadow:0 0 0 2px #dbeafe; }
       .ic-input.num { text-align:right; font-variant-numeric:tabular-nums; }
-      .el-amt-cell { font-weight:600; color:#0f172a; font-variant-numeric:tabular-nums; font-size:12.5px; }
-      .ic-empty { padding:8px; text-align:center; color:#94a3b8; font-size:12px; font-style:italic; }
+      .price-fmt { text-align:right; font-variant-numeric:tabular-nums; }
+      .el-amt-cell { font-weight:600; color:#0f172a; font-variant-numeric:tabular-nums; font-size:13px; padding-right:8px !important; }
+      .ic-empty { padding:10px; text-align:center; color:#94a3b8; font-size:12px; font-style:italic; }
 
       /* Item block */
-      .item-block { border-bottom:2px solid #e2e8f0; }
+      .item-block { border-bottom:1px solid #e2e8f0; overflow:visible; }
       .item-block:last-child { border-bottom:0; }
+
+      /* --- Product Picker --- */
+      .prod-picker { position:relative; }
+      .prod-trigger { display:flex; align-items:center; gap:6px; padding:4px 6px; border-radius:6px; cursor:pointer; user-select:none; transition:background .12s; min-height:38px; }
+      .prod-trigger:hover { background:#f1f5f9; }
+      .prod-trigger:focus { outline:2px solid #2563eb; outline-offset:1px; border-radius:6px; }
+      .prod-thumb-wrap { flex-shrink:0; width:32px; height:32px; border-radius:6px; overflow:hidden; background:#f1f5f9; border:1px solid #e2e8f0; display:flex; align-items:center; justify-content:center; }
+      .prod-thumb-img { width:32px; height:32px; object-fit:cover; }
+      .prod-thumb-ph { width:20px; height:20px; background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23cbd5e1'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4'/%3E%3C/svg%3E") center/contain no-repeat; }
+      .prod-trigger-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+      .prod-trigger-name { font-size:12.5px; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.3; }
+      .prod-trigger-name.placeholder { color:#94a3b8; }
+      .prod-stk-badge { font-size:10px; font-weight:600; padding:1px 5px; border-radius:10px; width:fit-content; }
+      .prod-stk-badge.ok  { background:#dcfce7; color:#16a34a; }
+      .prod-stk-badge.low { background:#fef9c3; color:#a16207; }
+      .prod-stk-badge.out { background:#fee2e2; color:#dc2626; }
+      .prod-caret-icon { font-size:10px; color:#94a3b8; flex-shrink:0; }
+
+      /* Dropdown của product picker */
+      .prod-drop { position:absolute; left:0; right:0; top:calc(100% + 2px); background:#fff; border:1px solid #e2e8f0; border-radius:10px; box-shadow:0 12px 32px rgba(15,23,42,.15); z-index:200; min-width:280px; overflow:hidden; }
+      .prod-drop[hidden] { display:none; }
+      .prod-drop-search { padding:8px 10px; border-bottom:1px solid #f1f5f9; }
+      .prod-search-inp { width:100%; border:1px solid #e2e8f0; border-radius:6px; padding:6px 10px; font-size:13px; box-sizing:border-box; }
+      .prod-search-inp:focus { outline:none; border-color:#2563eb; box-shadow:0 0 0 2px #dbeafe; }
+      .prod-drop-list { max-height:230px; overflow-y:auto; }
+      .prod-opt { display:flex; align-items:center; gap:8px; padding:7px 10px; cursor:pointer; transition:background .1s; }
+      .prod-opt:hover { background:#eff6ff; }
+      .po-thumb { width:28px; height:28px; border-radius:4px; object-fit:cover; flex-shrink:0; border:1px solid #e2e8f0; }
+      .po-thumb-ph { width:28px; height:28px; border-radius:4px; background:#f1f5f9; flex-shrink:0; border:1px solid #e2e8f0; }
+      .po-name { flex:1; font-size:12.5px; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .po-stk { font-size:10.5px; font-weight:600; padding:1px 6px; border-radius:10px; flex-shrink:0; }
+      .po-stk.ok  { background:#dcfce7; color:#16a34a; }
+      .po-stk.low { background:#fef9c3; color:#a16207; }
+      .po-stk.out { background:#fee2e2; color:#dc2626; }
+      .prod-empty { padding:10px; text-align:center; font-size:12px; color:#94a3b8; font-style:italic; }
 
       /* Hộp thông tin (collapsible) */
       .item-info-box { background:#f8fafc; border-top:1px solid #e9eef4; }
@@ -1935,7 +2106,7 @@
       .fv-row { display:flex; gap:6px; align-items:center; margin-bottom:4px; }
 
       /* Tổng dòng */
-      .el-line-total { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#f8fafc; border-top:1px solid #e2e8f0; font-size:13px; color:#475569; }
+      .el-line-total { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#f8fafc; border-top:1px solid #e2e8f0; font-size:13px; color:#475569; border-radius:0 0 12px 12px; }
       .el-line-total b { color:#0f172a; font-size:15px; font-variant-numeric:tabular-nums; }
 
       /* Nút xoá */
@@ -1972,9 +2143,9 @@
             });
           });
           ln.items.push({
-            product_id: Number(row.querySelector('.prod').value) || 0,
+            product_id: Number(block.querySelector('.prod-picker').dataset.pid) || 0,
             qty: Math.max(1, Number(row.querySelector('.qty').value) || 1),
-            unit_price: Math.max(0, Number(row.querySelector('.price').value) || 0),
+            unit_price: Math.max(0, parseMoney(row.querySelector('.price-fmt').value)),
             field_values: fvs,
           });
         });
@@ -2080,6 +2251,74 @@
             chev.textContent = isOpen ? '▶' : '▼';
           });
         });
+
+        // Product picker
+        el.querySelectorAll('.prod-picker').forEach(picker => {
+          const trigger = picker.querySelector('.prod-trigger');
+          const drop = picker.querySelector('.prod-drop');
+          const openDrop = () => {
+            drop.hidden = false;
+            const q = '';
+            const renderDropList = (search) => {
+              const norm = search.toLowerCase();
+              const filtered = (state.products || []).filter(p => !norm || p.name.toLowerCase().includes(norm));
+              drop.innerHTML = `<div class="prod-drop-search"><input class="prod-search-inp" type="text" placeholder="Tìm sản phẩm..." value="${esc(search)}" autocomplete="off"></div>
+                <div class="prod-drop-list">${filtered.slice(0, 50).map(p => {
+                  const thumb = p.thumbnail_url || p.image_url || '';
+                  const stk = Number(p.stock_qty);
+                  const sc = stk <= 0 ? 'out' : stk <= 3 ? 'low' : 'ok';
+                  return `<div class="prod-opt" data-pid="${p.id}">
+                    ${thumb ? `<img class="po-thumb" src="${esc(thumb)}" loading="lazy">` : '<div class="po-thumb-ph"></div>'}
+                    <span class="po-name">${esc(p.name)}</span>
+                    <span class="po-stk ${sc}">Kho: ${stk}</span>
+                  </div>`;
+                }).join('')}${filtered.length === 0 ? '<div class="prod-empty">Không tìm thấy</div>' : ''}</div>`;
+              drop.querySelector('.prod-search-inp').addEventListener('input', e => renderDropList(e.target.value));
+              drop.querySelectorAll('.prod-opt').forEach(opt => {
+                opt.addEventListener('mousedown', e => {
+                  e.preventDefault();
+                  const pid = Number(opt.dataset.pid);
+                  readDom();
+                  const block = picker.closest('.item-block');
+                  const ii = Number(block.dataset.ii);
+                  const lnIdx = Number(picker.closest('.line-card').dataset.idx);
+                  wlines[lnIdx].items[ii].product_id = pid;
+                  const pp = prodMap[pid];
+                  if (pp && !wlines[lnIdx].items[ii].unit_price) {
+                    wlines[lnIdx].items[ii].unit_price = Number(pp.sale_price) || Number(pp.cost_price) || 0;
+                  }
+                  drop.hidden = true;
+                  rebuild();
+                });
+              });
+            };
+            renderDropList(q);
+            setTimeout(() => drop.querySelector('.prod-search-inp')?.focus(), 30);
+            const onOutside = (e) => { if (!picker.contains(e.target)) { drop.hidden = true; document.removeEventListener('click', onOutside, true); } };
+            setTimeout(() => document.addEventListener('click', onOutside, true), 0);
+          };
+          trigger.addEventListener('click', () => { if (drop.hidden) openDrop(); else drop.hidden = true; });
+          trigger.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDrop(); } });
+        });
+
+        // Price formatting
+        el.querySelectorAll('.price-fmt').forEach(inp => {
+          inp.addEventListener('input', () => {
+            const raw = inp.value.replace(/[^\d]/g, '');
+            const num = parseInt(raw, 10) || 0;
+            const formatted = num ? num.toLocaleString('vi-VN') : '';
+            inp.value = formatted;
+          });
+          inp.addEventListener('blur', () => {
+            const num = parseMoney(inp.value);
+            inp.value = num ? fmtMoney(num) : '0';
+          });
+          inp.addEventListener('focus', () => {
+            const num = parseMoney(inp.value);
+            inp.value = num || '';
+            inp.select();
+          });
+        });
         el.querySelectorAll('[data-act=del-item]').forEach(b => b.addEventListener('click', () => {
           readDom();
           const ii = Number(b.closest('.item-block').dataset.ii);
@@ -2131,7 +2370,7 @@
           // doc nhanh tu DOM cua line nay
           const items = [...el.querySelectorAll('.el-item')].map(r => ({
             qty: Number(r.querySelector('.qty').value) || 0,
-            unit_price: Number(r.querySelector('.price').value) || 0,
+            unit_price: parseMoney(r.querySelector('.price-fmt').value),
           }));
           const charges = [...el.querySelectorAll('.el-charge')].map(r => ({
             kind: r.querySelector('.kind').value,
@@ -2147,7 +2386,7 @@
           const totalEl = el.querySelector('.el-line-total-val');
           if (totalEl) totalEl.textContent = fmtMoney(total) + ' đ';
         };
-        el.querySelectorAll('.qty, .price, .amt, .kind').forEach(inp => {
+        el.querySelectorAll('.qty, .price-fmt, .amt, .kind').forEach(inp => {
           inp.addEventListener('input', updateTotal);
           inp.addEventListener('change', updateTotal);
         });
@@ -2438,7 +2677,15 @@
       window.open('/admin/order-statement.html?' + qs.toString(), '_blank');
     };
 
-    await Promise.all([loadList(), loadStats()]);
+    // Deep-link: ?status=pending|confirmed|in_progress|done|cancelled
+    const _initStatus = new URLSearchParams(location.search).get('status');
+    if (_initStatus) {
+      const _card = document.querySelector(`#statsRow .stat-card[data-stat="${_initStatus}"]`);
+      if (_card) { _card.click(); loadStats(); }
+      else await Promise.all([loadList(), loadStats()]);
+    } else {
+      await Promise.all([loadList(), loadStats()]);
+    }
 
     // ---- BULK SELECT ---
     document.addEventListener('change', (e) => {

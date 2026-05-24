@@ -40,7 +40,9 @@ router.get('/', async (req, res, next) => {
         (SELECT COUNT(*) FROM order_staff_commissions sc
            JOIN orders o ON o.id = sc.order_id AND o.is_deleted = 0
           WHERE sc.approved_at IS NULL AND sc.is_deleted = 0
-            AND sc.requested_at IS NOT NULL) AS commissions
+            AND sc.requested_at IS NOT NULL) AS commissions,
+        (SELECT COUNT(*) FROM staff_receipts
+           WHERE reviewed = 0 AND is_deleted = 0) AS staff_receipts
     `);
     res.json(rows[0]);
   } catch (err) { next(err); }
@@ -86,6 +88,42 @@ router.get('/feed', async (req, res, next) => {
         WHERE is_deleted = 0 AND is_read = 0`
     );
     res.json({ items: rows, unread: Number(cnt[0].unread) || 0 });
+  } catch (err) { next(err); }
+});
+
+// GET /daily-summary — thong ke tong quan trong ngay
+router.get('/daily-summary', async (req, res, next) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT
+        (SELECT COUNT(*) FROM orders
+           WHERE DATE(created_at) = CURDATE() AND is_deleted = 0) AS orders_today,
+        (SELECT COUNT(*) FROM orders
+           WHERE DATE(created_at) = CURDATE() AND status = 'pending' AND is_deleted = 0) AS orders_pending,
+        (SELECT COUNT(*) FROM orders
+           WHERE DATE(created_at) = CURDATE() AND status = 'confirmed' AND is_deleted = 0) AS orders_confirmed,
+        (SELECT COUNT(*) FROM orders
+           WHERE DATE(created_at) = CURDATE() AND status = 'in_progress' AND is_deleted = 0) AS orders_in_progress,
+        (SELECT COUNT(*) FROM orders
+           WHERE DATE(created_at) = CURDATE() AND status = 'done' AND is_deleted = 0) AS orders_done,
+        (SELECT COUNT(*) FROM orders
+           WHERE DATE(created_at) = CURDATE() AND status = 'cancelled' AND is_deleted = 0) AS orders_cancelled,
+        (SELECT COALESCE(SUM(total_amount), 0) FROM orders
+           WHERE DATE(created_at) = CURDATE() AND status != 'cancelled' AND is_deleted = 0) AS orders_total_amount,
+        (SELECT COALESCE(SUM(paid_amount), 0) FROM orders
+           WHERE DATE(created_at) = CURDATE() AND status != 'cancelled' AND is_deleted = 0) AS orders_paid_amount,
+        (SELECT COUNT(*) FROM stock_receipts
+           WHERE DATE(created_at) = CURDATE() AND kind = 'in'  AND is_voided = 0) AS stock_in_today,
+        (SELECT COUNT(*) FROM stock_receipts
+           WHERE DATE(created_at) = CURDATE() AND kind = 'out' AND is_voided = 0) AS stock_out_today,
+        (SELECT COUNT(*) FROM payment_requests
+           WHERE status = 'pending' AND is_deleted = 0) AS payment_requests_pending,
+        (SELECT COUNT(*) FROM staff_receipts
+           WHERE reviewed = 0 AND is_deleted = 0) AS receipts_unreviewed,
+        (SELECT COALESCE(SUM(amount), 0) FROM staff_receipts
+           WHERE reviewed = 0 AND is_deleted = 0) AS receipts_amount
+    `);
+    res.json(rows[0]);
   } catch (err) { next(err); }
 });
 

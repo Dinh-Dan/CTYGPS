@@ -68,6 +68,8 @@
     const p = new URLSearchParams();
     if (state.type !== 'all') p.set('type', state.type);
     if (state.q) p.set('q', state.q);
+    const orderCode = ($('fOrderCode') ? $('fOrderCode').value.trim() : '');
+    if (orderCode) p.set('order_code', orderCode);
     const r = await api.get('/admin/debts?' + p.toString(), { silent: true }).catch(() => null);
     if (!r) return;
     state.items = r.items;
@@ -169,6 +171,8 @@
     if (state.qStaff) p.set('q', state.qStaff);
     const area = ($('fStaffArea') ? $('fStaffArea').value : '').trim();
     if (area) p.set('area', area);
+    const orderCode = ($('fStaffOrderCode') ? $('fStaffOrderCode').value.trim() : '');
+    if (orderCode) p.set('order_code', orderCode);
     const [r, pend] = await Promise.all([
       api.get('/admin/debts/staff?' + p.toString(), { silent: true }).catch(() => null),
       api.get('/admin/remittances?status=pending&limit=100', { silent: true }).catch(() => null),
@@ -251,11 +255,13 @@
     const from = $('fReqFrom') ? $('fReqFrom').value : '';
     const to   = $('fReqTo')   ? $('fReqTo').value   : '';
     const hasRemain = $('fReqHasRemain') && $('fReqHasRemain').checked;
+    const orderCode = ($('fReqOrderCode') ? $('fReqOrderCode').value.trim() : '');
     const p = new URLSearchParams({ status });
     if (q)         p.set('q', q);
     if (from)      p.set('date_from', from);
     if (to)        p.set('date_to', to);
     if (hasRemain) p.set('has_remaining', '1');
+    if (orderCode) p.set('order_code', orderCode);
     const r = await api.get('/admin/payment-requests?' + p.toString(), { silent: true }).catch(() => null);
     if (!r) return;
     state.requests = r.items || [];
@@ -583,6 +589,48 @@
     </div>`;
   }
 
+  // ==== CANH BAO: chi co phieu YC cu, khong co don hang moi =====
+  function showOldRequestsWarning(prs, onContinue) {
+    const existing = document.getElementById('warnOldPrModal');
+    if (existing) existing.remove();
+
+    const linksHtml = prs.map(pr =>
+      `<a href="/admin/payment-request-detail.html?id=${pr.id}" target="_blank"
+          style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;margin:4px 0;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;color:#1d4ed8;text-decoration:none;font-size:14px">
+         <span style="font-weight:700">${escape(pr.code)}</span>
+         <span style="color:#dc2626;font-weight:600">Còn nợ: ${fmtVnd(pr.remaining)}</span>
+       </a>`
+    ).join('');
+
+    const el = document.createElement('div');
+    el.id = 'warnOldPrModal';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    el.innerHTML = `
+      <div style="background:#fff;border-radius:10px;max-width:480px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.22);overflow:hidden">
+        <div style="background:#d97706;padding:14px 20px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">⚠</span>
+          <span style="font-weight:700;font-size:15px;color:#fff">Đã có phiếu yêu cầu chưa thanh toán</span>
+        </div>
+        <div style="padding:18px 20px">
+          <p style="color:#374151;font-size:14px;margin:0 0 12px;line-height:1.6">
+            Hiện tại khách hàng <b>không có đơn hàng mới</b>, chỉ có các phiếu yêu cầu đang chờ bên dưới.<br>
+            <span style="color:#b45309">Nên gửi lại các phiếu này cho khách thay vì tạo phiếu mới.</span>
+          </p>
+          <div style="margin-bottom:14px">${linksHtml}</div>
+          <p style="font-size:12.5px;color:#64748b;margin:0">Nếu vẫn tiếp tục tạo mới, các phiếu trên sẽ tự động chuyển sang "Đã thay thế".</p>
+        </div>
+        <div style="padding:12px 20px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:10px">
+          <button id="warnClose" style="padding:8px 18px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:14px;color:#374151">Đóng</button>
+          <button id="warnContinue" style="padding:8px 18px;border:none;border-radius:6px;background:#d97706;color:#fff;font-weight:700;cursor:pointer;font-size:14px">Vẫn tiếp tục</button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(el);
+    document.getElementById('warnClose').onclick = () => el.remove();
+    el.addEventListener('click', e => { if (e.target === el) el.remove(); });
+    document.getElementById('warnContinue').onclick = () => { el.remove(); onContinue(); };
+  }
+
   // ==== MODAL: chi xem danh sach don no =========================
   async function openOrdersListModal(customerId) {
     state.selectedCustomer = null;
@@ -590,10 +638,13 @@
     $('olBody').innerHTML = '<div class="text-center text-muted" style="padding:40px">Đang tải...</div>';
     $('ordersListModal').classList.add('open');
 
-    const r = await api.get('/admin/debts/' + customerId).catch(() => null);
+    const r = await api.get('/admin/debts/' + customerId, { silent: true }).catch(() => null);
     if (!r) { $('ordersListModal').classList.remove('open'); return; }
     state.selectedCustomer = r;
+    _renderOrdersListModal(r);
+  }
 
+  function _renderOrdersListModal(r) {
     const c = r.customer;
     const titleName = c.type === 'dealer' && c.company_name
       ? `${c.company_name} (${c.full_name})` : c.full_name;
@@ -620,6 +671,7 @@
 
     $('olBody').innerHTML = html;
     $('olSettle').disabled = r.total_debt <= 0;
+    $('ordersListModal').classList.add('open');
   }
 
   // ==== MODAL: chi tiet khach ==================================
@@ -629,10 +681,13 @@
     $('cmBody').innerHTML = '<div class="text-center text-muted" style="padding:40px">Đang tải...</div>';
     $('custModal').classList.add('open');
 
-    const r = await api.get('/admin/debts/' + customerId).catch(() => null);
+    const r = await api.get('/admin/debts/' + customerId, { silent: true }).catch(() => null);
     if (!r) { $('custModal').classList.remove('open'); return; }
     state.selectedCustomer = r;
+    _renderCustModal(r);
+  }
 
+  function _renderCustModal(r) {
     const c = r.customer;
     const titleName = c.type === 'dealer' && c.company_name
       ? `${c.company_name} (${c.full_name})` : c.full_name;
@@ -687,8 +742,9 @@
     }
 
     $('cmBody').innerHTML = html;
-    if (!IS_ADMIN) $('cmSettle').style.display = 'none';
-    else $('cmSettle').disabled = r.total_debt <= 0;
+    $('cmSettle').style.display = '';
+    $('cmSettle').disabled = r.total_debt <= 0;
+    $('custModal').classList.add('open');
   }
 
   // ==== MODAL: danh sach lich su tat toan (day du) ===============
@@ -730,6 +786,15 @@
     if (!r) return;
     const cid = r.customer && r.customer.id;
     if (!cid) return;
+
+    // Neu khong co don hang moi, chi co phieu YC cu → canh bao truoc
+    const prs = r.pending_requests || [];
+    if (r.pending_orders.length === 0 && prs.length > 0) {
+      showOldRequestsWarning(prs, () => {
+        window.open(`/admin/debt-settle-form.html?cid=${cid}`, '_blank', 'noopener');
+      });
+      return;
+    }
     window.open(`/admin/debt-settle-form.html?cid=${cid}`, '_blank', 'noopener');
   }
 
@@ -1011,13 +1076,25 @@
     };
   }
 
+  let orderCodeTimer = null;
+  if ($('fOrderCode')) $('fOrderCode').oninput = () => {
+    clearTimeout(orderCodeTimer);
+    orderCodeTimer = setTimeout(() => { state.custPage = 1; loadCustomers(); }, 300);
+  };
+
   let reqQTimer = null;
   if ($('fReqQ')) $('fReqQ').oninput = () => { clearTimeout(reqQTimer); reqQTimer = setTimeout(loadRequests, 300); };
+  let reqOrderTimer = null;
+  if ($('fReqOrderCode')) $('fReqOrderCode').oninput = () => {
+    clearTimeout(reqOrderTimer);
+    reqOrderTimer = setTimeout(() => { state.reqPage = 1; loadRequests(); }, 300);
+  };
   if ($('fReqFrom')) $('fReqFrom').onchange = loadRequests;
   if ($('fReqTo'))   $('fReqTo').onchange   = loadRequests;
   if ($('fReqHasRemain')) $('fReqHasRemain').onchange = loadRequests;
   if ($('btnReqReset')) $('btnReqReset').onclick = () => {
     if ($('fReqQ'))         $('fReqQ').value = '';
+    if ($('fReqOrderCode')) $('fReqOrderCode').value = '';
     if ($('fReqFrom'))      $('fReqFrom').value = '';
     if ($('fReqTo'))        $('fReqTo').value = '';
     if ($('fReqHasRemain')) $('fReqHasRemain').checked = false;
@@ -1031,11 +1108,17 @@
     clearTimeout(staffAreaTimer);
     staffAreaTimer = setTimeout(loadStaff, 300);
   };
+  let staffOrderTimer = null;
+  if ($('fStaffOrderCode')) $('fStaffOrderCode').oninput = () => {
+    clearTimeout(staffOrderTimer);
+    staffOrderTimer = setTimeout(() => { state.staffPage = 1; loadStaff(); }, 300);
+  };
   if ($('fStaffDays')) $('fStaffDays').onchange = () => { state.staffPage = 1; renderStaff(); };
   if ($('btnStaffReset')) $('btnStaffReset').onclick = () => {
-    if ($('fQStaff'))    { $('fQStaff').value = ''; state.qStaff = ''; }
-    if ($('fStaffArea')) $('fStaffArea').value = '';
-    if ($('fStaffDays')) $('fStaffDays').value = '';
+    if ($('fQStaff'))          { $('fQStaff').value = ''; state.qStaff = ''; }
+    if ($('fStaffArea'))       $('fStaffArea').value = '';
+    if ($('fStaffDays'))       $('fStaffDays').value = '';
+    if ($('fStaffOrderCode'))  $('fStaffOrderCode').value = '';
     state.staffPage = 1;
     loadStaff();
   };

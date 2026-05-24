@@ -220,6 +220,9 @@
   .col-item-device-box{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
   .device-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;background:#f0f9ff;border:1px solid #bae6fd;font-size:11.5px;color:#0c4a6e}
   .device-label{font-weight:600;color:#0369a1;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px}
+  .has-tip{position:relative}
+  .has-tip::after{content:attr(data-tip);position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);background:#1e293b;color:#f8fafc;font-size:12.5px;font-weight:400;line-height:1.5;padding:7px 11px;border-radius:8px;width:max-content;max-width:230px;white-space:normal;pointer-events:none;opacity:0;transition:opacity .15s;z-index:300;text-align:left;box-shadow:0 4px 12px rgba(0,0,0,.22)}
+  .has-tip:hover::after{opacity:1}
 </style>
 </head>
 <body>
@@ -281,6 +284,10 @@
             <option value="dealer">Đại lý</option>
           </select>
           <input id="fQ" class="search-box" placeholder="🔍 Tên / SĐT / mã / công ty..." style="max-width:260px" />
+          <div style="display:flex;align-items:center;gap:4px">
+            <input id="fOrderCode" class="search-box" placeholder="🔍 Mã đơn (VD: DH-...)..." style="max-width:200px" />
+            <button type="button" class="modal-help-btn has-tip" data-tip="Nhập mã đơn hàng (hoặc 1 phần) để chỉ hiện khách đang có đơn đó trong công nợ.">?</button>
+          </div>
           <select id="fDebtType" class="select" style="max-width:170px" title="Lọc loại nợ">
             <option value="all">Tất cả nợ</option>
             <option value="order">Chỉ nợ đơn hàng</option>
@@ -317,7 +324,11 @@
             <option value="cancelled">Đã huỷ</option>
             <option value="all">Tất cả</option>
           </select>
-          <input id="fReqQ" class="search-box" placeholder="🔍 Khách / mã phiếu / SĐT..." style="max-width:240px" />
+          <input id="fReqQ" class="search-box" placeholder="🔍 Khách / mã phiếu / SĐT..." style="max-width:220px" />
+          <div style="display:flex;align-items:center;gap:4px">
+            <input id="fReqOrderCode" class="search-box" placeholder="🔍 Mã đơn (VD: DH-...)..." style="max-width:200px" />
+            <button type="button" class="modal-help-btn has-tip" data-tip="Nhập mã đơn để chỉ liệt kê các phiếu yêu cầu thanh toán có chứa đơn hàng đó.">?</button>
+          </div>
           <input type="date" id="fReqFrom" class="input" style="width:140px" title="Từ ngày lập" />
           <input type="date" id="fReqTo"   class="input" style="width:140px" title="Đến ngày lập" />
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap">
@@ -352,7 +363,11 @@
           <button class="btn sm" id="btnViewPending">Xem & duyệt</button>
         </div>
         <div class="toolbar" style="flex-wrap:wrap;gap:6px">
-          <input id="fQStaff" class="search-box" placeholder="🔍 Tên / username / SĐT..." style="max-width:240px" />
+          <input id="fQStaff" class="search-box" placeholder="🔍 Tên / username / SĐT..." style="max-width:220px" />
+          <div style="display:flex;align-items:center;gap:4px">
+            <input id="fStaffOrderCode" class="search-box" placeholder="🔍 Mã đơn (VD: DH-...)..." style="max-width:200px" />
+            <button type="button" class="modal-help-btn has-tip" data-tip="Nhập mã đơn để chỉ hiện KTV đang giữ tiền từ đơn hàng đó (chưa nộp).">?</button>
+          </div>
           <input id="fStaffArea" class="input" placeholder="Khu vực..." style="max-width:140px" title="Lọc theo khu vực" />
           <select id="fStaffDays" class="select" style="max-width:170px" title="Lọc theo số ngày giữ">
             <option value="">Tất cả số ngày</option>

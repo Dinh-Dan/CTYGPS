@@ -33,6 +33,7 @@
   const PR_STATUS_LABEL = {
     pending: 'Chưa thu tiền', partially_paid: 'Trả một phần',
     paid: 'Đã thanh toán', cancelled: 'Đã huỷ', expired: 'Hết hạn',
+    superseded: 'Đã thay thế',
   };
 
   const ACCOUNT_KEYS = ['account', 'username', 'login', 'user', 'tài khoản', 'tai khoan'];
@@ -428,7 +429,8 @@
 
   // ─── Render toan trang ────────────────────────────────────────────────────────
 
-  function render(d) {
+  function render(d, co) {
+    co = co || { name: 'CÔNG TY TNHH VIỄN THÔNG VINAGPS', address: '190 TTH 21, P. Tân Thới Hiệp, Q.12, TP.HCM', phone: '(028) 6682 5658 — DĐ: 0949.155.160', tax: '' };
     const req  = d.request;
     const cust = d.customer || {};
 
@@ -452,10 +454,10 @@
     $('quotePaper').innerHTML = `
       <div class="quote-header">
         <div class="quote-brand">
-          <div class="logo">VG</div>
+          <img class="logo-img" src="/uploads/LOGO TRANG.jpg" alt="logo">
           <div>
-            <div class="brand-name">CÔNG TY TNHH VIỄN THÔNG VINAGPS</div>
-            <div class="brand-sub">190 TTH 21, P. Tân Thới Hiệp, Q.12, TP.HCM<br>ĐT: (028) 6682 5658 — DĐ: 0949.155.160</div>
+            <div class="brand-name">${escape(co.name)}</div>
+            <div class="brand-sub">${co.address ? escape(co.address) + '<br>' : ''}${co.phone ? 'ĐT: ' + escape(co.phone) : ''}${co.tax ? ' — MST: ' + escape(co.tax) : ''}</div>
           </div>
         </div>
         <div class="quote-meta">
@@ -538,12 +540,15 @@
 
     // Nut hanh dong
     const isAdmin   = window.auth && auth.isAdmin && auth.isAdmin();
-    const canPay    = isAdmin && (req.status === 'pending' || req.status === 'partially_paid');
-    const canCancel = isAdmin && (req.status === 'pending' || req.status === 'partially_paid') && Number(req.paid_amount) === 0;
+    const isOpenReq = req.status === 'pending' || req.status === 'partially_paid';
+    const canPay    = isAdmin && isOpenReq;
+    const canCancel = isAdmin && isOpenReq && Number(req.paid_amount) === 0;
     const canNewReq = req.status === 'partially_paid' && req.remaining > 0;
-    $('btnPay').style.display           = canPay    ? '' : 'none';
-    $('btnCancelRequest').style.display = canCancel ? '' : 'none';
-    $('btnNewRequest').style.display    = canNewReq ? '' : 'none';
+    const canStaffReceive = !isAdmin && isOpenReq;
+    $('btnPay').style.display           = canPay          ? '' : 'none';
+    $('btnCancelRequest').style.display = canCancel        ? '' : 'none';
+    $('btnNewRequest').style.display    = canNewReq        ? '' : 'none';
+    $('btnStaffReceive').style.display  = canStaffReceive  ? '' : 'none';
     $('btnDownload').disabled           = false;
     $('btnDownloadPdf').disabled        = false;
 
@@ -571,15 +576,84 @@
     $('btnDownload').disabled           = true;
     $('btnDownloadPdf').disabled        = true;
 
-    const apiData = await api.get(`/admin/payment-requests/${state.reqId}`).catch(() => null);
+    const [apiData, rawSettings] = await Promise.all([
+      api.get(`/admin/payment-requests/${state.reqId}`).catch(() => null),
+      api.get('/admin/settings').catch(() => ({})),
+    ]);
     if (!apiData) {
       $('quotePaper').innerHTML = '<div class="empty">Không tải được dữ liệu</div>';
       return;
     }
 
+    const s = rawSettings || {};
+    const co = {
+      name:    s['company.name']     || 'CÔNG TY TNHH VIỄN THÔNG VINAGPS',
+      address: s['company.address']  || '190 TTH 21, P. Tân Thới Hiệp, Q.12, TP.HCM',
+      phone:   s['company.phone']    || '(028) 6682 5658 — DĐ: 0949.155.160',
+      tax:     s['company.tax_code'] || '',
+    };
+
     const d = buildRenderData(apiData);
     state.data = d;
-    render(d);
+    render(d, co);
+  }
+
+  // ─── Modal nhan vien nhan tien ───────────────────────────────────────────────
+
+  let srImageUrl = null;
+
+  function resetSrImageUpload() {
+    srImageUrl = null;
+    $('srImageInput').value = '';
+    $('srImagePreview').style.display = 'none';
+    $('srImageThumb').src = '';
+    $('srImageStatus').textContent = '';
+    $('srImageIcon').textContent = '📎';
+    $('srImageText').textContent = 'Chọn ảnh hoặc chụp';
+    $('srImageLabel').style.borderColor = '#cbd5e1';
+  }
+
+  function openStaffReceiveModal() {
+    if (!state.data) return;
+    const req = state.data.request;
+    $('srTotalAmount').textContent = fmtVnd(req.total_amount);
+    $('srPaidAmount').textContent  = fmtVnd(req.paid_amount);
+    $('srRemaining').textContent   = fmtVnd(req.remaining);
+    $('srAmount').value = fmt.format(req.remaining);
+    $('srNote').value = '';
+    document.querySelector('input[name="srMethod"][value="cash"]').checked = true;
+    resetSrImageUpload();
+    $('srModal').classList.add('open');
+  }
+
+  async function submitStaffReceive() {
+    const raw = Number($('srAmount').value.replace(/\D/g, ''));
+    if (!raw || raw <= 0) { ui.toast('Nhập số tiền hợp lệ', 'error'); return; }
+
+    if ($('srImageStatus').textContent.includes('đang tải')) {
+      ui.toast('Ảnh đang tải lên, vui lòng chờ', 'error'); return;
+    }
+
+    const payMethod = document.querySelector('input[name="srMethod"]:checked')?.value || 'cash';
+    const note = $('srNote').value.trim() || null;
+
+    try {
+      ui.loading(true);
+      $('srSubmit').disabled = true;
+      const body = { request_id: state.reqId, amount: raw, pay_method: payMethod };
+      if (note) body.note = note;
+      if (srImageUrl) body.proof_urls = [srImageUrl];
+
+      const res = await api.post('/admin/staff-receipts', body);
+      if (!res) return;
+
+      $('srModal').classList.remove('open');
+      ui.toast(`Đã ghi nhận nhận tiền — ${res.code}`, 'success');
+      await load();
+    } finally {
+      ui.loading(false);
+      $('srSubmit').disabled = false;
+    }
   }
 
   // ─── Modal thanh toan ─────────────────────────────────────────────────────────
@@ -668,6 +742,48 @@
   // ─── Khoi dong ───────────────────────────────────────────────────────────────
 
   bindViewTabs();
+
+  $('btnStaffReceive').onclick   = openStaffReceiveModal;
+  $('srClose').onclick           = () => $('srModal').classList.remove('open');
+  $('srCancel').onclick          = () => $('srModal').classList.remove('open');
+  $('srSubmit').onclick          = submitStaffReceive;
+  $('srFillFull').onclick        = () => {
+    if (state.data) $('srAmount').value = fmt.format(state.data.request.remaining);
+  };
+  $('srAmount').addEventListener('input', function () {
+    const digits = this.value.replace(/\D/g, '');
+    const num = Number(digits);
+    const pos = this.selectionStart;
+    const oldLen = this.value.length;
+    this.value = num ? fmt.format(num) : '';
+    const diff = this.value.length - oldLen;
+    try { this.setSelectionRange(pos + diff, pos + diff); } catch (_) {}
+  });
+  $('srImageInput').addEventListener('change', async function () {
+    const file = this.files[0];
+    if (!file) return;
+    srImageUrl = null;
+    $('srImageStatus').textContent = 'Đang tải ảnh lên...';
+    $('srImageStatus').style.color = '#64748b';
+    $('srImageIcon').textContent = '⏳';
+    $('srImageText').textContent = file.name;
+    $('srImageLabel').style.borderColor = '#94a3b8';
+    const localUrl = URL.createObjectURL(file);
+    $('srImageThumb').src = localUrl;
+    $('srImagePreview').style.display = '';
+    try {
+      srImageUrl = await imgbb.upload(file, { name: 'sr-receipt' });
+      $('srImageStatus').textContent = 'Tải lên thành công';
+      $('srImageStatus').style.color = '#166534';
+      $('srImageIcon').textContent = '✅';
+      $('srImageLabel').style.borderColor = '#86efac';
+    } catch (err) {
+      srImageUrl = null;
+      $('srImageStatus').textContent = 'Lỗi tải ảnh: ' + err.message;
+      $('srImageStatus').style.color = '#dc2626';
+    }
+  });
+  $('srImageRemove').onclick = resetSrImageUpload;
 
   $('btnPay').onclick            = openPayModal;
   $('pmClose').onclick           = () => $('payModal').classList.remove('open');

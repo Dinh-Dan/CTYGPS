@@ -33,8 +33,17 @@ router.get('/summary', async (req, res, next) => {
          FROM customers WHERE is_deleted = 0 AND opening_balance > 0`
     );
     const [orderSum] = await db.query(
-      `SELECT COALESCE(SUM(GREATEST(o.total_amount - o.paid_amount, 0)), 0) AS total
+      `SELECT COALESCE(SUM(GREATEST(o.total_amount - o.paid_amount - COALESCE(cov.covered, 0), 0)), 0) AS total
          FROM orders o
+         LEFT JOIN (
+           SELECT pri.target_id AS order_id, SUM(pri.amount) AS covered
+             FROM payment_request_items pri
+             JOIN payment_requests pr ON pr.id = pri.request_id
+            WHERE pri.target_type = 'order'
+              AND pr.status IN ('pending','partially_paid')
+              AND pr.is_deleted = 0
+            GROUP BY pri.target_id
+         ) cov ON cov.order_id = o.id
         WHERE o.is_deleted = 0
           AND o.debt_carried_at IS NULL
           AND ${DEBT_WHERE}`
@@ -109,8 +118,9 @@ router.get('/summary', async (req, res, next) => {
 // ==============================================================
 router.get('/', async (req, res, next) => {
   try {
-    const type = req.query.type;
-    const q    = (req.query.q || '').trim();
+    const type      = req.query.type;
+    const q         = (req.query.q || '').trim();
+    const orderCode = (req.query.order_code || '').trim();
 
     const where = ['c.is_deleted = 0'];
     const args = [];
@@ -121,6 +131,10 @@ router.get('/', async (req, res, next) => {
       where.push('(c.full_name LIKE ? OR c.phone LIKE ? OR c.code LIKE ? OR c.company_name LIKE ?)');
       const like = `%${q}%`;
       args.push(like, like, like, like);
+    }
+    if (orderCode) {
+      where.push('EXISTS (SELECT 1 FROM orders ox WHERE ox.customer_id = c.id AND ox.code LIKE ? AND ox.is_deleted = 0)');
+      args.push(`%${orderCode}%`);
     }
 
     // 1 query gom: opening_balance + sum don chua ket + payment_request debt
@@ -138,11 +152,19 @@ router.get('/', async (req, res, next) => {
        LEFT JOIN (
          SELECT
            o.customer_id,
-           -- Dung total - paid: paid_amount chi tang khi tien da ve cong ty
-           SUM(GREATEST(o.total_amount - o.paid_amount, 0)) AS order_debt,
-           COUNT(CASE WHEN (o.total_amount - o.paid_amount) > 0 THEN 1 END) AS order_count,
+           SUM(GREATEST(o.total_amount - o.paid_amount - COALESCE(cov.covered, 0), 0)) AS order_debt,
+           COUNT(CASE WHEN (o.total_amount - o.paid_amount - COALESCE(cov.covered, 0)) > 0 THEN 1 END) AS order_count,
            MIN(o.confirmed_at) AS oldest_at
          FROM orders o
+         LEFT JOIN (
+           SELECT pri.target_id AS order_id, SUM(pri.amount) AS covered
+             FROM payment_request_items pri
+             JOIN payment_requests pr ON pr.id = pri.request_id
+            WHERE pri.target_type = 'order'
+              AND pr.status IN ('pending','partially_paid')
+              AND pr.is_deleted = 0
+            GROUP BY pri.target_id
+         ) cov ON cov.order_id = o.id
          WHERE o.is_deleted = 0
            AND o.debt_carried_at IS NULL
            AND ${DEBT_WHERE}
@@ -201,8 +223,9 @@ router.get('/', async (req, res, next) => {
 // ==============================================================
 router.get('/staff', async (req, res, next) => {
   try {
-    const q    = (req.query.q    || '').trim();
-    const area = (req.query.area || '').trim();
+    const q         = (req.query.q    || '').trim();
+    const area      = (req.query.area || '').trim();
+    const orderCode = (req.query.order_code || '').trim();
     const where = [`s.role = 'kithuat'`, 's.is_deleted = 0'];
     const args = [];
     if (q) {
@@ -211,6 +234,10 @@ router.get('/staff', async (req, res, next) => {
       args.push(like, like, like);
     }
     if (area) { where.push('s.area = ?'); args.push(area); }
+    if (orderCode) {
+      where.push(`EXISTS (SELECT 1 FROM collections col2 JOIN orders o2 ON o2.id = col2.order_id WHERE col2.staff_id = s.id AND col2.remitted = 0 AND col2.is_deleted = 0 AND o2.code LIKE ?)`);
+      args.push(`%${orderCode}%`);
+    }
     // LEFT JOIN de KTV co opening_balance > 0 nhung khong giu collection van hien.
     const [rows] = await db.query(
       `SELECT

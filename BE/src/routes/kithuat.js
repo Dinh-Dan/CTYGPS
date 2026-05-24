@@ -1355,58 +1355,54 @@ router.post('/inventory/take-direct', async (req, res, next) => {
   } finally { conn.release(); }
 });
 
-// Tra ve kho
+// Gui yeu cau tra kho (cho admin duyet)
 router.post('/inventory/return', async (req, res, next) => {
-  const conn = await db.getConnection();
   try {
     const productId = Number(req.body.product_id);
     const qty = Number(req.body.qty);
-    if (!productId)        throw httpErr(400, 'Thieu product_id');
-    if (!qty || qty <= 0)  throw httpErr(400, 'qty phai > 0');
+    const note = req.body.note ? String(req.body.note).trim() : null;
+    if (!productId)       throw httpErr(400, 'Thieu product_id');
+    if (!qty || qty <= 0) throw httpErr(400, 'qty phai > 0');
 
-    await conn.beginTransaction();
-    const [shRows] = await conn.query(
-      `SELECT id, qty FROM staff_holdings
-        WHERE staff_id = ? AND product_id = ? FOR UPDATE`,
+    const [shRows] = await db.query(
+      `SELECT id, qty FROM staff_holdings WHERE staff_id = ? AND product_id = ?`,
       [req.user.sub, productId]
     );
     if (!shRows.length || shRows[0].qty < qty) {
       throw httpErr(409, `Khong du de tra: dang giu ${shRows[0]?.qty || 0}`);
     }
 
-    if (shRows[0].qty === qty) {
-      await conn.query(`DELETE FROM staff_holdings WHERE id = ?`, [shRows[0].id]);
-    } else {
-      await conn.query(
-        `UPDATE staff_holdings SET qty = qty - ? WHERE id = ?`,
-        [qty, shRows[0].id]
-      );
-    }
-    await conn.query(
-      `INSERT INTO product_stock (product_id, quantity) VALUES (?, ?)
-         ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)`,
-      [productId, qty]
+    const [ins] = await db.query(
+      `INSERT INTO stock_return_requests (staff_id, product_id, qty, note)
+       VALUES (?, ?, ?, ?)`,
+      [req.user.sub, productId, qty, note]
     );
+    res.json({ ok: true, request_id: ins.insertId });
+  } catch (err) { next(err); }
+});
 
-    const code = await genReceiptCode(conn, 'in');
-    const [rIns] = await conn.query(
-      `INSERT INTO stock_receipts
-         (code, kind, reason_code, ref_staff_id, created_by_staff_id)
-       VALUES (?, 'in', 'technician_return', ?, ?)`,
-      [code, req.user.sub, req.user.sub]
+// Danh sach yeu cau tra kho cua KTV nay
+router.get('/inventory/return-requests', async (req, res, next) => {
+  try {
+    const status = req.query.status || '';
+    const where = ['r.staff_id = ?'];
+    const args = [req.user.sub];
+    if (status) { where.push('r.status = ?'); args.push(status); }
+    const [rows] = await db.query(
+      `SELECT r.id, r.product_id, r.qty, r.note, r.status, r.created_at,
+              r.reviewed_at, r.reject_reason, r.receipt_id,
+              p.code AS product_code, p.name AS product_name,
+              rev.full_name AS reviewed_by_name
+         FROM stock_return_requests r
+         JOIN products p ON p.id = r.product_id
+         LEFT JOIN staff rev ON rev.id = r.reviewed_by_staff_id
+        WHERE ${where.join(' AND ')}
+        ORDER BY r.created_at DESC
+        LIMIT 50`,
+      args
     );
-    await conn.query(
-      `INSERT INTO stock_receipt_items (receipt_id, product_id, qty)
-       VALUES (?, ?, ?)`,
-      [rIns.insertId, productId, qty]
-    );
-
-    await conn.commit();
-    res.json({ ok: true, receipt_id: rIns.insertId, code });
-  } catch (err) {
-    try { await conn.rollback(); } catch (_) {}
-    next(err);
-  } finally { conn.release(); }
+    res.json({ items: rows });
+  } catch (err) { next(err); }
 });
 
 // Xac nhan da lap (tru staff_holdings, KHONG dung product_stock)
@@ -2401,7 +2397,7 @@ router.get('/my-current-period', async (req, res, next) => {
          FROM orders o
          LEFT JOIN customers c ON c.id=o.customer_id
         WHERE o.assigned_staff_id=? AND o.is_deleted=0
-          AND o.debt_carried_at IS NULL AND o.status='done'
+          AND o.payslip_id IS NULL AND o.status='done'
         ORDER BY o.completed_at DESC, o.id DESC`,
       [staffId]
     );
@@ -2494,7 +2490,7 @@ router.get('/my-payslip-draft', async (req, res, next) => {
                   AND fv.label IN ('Ten tai khoan','Tên tài khoản','tai khoan','tài khoản','Tai khoan')) AS tai_khoan
          FROM orders o
         WHERE o.assigned_staff_id=? AND o.is_deleted=0
-          AND o.debt_carried_at IS NULL AND o.status='done'
+          AND o.payslip_id IS NULL AND o.status='done'
           AND o.completed_at >= ? AND o.completed_at < ?
         ORDER BY o.completed_at ASC, o.id ASC`,
       [staffId, fromStart, toEnd]
@@ -2605,7 +2601,7 @@ router.get('/salary-stats', async (req, res, next) => {
                            THEN tech_commission_amount ELSE 0 END), 0) AS pending_commission
          FROM orders
         WHERE assigned_staff_id=? AND status='done'
-          AND debt_carried_at IS NULL AND is_deleted=0`,
+          AND payslip_id IS NULL AND is_deleted=0`,
       [staffId]
     );
 

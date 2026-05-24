@@ -2,18 +2,7 @@
 
 (function () {
   const $   = (id) => document.getElementById(id);
-  const IS_ADMIN = (window.auth && auth.isAdmin && auth.isAdmin()) || false;
   const fmt = new Intl.NumberFormat('vi-VN');
-
-  function lockAdminFields() {
-    if (IS_ADMIN) return;
-    ['f_discount_rate', 'f_default_tier_id'].forEach(id => {
-      const el = $(id);
-      if (!el) return;
-      el.disabled = true;
-      el.title = 'Chi admin moi sua duoc';
-    });
-  }
 
   const state = {
     filters: { q: '', type: '' },
@@ -208,7 +197,6 @@
     $('f_company_name').value   = c.company_name || '';
     $('f_tax_code').value       = c.tax_code || '';
     $('f_contact_person').value = c.contact_person || '';
-    $('f_discount_rate').value  = c.discount_rate || 0;
     if (c.default_tier_id) {
       $('f_default_tier_id').value = c.default_tier_id;
     } else if (!c.id) {
@@ -218,7 +206,6 @@
       $('f_default_tier_id').value = '';
     }
     $('f_note').value = c.note || '';
-    lockAdminFields();
   }
 
   function toggleDealerBlock() {
@@ -247,7 +234,6 @@
       company_name:   $('f_company_name').value.trim() || null,
       tax_code:       $('f_tax_code').value.trim() || null,
       contact_person: $('f_contact_person').value.trim() || null,
-      discount_rate:  Number($('f_discount_rate').value) || 0,
       note:       $('f_note').value.trim() || null,
     };
   }
@@ -802,14 +788,13 @@
           <div style="font-size:12px;color:#64748b">Tổng tiền đã giao dịch</div>
         </div>
       </div>
-      ${(c.company_name || c.tax_code || c.contact_person || c.discount_rate) ? `
+      ${(c.company_name || c.tax_code || c.contact_person) ? `
       <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:16px">
         <div style="font-weight:600;color:#92400e;margin-bottom:8px">📋 Thông tin bổ sung</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px">
           ${c.company_name ? `<div><span style="color:#64748b">Công ty:</span> <b>${escape(c.company_name)}</b></div>` : ''}
           ${c.tax_code ? `<div><span style="color:#64748b">MST:</span> ${escape(c.tax_code)}</div>` : ''}
           ${c.contact_person ? `<div><span style="color:#64748b">Người LH:</span> ${escape(c.contact_person)}</div>` : ''}
-          ${c.discount_rate ? `<div><span style="color:#64748b">Chiết khấu:</span> ${c.discount_rate}%</div>` : ''}
         </div>
       </div>` : ''}
       ${c.note ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;font-size:13px;margin-bottom:16px;color:#475569">📝 ${escape(c.note)}</div>` : ''}

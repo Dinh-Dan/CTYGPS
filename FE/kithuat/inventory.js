@@ -10,10 +10,11 @@
   }
 
   const state = {
-    holdings: [],   // staff_holdings của KTV này
-    pool: [],       // release_pool đang chờ KTV nhận
-    orders: [],     // đơn assigned/warehouse_released/in_progress để chọn install
-    products: [],   // product_stock có hàng (cho take-direct)
+    holdings: [],        // staff_holdings của KTV này
+    pool: [],            // release_pool đang chờ KTV nhận
+    orders: [],          // đơn assigned/warehouse_released/in_progress để chọn install
+    products: [],        // product_stock có hàng (cho take-direct)
+    returnRequests: [],  // yêu cầu trả kho đang pending
   };
 
   function isStale(d) {
@@ -46,6 +47,12 @@
     const r2  = await api.get('/kithuat/orders?status=in_progress', { silent: true }).catch(() => null);
     state.orders = [...(res?.items || []), ...(r2?.items || [])];
   }
+  async function loadReturnRequests() {
+    const res = await api.get('/kithuat/inventory/return-requests?status=pending', { silent: true }).catch(() => null);
+    state.returnRequests = (res && res.items) || [];
+    renderReturnRequests();
+  }
+
   async function loadProducts(q) {
     const p = new URLSearchParams();
     if (q) p.set('q', q);
@@ -111,6 +118,27 @@
     }).join('');
   }
 
+  function renderReturnRequests() {
+    const block = $('returnReqBlock');
+    const list  = $('returnReqList');
+    if (!block || !list) return;
+    if (!state.returnRequests.length) {
+      block.style.display = 'none';
+      list.innerHTML = '';
+      return;
+    }
+    block.style.display = '';
+    list.innerHTML = state.returnRequests.map(r => `
+      <div class="pool-card" style="border-left:3px solid #6366f1">
+        <div class="meta">
+          <div><b>${escape(r.product_code)}</b> — ${escape(r.product_name)} &nbsp;·&nbsp; SL: <b>${r.qty}</b></div>
+          <small class="text-muted">Gửi lúc ${fmtDate(r.created_at)}${r.note ? ' · ' + escape(r.note) : ''}</small>
+        </div>
+        <span class="pill" style="background:#ede9fe;color:#5b21b6;flex-shrink:0">Chờ duyệt</span>
+      </div>
+    `).join('');
+  }
+
   function renderProductSelect() {
     $('tdProduct').innerHTML = '<option value="">— Chọn —</option>'
       + state.products.map(p => `<option value="${p.product_id}" data-stock="${p.quantity}">${escape(p.code)} — ${escape(p.name)} (còn ${p.quantity})</option>`).join('');
@@ -165,26 +193,28 @@
     await loadHoldings();
   }
 
-  // Trả kho
+  // Gửi yêu cầu trả kho
   function openReturn(productId, name, maxQty) {
     $('rt_product_id').value = productId;
     $('rt_label').textContent = name;
     $('rt_qty').value = maxQty;
     $('rt_qty').max = maxQty;
     $('rt_holding').textContent = maxQty;
+    $('rt_note').value = '';
     $('returnModal').classList.add('open');
   }
   async function submitReturn(e) {
     e.preventDefault();
     const productId = Number($('rt_product_id').value);
     const qty = Number($('rt_qty').value);
+    const note = $('rt_note').value.trim() || null;
     const ok = await api.post('/kithuat/inventory/return',
-      { product_id: productId, qty },
-      { successMessage: 'Đã trả kho', loading: true }
+      { product_id: productId, qty, note },
+      { successMessage: 'Đã gửi yêu cầu trả kho, chờ admin duyệt', loading: true }
     ).catch(() => null);
     if (!ok) return;
     $('returnModal').classList.remove('open');
-    await loadHoldings();
+    await loadReturnRequests();
   }
 
   // Đã lắp
@@ -345,7 +375,7 @@
   async function init() {
     techShell.init('inventory');
     await loadTasks();
-    await Promise.all([loadHoldings(), loadPool(), loadIssues()]);
+    await Promise.all([loadHoldings(), loadPool(), loadIssues(), loadReturnRequests()]);
 
     // Toolbar
     $('btnTakeDirect').addEventListener('click', openTakeDirect);

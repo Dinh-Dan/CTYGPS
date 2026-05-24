@@ -23,10 +23,7 @@
       border-bottom: 2px solid #0f172a; padding-bottom: 14px; margin-bottom: 24px
     }
     .quote-brand { display: flex; align-items: center; gap: 12px }
-    .quote-brand .logo {
-      width: 56px; height: 56px; border-radius: 4px; background: #1e293b; color: #fff;
-      display: grid; place-items: center; font-weight: 800; font-size: 24px; letter-spacing: 1px
-    }
+    .quote-brand .logo-img { width: 84px; height: auto; max-height: 90px }
     .quote-brand .brand-name { font-size: 16px; font-weight: 700; color: #0f172a; text-transform: uppercase }
     .quote-brand .brand-sub { font-size: 12px; color: #475569; margin-top: 2px; line-height: 1.4 }
     .quote-meta { text-align: right; font-size: 13px; color: #334155 }
@@ -153,10 +150,70 @@
       </div>
       <button class="btn danger ghost" id="btnCancelRequest" style="display:none">Huỷ Phiếu</button>
       <button class="btn ghost" id="btnNewRequest" style="display:none" title="Tạo phiếu mới cho phần còn nợ">➕ Tạo phiếu tiếp</button>
+      <button class="btn" id="btnStaffReceive" style="display:none">💵 Nhận Tiền</button>
       <button class="btn success" id="btnPay" style="display:none">💰 Ghi Nhận Thanh Toán</button>
     </div>
     <div class="quote-paper" id="quotePaper">
       <div class="empty">Đang tải...</div>
+    </div>
+  </div>
+
+  <!-- Modal: nhan vien nhan tien -->
+  <div id="srModal" class="modal-bg">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-head">
+        <h3>Nhân Viên Nhận Tiền</h3>
+        <button type="button" class="modal-close" id="srClose" aria-label="Đóng">×</button>
+      </div>
+      <div class="modal-body">
+        <div style="margin-bottom:14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 16px; font-size:14px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="color:#475569">Tổng phiếu:</span><b id="srTotalAmount">—</b>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="color:#475569">Đã thu:</span><b id="srPaidAmount" style="color:#166534">—</b>
+          </div>
+          <div style="display:flex;justify-content:space-between">
+            <span style="color:#475569">Còn phải thu:</span><b id="srRemaining" style="color:#dc2626">—</b>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Số tiền nhận <span style="color:#dc2626">*</span></label>
+          <input type="text" inputmode="numeric" id="srAmount" class="input" placeholder="0" style="font-size:17px;font-weight:700" />
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button type="button" class="btn ghost sm" id="srFillFull">Nhận đủ</button>
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:12px">
+          <label class="form-label">Hình thức</label>
+          <div class="pay-mode">
+            <label><input type="radio" name="srMethod" value="cash" checked /><span>Tiền mặt</span></label>
+            <label><input type="radio" name="srMethod" value="transfer" /><span>Chuyển khoản</span></label>
+            <label><input type="radio" name="srMethod" value="mixed" /><span>Hỗn hợp</span></label>
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:12px">
+          <label class="form-label">Ghi chú <span style="font-size:12px;color:#64748b;font-weight:400">(tuỳ chọn)</span></label>
+          <input type="text" id="srNote" class="input" placeholder="Ghi chú thêm nếu cần" />
+        </div>
+        <div class="form-group" style="margin-top:12px">
+          <label class="form-label">Ảnh chứng từ <span style="font-size:12px;color:#64748b;font-weight:400">(tuỳ chọn)</span></label>
+          <label id="srImageLabel" style="display:flex;align-items:center;gap:10px;cursor:pointer;border:1.5px dashed #cbd5e1;border-radius:8px;padding:10px 14px;font-size:13.5px;color:#475569;background:#f8fafc">
+            <span id="srImageIcon" style="font-size:20px">📎</span>
+            <span id="srImageText">Chọn ảnh hoặc chụp</span>
+            <input type="file" id="srImageInput" accept="image/*" style="display:none" />
+          </label>
+          <div id="srImagePreview" style="display:none;margin-top:8px;position:relative">
+            <img id="srImageThumb" src="" alt="preview" style="max-height:120px;max-width:100%;border-radius:6px;border:1px solid #e2e8f0" />
+            <button type="button" id="srImageRemove" style="position:absolute;top:4px;right:4px;background:#ef4444;color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center">×</button>
+          </div>
+          <div id="srImageStatus" style="font-size:12px;margin-top:4px;color:#64748b"></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="srCancel">Huỷ</button>
+        <button type="button" class="btn" id="srSubmit" style="background:#2563eb;color:#fff">Xác nhận Nhận Tiền</button>
+      </div>
     </div>
   </div>
 

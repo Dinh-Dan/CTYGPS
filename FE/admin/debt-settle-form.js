@@ -544,9 +544,13 @@
 
     renderByMode(d);
     renderCustEditPanel(cust);
-    $('btnOpenConfirm').disabled = false;
     $('btnDownload').disabled = false;
     $('btnDownloadPdf').disabled = false;
+
+    const btn = $('btnOpenConfirm');
+    btn.textContent = 'Tạo Phiếu Yêu Cầu';
+    btn.disabled = false;
+    btn.onclick = openConfirm;
   }
 
   // ─── Panel chỉnh sửa thông tin khách hàng ────────────────────────────────────
@@ -624,6 +628,17 @@
   function openConfirm() {
     const d = state.data;
     if (!d) return;
+    // Canh bao: khong co don hang moi, chi co phieu yeu cau cu
+    if (d.pending_orders.length === 0 && (d.pending_requests || []).length > 0) {
+      showOldRequestsWarning(d.pending_requests, _doOpenConfirm);
+      return;
+    }
+    _doOpenConfirm();
+  }
+
+  function _doOpenConfirm() {
+    const d = state.data;
+    if (!d) return;
     $('cfOrderCount').textContent = d.pending_orders.length;
     $('cfTotalDebt').textContent = fmtVnd(d.total_debt);
     $('cmIncludeOB').checked = d.opening_balance > 0;
@@ -632,10 +647,51 @@
     $('cmIncludePR').parentElement.style.display = d.request_debt > 0 ? '' : 'none';
     $('confirmModal').classList.add('open');
   }
+
+  function showOldRequestsWarning(prs, onContinue) {
+    const existing = document.getElementById('warnOldPrModal');
+    if (existing) existing.remove();
+
+    const linksHtml = prs.map(pr =>
+      `<a href="/admin/payment-request-detail.html?id=${pr.id}" target="_blank"
+          style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;margin:4px 0;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;color:#1d4ed8;text-decoration:none;font-size:14px">
+         <span style="font-weight:700">${escape(pr.code)}</span>
+         <span style="color:#dc2626;font-weight:600">Còn nợ: ${fmtVnd(pr.remaining)}</span>
+       </a>`
+    ).join('');
+
+    const el = document.createElement('div');
+    el.id = 'warnOldPrModal';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    el.innerHTML = `
+      <div style="background:#fff;border-radius:10px;max-width:480px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.22);overflow:hidden">
+        <div style="background:#d97706;padding:14px 20px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">⚠</span>
+          <span style="font-weight:700;font-size:15px;color:#fff">Đã có phiếu yêu cầu chưa thanh toán</span>
+        </div>
+        <div style="padding:18px 20px">
+          <p style="color:#374151;font-size:14px;margin:0 0 12px;line-height:1.6">
+            Hiện tại khách hàng <b>không có đơn hàng mới</b>, chỉ có các phiếu yêu cầu đang chờ bên dưới.<br>
+            <span style="color:#b45309">Nên gửi lại các phiếu này cho khách thay vì tạo phiếu mới.</span>
+          </p>
+          <div style="margin-bottom:14px">${linksHtml}</div>
+          <p style="font-size:12.5px;color:#64748b;margin:0">Nếu vẫn tiếp tục, các phiếu trên sẽ tự động chuyển sang trạng thái "Đã thay thế".</p>
+        </div>
+        <div style="padding:12px 20px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:10px">
+          <button id="warnClose" style="padding:8px 18px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:14px;color:#374151">Đóng</button>
+          <button id="warnContinue" style="padding:8px 18px;border:none;border-radius:6px;background:#d97706;color:#fff;font-weight:700;cursor:pointer;font-size:14px">Vẫn tiếp tục</button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(el);
+    document.getElementById('warnClose').onclick = () => el.remove();
+    el.addEventListener('click', e => { if (e.target === el) el.remove(); });
+    document.getElementById('warnContinue').onclick = () => { el.remove(); onContinue(); };
+  }
+
   function closeConfirm() { $('confirmModal').classList.remove('open'); }
 
   function bindModal() {
-    $('btnOpenConfirm').onclick = openConfirm;
     $('cmClose').onclick = closeConfirm;
     $('btnCancel').onclick = closeConfirm;
     $('btnSubmit').onclick = submit;
@@ -644,11 +700,12 @@
   async function submit() {
     const d = state.data;
     if (!d) return;
+    const includeReqDebt = $('cmIncludePR').checked;
     const body = {
       customer_id: state.cid,
       order_ids: d.pending_orders.map(o => o.id),
       include_opening_balance: $('cmIncludeOB').checked,
-      include_request_debt: $('cmIncludePR').checked,
+      old_request_ids: includeReqDebt ? (d.pending_requests || []).map(pr => pr.id) : [],
     };
     try {
       ui.loading(true);

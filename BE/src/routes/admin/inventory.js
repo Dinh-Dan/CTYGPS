@@ -41,11 +41,13 @@ const REASONS = {
   technician_return:      { kind: 'in',  scope: 'staff_holdings' },// -staff_holdings, +product_stock
   install_done:           { kind: 'out', scope: 'staff_holdings' },// -staff_holdings (khong dung kho)
   damaged:                { kind: 'out', scope: 'staff_holdings' },// -staff_holdings
+  send_warranty:          { kind: 'out', scope: 'product_stock' }, // gui bao hanh
+  dealer_warranty_return: { kind: 'in',  scope: 'product_stock' }, // dai ly gui bao hanh
   staff_grant:            { kind: 'out', scope: 'product_stock' }, // admin cap hang cho KTV
   staff_revoke:           { kind: 'in',  scope: 'staff_holdings' },// admin thu hoi hang tu KTV
 };
 
-const ADMIN_ALLOWED_REASONS = ['import_supplier', 'adjust_plus', 'return_supplier', 'adjust_minus'];
+const ADMIN_ALLOWED_REASONS = ['import_supplier', 'adjust_plus', 'return_supplier', 'adjust_minus', 'send_warranty', 'dealer_warranty_return'];
 
 // Phieu noi bo nhung admin van duoc phep void truc tiep qua /receipts/:id/void.
 // order_return_done: case B — void se tru lai product_stock + reset orders.has_return neu la phieu cuoi.
@@ -114,13 +116,15 @@ router.get('/stats', async (req, res, next) => {
 router.get('/products/all', async (req, res, next) => {
   try {
     const [rows] = await db.query(
-      `SELECT p.id, p.code, p.name, p.category_id, c.name AS category_name,
+      `SELECT p.id, p.code, p.name, p.thumbnail_url, p.category_id, c.name AS category_name,
+              COALESCE(ps.quantity, 0) AS quantity,
               (SELECT pp.price FROM product_prices pp
                 JOIN price_tiers t ON t.id = pp.tier_id
                 WHERE pp.product_id = p.id AND t.is_default = 1 AND t.is_deleted = 0
                 LIMIT 1) AS default_price
          FROM products p
          LEFT JOIN categories c ON c.id = p.category_id
+         LEFT JOIN product_stock ps ON ps.product_id = p.id
         WHERE p.is_deleted = 0
         ORDER BY p.code`
     );
@@ -463,12 +467,22 @@ router.post('/receipts', async (req, res, next) => {
       }
     }
 
+    // Validate photo_urls
+    let photoUrls = null;
+    if (Array.isArray(req.body.photo_urls) && req.body.photo_urls.length) {
+      const urls = req.body.photo_urls.map(u => String(u).trim()).filter(Boolean).slice(0, 20);
+      for (const u of urls) {
+        if (!/^https?:\/\/.{4,}/.test(u)) throw httpErr(400, 'photo_urls chua URL khong hop le');
+      }
+      photoUrls = JSON.stringify(urls);
+    }
+
     const code = await genReceiptCode(conn, kind);
     const [rIns] = await conn.query(
       `INSERT INTO stock_receipts
-         (code, kind, reason_code, reason_text, supplier_id, created_by_staff_id)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [code, kind, reasonCode, req.body.reason_text || null, supplierId, staffId]
+         (code, kind, reason_code, reason_text, supplier_id, created_by_staff_id, photo_urls)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [code, kind, reasonCode, req.body.reason_text || null, supplierId, staffId, photoUrls]
     );
     const receiptId = rIns.insertId;
 
@@ -679,6 +693,134 @@ router.get('/release-pool', async (req, res, next) => {
       args
     );
     res.json({ items: rows });
+  } catch (err) { next(err); }
+});
+
+// ==========================================================
+// STOCK RETURN REQUESTS — KTV gui yeu cau tra kho, admin duyet
+// ==========================================================
+
+// GET /return-requests  — list (filter: status, staff_id, page, limit)
+router.get('/return-requests', async (req, res, next) => {
+  try {
+    const status   = req.query.status   || '';
+    const staffId  = req.query.staff_id ? Number(req.query.staff_id) : null;
+    const page     = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit    = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const offset   = (page - 1) * limit;
+
+    const where = ['1=1'];
+    const args  = [];
+    if (status)  { where.push('r.status = ?');   args.push(status); }
+    if (staffId) { where.push('r.staff_id = ?'); args.push(staffId); }
+
+    const whereSql = 'WHERE ' + where.join(' AND ');
+
+    const [[{ total }]] = await db.query(
+      `SELECT COUNT(*) AS total FROM stock_return_requests r ${whereSql}`, args
+    );
+    const [rows] = await db.query(
+      `SELECT r.id, r.staff_id, r.product_id, r.qty, r.note, r.status,
+              r.created_at, r.reviewed_at, r.reject_reason, r.receipt_id,
+              s.full_name AS staff_name,
+              p.code AS product_code, p.name AS product_name,
+              rev.full_name AS reviewed_by_name,
+              sh.qty AS current_holding
+         FROM stock_return_requests r
+         JOIN staff s ON s.id = r.staff_id
+         JOIN products p ON p.id = r.product_id
+         LEFT JOIN staff rev ON rev.id = r.reviewed_by_staff_id
+         LEFT JOIN staff_holdings sh ON sh.staff_id = r.staff_id AND sh.product_id = r.product_id
+        ${whereSql}
+        ORDER BY r.created_at DESC
+        LIMIT ? OFFSET ?`,
+      [...args, limit, offset]
+    );
+    res.json({ items: rows, total, page, limit });
+  } catch (err) { next(err); }
+});
+
+// POST /return-requests/:id/approve
+router.post('/return-requests/:id/approve', async (req, res, next) => {
+  const conn = await db.getConnection();
+  try {
+    const id = Number(req.params.id);
+    await conn.beginTransaction();
+
+    const [[rq]] = await conn.query(
+      `SELECT * FROM stock_return_requests WHERE id = ? FOR UPDATE`, [id]
+    );
+    if (!rq) throw httpErr(404, 'Khong tim thay yeu cau');
+    if (rq.status !== 'pending') throw httpErr(409, 'Yeu cau khong o trang thai cho duyet');
+
+    const [shRows] = await conn.query(
+      `SELECT id, qty FROM staff_holdings
+        WHERE staff_id = ? AND product_id = ? FOR UPDATE`,
+      [rq.staff_id, rq.product_id]
+    );
+    if (!shRows.length || shRows[0].qty < rq.qty) {
+      throw httpErr(409, `KTV dang giu ${shRows[0]?.qty || 0}, khong du de tra ${rq.qty}`);
+    }
+
+    if (shRows[0].qty === rq.qty) {
+      await conn.query(`DELETE FROM staff_holdings WHERE id = ?`, [shRows[0].id]);
+    } else {
+      await conn.query(
+        `UPDATE staff_holdings SET qty = qty - ? WHERE id = ?`, [rq.qty, shRows[0].id]
+      );
+    }
+    await conn.query(
+      `INSERT INTO product_stock (product_id, quantity) VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)`,
+      [rq.product_id, rq.qty]
+    );
+
+    const code = await genReceiptCode(conn, 'in');
+    const [rIns] = await conn.query(
+      `INSERT INTO stock_receipts
+         (code, kind, reason_code, ref_staff_id, created_by_staff_id, reason_text)
+       VALUES (?, 'in', 'technician_return', ?, ?, ?)`,
+      [code, rq.staff_id, req.user.sub, rq.note || null]
+    );
+    await conn.query(
+      `INSERT INTO stock_receipt_items (receipt_id, product_id, qty) VALUES (?, ?, ?)`,
+      [rIns.insertId, rq.product_id, rq.qty]
+    );
+
+    await conn.query(
+      `UPDATE stock_return_requests
+          SET status = 'approved', reviewed_by_staff_id = ?, reviewed_at = NOW(), receipt_id = ?
+        WHERE id = ?`,
+      [req.user.sub, rIns.insertId, id]
+    );
+
+    await conn.commit();
+    res.json({ ok: true, receipt_id: rIns.insertId, code });
+  } catch (err) {
+    try { await conn.rollback(); } catch (_) {}
+    next(err);
+  } finally { conn.release(); }
+});
+
+// POST /return-requests/:id/reject
+router.post('/return-requests/:id/reject', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const reason = String(req.body.reason || '').trim() || null;
+
+    const [[rq]] = await db.query(
+      `SELECT id, status FROM stock_return_requests WHERE id = ?`, [id]
+    );
+    if (!rq) throw httpErr(404, 'Khong tim thay yeu cau');
+    if (rq.status !== 'pending') throw httpErr(409, 'Yeu cau khong o trang thai cho duyet');
+
+    await db.query(
+      `UPDATE stock_return_requests
+          SET status = 'rejected', reviewed_by_staff_id = ?, reviewed_at = NOW(), reject_reason = ?
+        WHERE id = ?`,
+      [req.user.sub, reason, id]
+    );
+    res.json({ ok: true });
   } catch (err) { next(err); }
 });
 

@@ -57,6 +57,12 @@
         <div id="poolList"></div>
       </div>
 
+      <!-- Yeu cau tra kho dang cho admin duyet -->
+      <div id="returnReqBlock" style="display:none">
+        <h3 class="section-title">Yêu cầu trả kho đang chờ duyệt</h3>
+        <div id="returnReqList"></div>
+      </div>
+
       <h3 class="section-title">Đang giữ</h3>
       <div class="table-wrap">
         <table class="data">
@@ -141,11 +147,11 @@
   </div>
 </div>
 
-<!-- Modal tra kho -->
+<!-- Modal gui yeu cau tra kho -->
 <div id="returnModal" class="modal-bg">
   <div class="modal" style="max-width:440px">
     <div class="modal-head">
-      <h3>Trả kho</h3>
+      <h3>Gửi yêu cầu trả kho</h3>
       <button type="button" class="modal-close" id="rtClose" aria-label="Đóng">×</button>
     </div>
     <form id="rtFrm" style="display:contents">
@@ -157,10 +163,15 @@
           <input type="number" id="rt_qty" class="input" min="1" required>
           <p class="help">Đang giữ: <b id="rt_holding"></b></p>
         </div>
+        <div class="field">
+          <label>Ghi chú</label>
+          <input type="text" id="rt_note" class="input" placeholder="Lý do trả (tuỳ chọn)">
+        </div>
+        <p class="help" style="color:#6366f1">Yêu cầu sẽ gửi lên admin để duyệt trước khi nhập kho.</p>
       </div>
       <div class="modal-foot">
         <button type="button" class="btn ghost" id="rtCancel">Hủy</button>
-        <button type="submit" class="btn">Trả</button>
+        <button type="submit" class="btn">Gửi yêu cầu</button>
       </div>
     </form>
   </div>

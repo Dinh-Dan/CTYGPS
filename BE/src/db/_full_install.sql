@@ -1461,6 +1461,7 @@ CREATE TABLE IF NOT EXISTS stock_receipts (
   voided_at           DATETIME     NULL,
   voided_reason       VARCHAR(500) NULL,
   voided_by_receipt_id INT NULL,                          -- tro toi phieu doi ung
+  photo_urls          JSON         NULL,                  -- mang URL anh dinh kem (imgbb)
   CONSTRAINT fk_receipt_supplier
     FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
     ON DELETE SET NULL ON UPDATE CASCADE,
@@ -3190,7 +3191,7 @@ CREATE TABLE IF NOT EXISTS payment_requests (
   total_amount  BIGINT       NOT NULL DEFAULT 0,
   paid_amount   BIGINT       NOT NULL DEFAULT 0,
   remaining     BIGINT       NOT NULL DEFAULT 0,
-  status        ENUM('pending','partially_paid','paid','expired','cancelled') NOT NULL DEFAULT 'pending',
+  status        ENUM('pending','partially_paid','paid','expired','cancelled','superseded') NOT NULL DEFAULT 'pending',
   qr_slot       TINYINT      NULL,
   pay_method    ENUM('cash','transfer','mixed') NULL,
   note          TEXT         NULL,
@@ -3314,6 +3315,72 @@ ALTER TABLE order_staff_commissions
 ALTER TABLE staff_payslips
   ADD COLUMN IF NOT EXISTS total_advances BIGINT   NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS advances_json  LONGTEXT          DEFAULT NULL;
+
+-- ==========================================================
+-- Migration 078: Yeu cau tra kho KTV cho admin duyet
+-- ==========================================================
+
+CREATE TABLE IF NOT EXISTS stock_return_requests (
+  id                   INT          AUTO_INCREMENT PRIMARY KEY,
+  staff_id             INT          NOT NULL,
+  product_id           INT          NOT NULL,
+  qty                  INT          NOT NULL,
+  note                 VARCHAR(300) NULL,
+  status               ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+  created_at           DATETIME     NOT NULL DEFAULT NOW(),
+  reviewed_by_staff_id INT          NULL,
+  reviewed_at          DATETIME     NULL,
+  reject_reason        VARCHAR(300) NULL,
+  receipt_id           INT          NULL,
+  INDEX idx_srr_staff  (staff_id),
+  INDEX idx_srr_status (status)
+);
+
+-- ==========================================================
+-- Migration 079: Them photo_urls vao stock_receipts
+-- ==========================================================
+ALTER TABLE stock_receipts
+  ADD COLUMN IF NOT EXISTS photo_urls JSON NULL COMMENT 'Mang URL anh dinh kem (imgbb)';
+
+-- ==========================================================
+-- Migration 080: bang staff_receipts (NV nhan tien, admin doi soat)
+-- ==========================================================
+
+ALTER TABLE order_payments
+  MODIFY COLUMN source ENUM(
+    'staff_collection',
+    'admin_mark_paid',
+    'customer_self_pay',
+    'admin_pending',
+    'refund',
+    'staff_received'
+  ) NOT NULL;
+
+CREATE TABLE IF NOT EXISTS staff_receipts (
+  id           INT          AUTO_INCREMENT PRIMARY KEY,
+  code         VARCHAR(30)  NOT NULL UNIQUE,
+  order_id     INT          NULL,
+  request_id   INT          NULL,
+  customer_id  INT          NOT NULL,
+  amount       BIGINT       NOT NULL,
+  pay_method   ENUM('cash','transfer','mixed') NOT NULL DEFAULT 'cash',
+  proof_urls   JSON         NULL,
+  note         TEXT         NULL,
+  staff_id     INT          NOT NULL,
+  reviewed     TINYINT(1)   NOT NULL DEFAULT 0,
+  reviewed_by  INT          NULL,
+  reviewed_at  DATETIME     NULL,
+  created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  is_deleted   TINYINT(1)   NOT NULL DEFAULT 0,
+  CONSTRAINT fk_sr_order    FOREIGN KEY (order_id)    REFERENCES orders(id),
+  CONSTRAINT fk_sr_request  FOREIGN KEY (request_id)  REFERENCES payment_requests(id),
+  CONSTRAINT fk_sr_customer FOREIGN KEY (customer_id) REFERENCES customers(id),
+  INDEX idx_sr_staff    (staff_id),
+  INDEX idx_sr_order    (order_id),
+  INDEX idx_sr_request  (request_id),
+  INDEX idx_sr_reviewed (reviewed, created_at),
+  INDEX idx_sr_created  (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS=1;
 -- DONE

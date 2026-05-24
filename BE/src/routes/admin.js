@@ -34,5 +34,6 @@ router.use('/reports',     require('./admin/reports'));
 router.use('/notifications', require('./admin/notifications'));
 router.use('/conversations', require('./admin/conversations'));
 router.use('/remittances',  require('./admin/remittances'));
+router.use('/staff-receipts', require('./admin/staff-receipts'));
 
 module.exports = router;

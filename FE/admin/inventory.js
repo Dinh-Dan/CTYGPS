@@ -18,14 +18,16 @@
     technician_return:      'KTV trả',
     install_done:           'Đã lắp',
     damaged:                'Hỏng',
+    send_warranty:          'Gửi bảo hành',
+    dealer_warranty_return: 'Đại lý gửi bảo hành',
     import_supplier_void:   'Hủy nhập NCC',
     return_supplier_void:   'Hủy trả NCC',
     adjust_plus_void:       'Hủy cân kho +',
     adjust_minus_void:      'Hủy cân kho −',
   };
 
-  const ADMIN_REASONS_IN  = ['import_supplier', 'adjust_plus'];
-  const ADMIN_REASONS_OUT = ['return_supplier', 'adjust_minus'];
+  const ADMIN_REASONS_IN  = ['import_supplier', 'adjust_plus', 'dealer_warranty_return'];
+  const ADMIN_REASONS_OUT = ['return_supplier', 'adjust_minus', 'send_warranty'];
 
   // Bảng màu cho category pill
   const CAT_COLORS = [
@@ -52,8 +54,11 @@
     inR:   { q: '', reason: '', from: '', to: '', page: 1, limit: 20, total: 0 },
     outR:  { q: '', reason: '', from: '', to: '', page: 1, limit: 20, total: 0 },
     hold:  { q: '' },
+    rr:    { status: 'pending', page: 1, limit: 20, total: 0 },
     takes: { status: '', from: '', to: '', page: 1, limit: 20, total: 0 },
     receiptDraft: { kind: 'in', lines: [] },
+    receiptPhotos: [],
+    productMap: new Map(),
     currentReceiptId: null,
     currentTake: null,
   };
@@ -340,11 +345,12 @@
     document.querySelectorAll('.inv-pane').forEach(p => p.classList.toggle('active', p.dataset.pane === tab));
     const statsRow = document.getElementById('inv-stats-row');
     if (statsRow) statsRow.style.display = tab === 'stock' ? '' : 'none';
-    if (tab === 'stock')              loadStock();
-    else if (tab === 'receipts-in')  loadReceipts('in');
-    else if (tab === 'receipts-out') loadReceipts('out');
-    else if (tab === 'holdings')     loadHoldings();
-    else if (tab === 'stocktakes')   loadTakes();
+    if (tab === 'stock')                 loadStock();
+    else if (tab === 'receipts-in')     loadReceipts('in');
+    else if (tab === 'receipts-out')    loadReceipts('out');
+    else if (tab === 'holdings')        loadHoldings();
+    else if (tab === 'return-requests') loadReturnRequests();
+    else if (tab === 'stocktakes')      loadTakes();
   }
 
   // ==================== MODAL: TẠO PHIẾU ====================
@@ -352,17 +358,22 @@
     state.receiptDraft = { kind, lines: [] };
     $('r_kind').value = kind;
     $('receiptModalTitle').textContent = kind === 'in' ? 'Tạo phiếu nhập' : 'Tạo phiếu xuất';
+    const badge = $('rm-kind-badge');
+    if (badge) {
+      badge.textContent = kind === 'in' ? 'Phiếu nhập' : 'Phiếu xuất';
+      badge.className = `rm-kind-badge ${kind}`;
+    }
     const reasons = kind === 'in' ? ADMIN_REASONS_IN : ADMIN_REASONS_OUT;
     $('r_reason').innerHTML = reasons.map(r =>
       `<option value="${r}">${escape(REASON_LABELS[r])}</option>`).join('');
     if (presetReason) $('r_reason').value = presetReason;
     toggleSupplierField();
-    document.querySelectorAll('#r_lines_table .r-price').forEach(el => el.style.display = kind === 'in' ? '' : 'none');
-    document.querySelectorAll('#r_lines_table .r-imei').forEach(el => el.style.display = kind === 'out' ? '' : 'none');
     $('r_supplier_id').innerHTML = '<option value="">— Không chọn —</option>'
       + state.suppliers.map(s => `<option value="${s.id}">${escape(s.name)}</option>`).join('');
     $('r_reason_text').value = '';
     $('r_lines_body').innerHTML = '';
+    state.receiptPhotos = [];
+    renderReceiptPhotos();
     addLine();
     $('receiptModal').classList.add('open');
   }
@@ -374,22 +385,86 @@
   }
   function addLine() {
     const kind = state.receiptDraft.kind;
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>
-        <select class="select line-product" required>
-          <option value="">— Chọn SP —</option>
-          ${state.products.map(p => `<option value="${p.id}">${escape(p.code)} — ${escape(p.name)}</option>`).join('')}
-        </select>
-      </td>
-      <td><input type="number" class="input line-qty" min="1" value="1" required></td>
-      <td class="r-price" ${kind === 'out' ? 'style="display:none"' : ''}><input type="text" inputmode="numeric" class="input line-price money-input" placeholder="0"></td>
-      <td class="r-imei imei-cell" ${kind === 'in' ? 'style="display:none"' : ''}><textarea class="line-imei" placeholder="868001\n868002"></textarea></td>
-      <td><input type="text" class="input line-note" placeholder="—"></td>
-      <td><button type="button" class="btn-remove-line" title="Xoá dòng">✕</button></td>
+    const card = document.createElement('div');
+    card.className = 'r-line-card';
+    card.innerHTML = `
+      <div class="r-line-head">
+        <div class="r-line-select-wrap">
+          <select class="select line-product" required>
+            <option value="">— Chọn sản phẩm —</option>
+            ${state.products.map(p => `<option value="${p.id}">${escape(p.code)} — ${escape(p.name)}</option>`).join('')}
+          </select>
+        </div>
+        <button type="button" class="r-line-rm" title="Xoá dòng">×</button>
+      </div>
+      <div class="r-line-preview" style="display:none">
+        <div class="r-line-thumb-wrap"></div>
+        <div>
+          <div class="r-line-pname"></div>
+          <div class="r-line-pcode"></div>
+          <div class="r-line-stock ok"></div>
+        </div>
+      </div>
+      <div class="r-line-inputs" style="grid-template-columns:140px 1fr">
+        <div class="field">
+          <label>Số lượng</label>
+          <div class="r-qty-stepper">
+            <button type="button" class="r-qty-btn r-qty-down">−</button>
+            <input type="number" class="r-qty-input line-qty" min="1" value="1" required>
+            <button type="button" class="r-qty-btn r-qty-up">+</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Ghi chú dòng</label>
+          <input type="text" class="input line-note" placeholder="—">
+        </div>
+      </div>
+      <div class="r-imei-wrap r-imei"${kind === 'in' ? ' style="display:none"' : ''}>
+        <label>IMEI list <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#94a3b8">(mỗi dòng 1 IMEI)</span></label>
+        <textarea class="textarea line-imei" placeholder="868001&#10;868002" rows="3"></textarea>
+      </div>
     `;
-    tr.querySelector('.btn-remove-line').addEventListener('click', () => tr.remove());
-    $('r_lines_body').appendChild(tr);
+
+    // Qty stepper
+    const qtyInput = card.querySelector('.r-qty-input');
+    card.querySelector('.r-qty-down').addEventListener('click', () => {
+      const v = Math.max(1, (Number(qtyInput.value) || 1) - 1);
+      qtyInput.value = v;
+    });
+    card.querySelector('.r-qty-up').addEventListener('click', () => {
+      qtyInput.value = (Number(qtyInput.value) || 0) + 1;
+    });
+
+    // Product preview khi chọn
+    const sel = card.querySelector('.line-product');
+    const preview = card.querySelector('.r-line-preview');
+    const thumbWrap = card.querySelector('.r-line-thumb-wrap');
+    const pname = card.querySelector('.r-line-pname');
+    const pcode = card.querySelector('.r-line-pcode');
+    const stockEl = card.querySelector('.r-line-stock');
+    sel.addEventListener('change', () => {
+      const p = state.productMap.get(Number(sel.value));
+      if (!p) { preview.style.display = 'none'; return; }
+      // Thumbnail hoặc initials
+      if (p.thumbnail_url) {
+        thumbWrap.innerHTML = `<img class="r-line-thumb" src="${p.thumbnail_url}" alt="">`;
+      } else {
+        const initials = (p.name || '?').slice(0, 2).toUpperCase();
+        thumbWrap.innerHTML = `<div class="r-line-thumb-fb">${escape(initials)}</div>`;
+      }
+      pname.textContent = p.name;
+      pcode.textContent = p.code;
+      const qty = Number(p.quantity) || 0;
+      let cls = 'ok', txt = `Tồn kho: ${qty}`;
+      if (qty === 0) { cls = 'out'; txt = 'Hết hàng'; }
+      else if (qty < 5) { cls = 'low'; txt = `Tồn kho: ${qty} (sắp hết)`; }
+      stockEl.className = `r-line-stock ${cls}`;
+      stockEl.textContent = txt;
+      preview.style.display = 'flex';
+    });
+
+    card.querySelector('.r-line-rm').addEventListener('click', () => card.remove());
+    $('r_lines_body').appendChild(card);
   }
   async function submitReceipt(ev) {
     ev.preventDefault();
@@ -397,19 +472,17 @@
     const lines = [];
     const seen = new Set();
     let invalid = false;
-    document.querySelectorAll('#r_lines_body tr').forEach(tr => {
-      const productId = Number(tr.querySelector('.line-product').value);
-      const qty = Number(tr.querySelector('.line-qty').value);
+    document.querySelectorAll('#r_lines_body .r-line-card').forEach(card => {
+      const productId = Number(card.querySelector('.line-product').value);
+      const qty = Number(card.querySelector('.line-qty').value);
       if (!productId || !qty || qty <= 0) { invalid = true; return; }
       if (seen.has(productId)) { invalid = true; return; }
       seen.add(productId);
-      const priceEl = tr.querySelector('.line-price');
-      const imeiEl = tr.querySelector('.line-imei');
-      const note = tr.querySelector('.line-note').value.trim() || null;
+      const imeiEl = card.querySelector('.line-imei');
+      const note = card.querySelector('.line-note').value.trim() || null;
       lines.push({
         product_id: productId,
         qty,
-        unit_price: priceEl && priceEl.value ? Money.get(priceEl) : null,
         imei_list: imeiEl && imeiEl.value ? imeiEl.value.trim() : null,
         note,
       });
@@ -424,6 +497,7 @@
       reason_text: $('r_reason_text').value.trim() || null,
       supplier_id: $('r_supplier_id').value ? Number($('r_supplier_id').value) : null,
       items: lines,
+      photo_urls: state.receiptPhotos.length ? state.receiptPhotos : undefined,
     };
     const res = await api.post('/admin/inventory/receipts', body, {
       successMessage: `Đã lưu phiếu`,
@@ -434,6 +508,57 @@
     if (state.activeTab === 'stock')             loadStock();
     else if (state.activeTab === 'receipts-in')  loadReceipts('in');
     else if (state.activeTab === 'receipts-out') loadReceipts('out');
+  }
+
+  // ==================== PHOTO UPLOAD ====================
+  function renderReceiptPhotos() {
+    const grid = $('r_photos_preview');
+    const hint = $('r_drop_hint');
+    if (!grid) return;
+    grid.innerHTML = state.receiptPhotos.map((url, i) => `
+      <div class="r-photo-wrap">
+        <img src="${url}" alt="ảnh ${i+1}">
+        <button type="button" class="r-photo-rm" data-idx="${i}" title="Xoá ảnh">×</button>
+      </div>
+    `).join('');
+    // Ẩn hint khi đã có ảnh
+    if (hint) hint.style.display = state.receiptPhotos.length ? 'none' : 'flex';
+    grid.querySelectorAll('.r-photo-rm').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        state.receiptPhotos.splice(Number(btn.dataset.idx), 1);
+        renderReceiptPhotos();
+      });
+    });
+    grid.querySelectorAll('.r-photo-wrap img').forEach((img, i) => {
+      img.addEventListener('click', () => window.open(state.receiptPhotos[i], '_blank'));
+    });
+  }
+
+  async function handlePhotoFiles(files) {
+    const arr = Array.from(files);
+    if (!arr.length) return;
+    const grid = $('r_photos_preview');
+    const loadingDivs = arr.map(() => {
+      const d = document.createElement('div');
+      d.className = 'r-photo-uploading';
+      d.innerHTML = '⏳<span>Đang tải...</span>';
+      grid.appendChild(d);
+      return d;
+    });
+    let anyFail = false;
+    for (let i = 0; i < arr.length; i++) {
+      try {
+        const url = await imgbb.upload(arr[i]);
+        state.receiptPhotos.push(url);
+      } catch (_) {
+        anyFail = true;
+      } finally {
+        loadingDivs[i].remove();
+        renderReceiptPhotos();
+      }
+    }
+    if (anyFail) ui.toast('Một số ảnh tải lên thất bại', 'warning');
   }
 
   // ==================== MODAL: CHI TIẾT PHIẾU ====================
@@ -467,7 +592,6 @@
         <table class="data" style="font-size:13px">
           <thead><tr>
             <th>Mã TB</th><th>Tên SP</th><th style="width:80px">SL</th>
-            ${r.kind === 'in' ? '<th style="width:120px">Đơn giá</th>' : ''}
             ${r.kind === 'out' ? '<th>IMEI</th>' : ''}
             <th>Ghi chú</th>
           </tr></thead>
@@ -477,13 +601,27 @@
                 <td><b>${escape(it.product_code)}</b></td>
                 <td>${escape(it.product_name)}</td>
                 <td><b>${it.qty}</b></td>
-                ${r.kind === 'in' ? `<td>${it.unit_price ? fmt.format(it.unit_price) + 'đ' : '—'}</td>` : ''}
                 ${r.kind === 'out' ? `<td><pre style="margin:0;font-family:monospace;font-size:11.5px;white-space:pre-wrap">${escape(it.imei_list || '—')}</pre></td>` : ''}
                 <td>${escape(it.note || '—')}</td>
               </tr>`).join('')}
           </tbody>
         </table>
       `;
+    // Hiển thị ảnh đính kèm
+    const photos = Array.isArray(r.photo_urls) ? r.photo_urls : [];
+    const rdPhotos = $('rdPhotos');
+    const rdGrid   = $('rdPhotosGrid');
+    if (photos.length && rdPhotos && rdGrid) {
+      rdGrid.innerHTML = photos.map(url =>
+        `<div class="rd-photo-wrap" onclick="window.open('${url}','_blank')">
+           <img src="${url}" alt="ảnh">
+         </div>`
+      ).join('');
+      rdPhotos.style.display = '';
+    } else if (rdPhotos) {
+      rdPhotos.style.display = 'none';
+    }
+
     const allowVoid = !r.is_voided
       && !r.ref_stock_take_id
       && [...ADMIN_REASONS_IN, ...ADMIN_REASONS_OUT].includes(r.reason_code)
@@ -618,7 +756,210 @@
     else if (state.activeTab === 'receipts-out') loadReceipts('out');
   }
 
-  // ==================== TAB 5: STOCKTAKES ====================
+  // ==================== TAB 5: YÊU CẦU TRẢ KHO ====================
+  function timeAgo(d) {
+    if (!d) return '';
+    const diff = Date.now() - new Date(d).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1)  return 'Vừa xong';
+    if (m < 60) return `${m} phút trước`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h} giờ trước`;
+    return fmtDate(d);
+  }
+
+  function avatarInitial(name) {
+    if (!name) return '?';
+    const parts = name.trim().split(/\s+/);
+    return parts.length > 1
+      ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+      : parts[0].slice(0, 2).toUpperCase();
+  }
+
+  async function loadReturnRequests() {
+    const p = new URLSearchParams();
+    if (state.rr.status) p.set('status', state.rr.status);
+    p.set('page', state.rr.page);
+    p.set('limit', state.rr.limit);
+    const res = await api.get('/admin/inventory/return-requests?' + p.toString()).catch(() => null);
+    if (!res) return;
+    state.rr.total = res.total;
+
+    renderReturnRequests(res.items);
+
+    const totalPage = Math.max(1, Math.ceil(res.total / state.rr.limit));
+    $('rrPageInfo').textContent = `Trang ${state.rr.page} / ${totalPage}${res.total ? ` — ${res.total} yêu cầu` : ''}`;
+    $('rrPrev').disabled = state.rr.page <= 1;
+    $('rrNext').disabled = state.rr.page >= totalPage;
+
+    // Cập nhật stats cards
+    loadReturnRequestStats();
+  }
+
+  async function loadReturnRequestStats() {
+    const [rPending, rToday] = await Promise.all([
+      api.get('/admin/inventory/return-requests?status=pending&limit=1', { silent: true }).catch(() => null),
+      api.get('/admin/inventory/return-requests?limit=200', { silent: true }).catch(() => null),
+    ]);
+    if (rPending) $('rr-cnt-pending').textContent = rPending.total || 0;
+
+    if (rToday) {
+      const today = new Date().toDateString();
+      const approvedToday = (rToday.items || []).filter(r => r.status === 'approved' && new Date(r.reviewed_at).toDateString() === today).length;
+      const rejectedToday = (rToday.items || []).filter(r => r.status === 'rejected' && new Date(r.reviewed_at).toDateString() === today).length;
+      $('rr-cnt-approved').textContent = approvedToday;
+      $('rr-cnt-rejected').textContent = rejectedToday;
+    }
+
+    // Badge tab
+    const badge = $('retReqBadge');
+    if (badge && rPending) {
+      const n = rPending.total || 0;
+      badge.textContent = n;
+      badge.style.display = n > 0 ? '' : 'none';
+    }
+  }
+
+  function renderReturnRequests(items) {
+    const container = $('rr-content');
+    if (!container) return;
+
+    if (!items || !items.length) {
+      const labels = { pending: 'yêu cầu nào đang chờ', approved: 'yêu cầu nào đã duyệt', rejected: 'yêu cầu nào bị từ chối', '': 'yêu cầu nào' };
+      container.innerHTML = `
+        <div class="rr-empty">
+          <div class="rr-empty-icon">${state.rr.status === 'approved' ? '✅' : state.rr.status === 'rejected' ? '❌' : '📭'}</div>
+          <p>Không có ${labels[state.rr.status] || 'yêu cầu nào'}</p>
+        </div>`;
+      return;
+    }
+
+    if (state.rr.status === 'pending') {
+      container.innerHTML = `<div class="rr-card-grid" id="rr-card-grid"></div>`;
+      $('rr-card-grid').innerHTML = items.map(r => {
+        const holdOk = r.current_holding != null && Number(r.current_holding) >= Number(r.qty);
+        const holdTxt = r.current_holding != null
+          ? `<span class="rr-hold-dot ${holdOk ? 'ok' : 'warn'}"></span>
+             <span class="${holdOk ? 'rr-holding-ok' : 'rr-holding-warn'}">
+               Đang giữ: <b>${r.current_holding}</b>${!holdOk ? ' — Không đủ!' : ''}
+             </span>`
+          : `<span class="rr-hold-dot warn"></span><span class="rr-holding-warn">Không còn giữ</span>`;
+
+        return `
+          <div class="rr-card">
+            <div class="rr-card-top">
+              <div class="rr-avatar">${escape(avatarInitial(r.staff_name))}</div>
+              <div style="flex:1;min-width:0">
+                <div class="rr-ktv-name">${escape(r.staff_name)}</div>
+                <div class="rr-time">${timeAgo(r.created_at)}</div>
+              </div>
+              <div class="rr-qty-badge">
+                ${r.qty}
+                <small>đơn vị</small>
+              </div>
+            </div>
+            <div class="rr-product">
+              <div class="rr-product-icon">${escape((r.product_code || '?')[0])}</div>
+              <div style="min-width:0">
+                <div class="rr-product-code">${escape(r.product_code)}</div>
+                <div class="rr-product-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escape(r.product_name)}</div>
+              </div>
+            </div>
+            <div class="rr-holding-row">${holdTxt}</div>
+            ${r.note ? `<div class="rr-note">${escape(r.note)}</div>` : ''}
+            <div class="rr-actions">
+              <button class="rr-btn-approve" data-act="rr-approve" data-id="${r.id}" ${!holdOk ? 'disabled style="opacity:.45;cursor:not-allowed"' : ''}>
+                ✓ Duyệt
+              </button>
+              <button class="rr-btn-reject" data-act="rr-reject" data-id="${r.id}">
+                ✕ Từ chối
+              </button>
+            </div>
+          </div>`;
+      }).join('');
+    } else {
+      function rrStatusPill(s) {
+        if (s === 'pending')  return `<span class="pill" style="background:#ede9fe;color:#5b21b6;font-size:11px">⏳ Chờ duyệt</span>`;
+        if (s === 'approved') return `<span class="pill green" style="font-size:11px">✅ Đã duyệt</span>`;
+        if (s === 'rejected') return `<span class="pill red" style="font-size:11px">❌ Từ chối</span>`;
+        return s;
+      }
+      container.innerHTML = `
+        <div class="rr-table-view">
+          <div class="table-wrap" style="flex:1">
+            <table class="data">
+              <thead>
+                <tr>
+                  <th style="width:140px">Ngày gửi</th>
+                  <th style="width:150px">KTV</th>
+                  <th>Sản phẩm</th>
+                  <th style="width:60px">SL</th>
+                  <th>Ghi chú</th>
+                  <th style="width:120px">Trạng thái</th>
+                  <th style="width:200px">Người duyệt · Thời gian</th>
+                  ${state.rr.status === 'rejected' ? '<th>Lý do từ chối</th>' : ''}
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map(r => `
+                  <tr>
+                    <td>${escape(fmtDate(r.created_at))}</td>
+                    <td>${escape(r.staff_name)}</td>
+                    <td><b style="color:#6366f1">${escape(r.product_code)}</b> ${escape(r.product_name)}</td>
+                    <td><b>${r.qty}</b></td>
+                    <td class="text-muted">${escape(r.note || '—')}</td>
+                    <td>${rrStatusPill(r.status)}</td>
+                    <td class="text-muted" style="font-size:12px">${escape(r.reviewed_by_name || '—')} · ${r.reviewed_at ? fmtDate(r.reviewed_at) : '—'}</td>
+                    ${state.rr.status === 'rejected' ? `<td class="text-muted" style="font-size:12px;color:#dc2626">${escape(r.reject_reason || '—')}</td>` : ''}
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
+  }
+
+  // Delegate click trên container cố định (bind 1 lần trong bindEvents)
+  function initReturnRequestDelegate() {
+    const container = $('rr-content');
+    if (!container) return;
+    container.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-act]');
+      if (!btn || btn.disabled) return;
+      const id = Number(btn.dataset.id);
+      if (btn.dataset.act === 'rr-approve') approveReturnRequest(id);
+      else if (btn.dataset.act === 'rr-reject') rejectReturnRequest(id);
+    });
+  }
+
+  async function approveReturnRequest(id) {
+    const ok = await api.post(`/admin/inventory/return-requests/${id}/approve`, {},
+      { successMessage: 'Đã duyệt — phiếu nhập kho đã tạo', loading: true }
+    ).catch(() => null);
+    if (!ok) return;
+    loadStats();
+    loadReturnRequests();
+  }
+
+  async function rejectReturnRequest(id) {
+    const yes = await ui.confirm({
+      title: 'Từ chối yêu cầu?',
+      message: 'Xác nhận từ chối yêu cầu trả kho này?',
+      type: 'warning',
+      okText: 'Từ chối',
+    });
+    if (!yes) return;
+    const reason = window.prompt('Lý do từ chối (tuỳ chọn — để trống nếu không cần):') ?? '';
+    if (reason === null) return;
+    const ok = await api.post(`/admin/inventory/return-requests/${id}/reject`,
+      { reason },
+      { successMessage: 'Đã từ chối yêu cầu', loading: true }
+    ).catch(() => null);
+    if (ok) loadReturnRequests();
+  }
+
+  // ==================== TAB 6: STOCKTAKES ====================
   function stocktakeStatusPill(s) {
     const labels = { draft: 'Đang đếm', finished: 'Đã chốt', cancelled: 'Đã huỷ' };
     return `<span class="pill stocktake-status-${s}" style="font-size:11px">${labels[s] || s}</span>`;
@@ -907,6 +1248,7 @@
     ]);
     state.products = pRes ? pRes.items : [];
     state.suppliers = sRes ? (sRes.items || sRes) : [];
+    state.productMap = new Map(state.products.map(p => [p.id, p]));
     buildCatList();
   }
 
@@ -994,6 +1336,21 @@
     $('btnAddLine').addEventListener('click', addLine);
     $('r_reason').addEventListener('change', toggleSupplierField);
     $('receiptFrm').addEventListener('submit', submitReceipt);
+    $('r_photo_input').addEventListener('change', e => {
+      handlePhotoFiles(e.target.files);
+      e.target.value = '';
+    });
+    // Drag-drop ảnh vào drop zone
+    const dropZone = $('r_drop_zone');
+    if (dropZone) {
+      dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+      dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        if (e.dataTransfer.files.length) handlePhotoFiles(e.dataTransfer.files);
+      });
+    }
 
     // Detail modal
     $('rdClose').addEventListener('click',    () => $('receiptDetailModal').classList.remove('open'));
@@ -1004,7 +1361,21 @@
     $('hsClose').addEventListener('click',    () => $('historyModal').classList.remove('open'));
     $('hsCloseBtn').addEventListener('click', () => $('historyModal').classList.remove('open'));
 
-    // Tab 5: Stocktakes
+    // Tab 5: Yêu cầu trả kho — pill filter
+    initReturnRequestDelegate();
+    document.querySelectorAll('.rr-pill-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.rr-pill-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.rr.status = btn.dataset.rrFilter;
+        state.rr.page = 1;
+        loadReturnRequests();
+      });
+    });
+    $('rrPrev').addEventListener('click', () => { if (state.rr.page > 1) { state.rr.page--; loadReturnRequests(); }});
+    $('rrNext').addEventListener('click', () => { state.rr.page++; loadReturnRequests(); });
+
+    // Tab 6: Stocktakes
     $('f_st_status').addEventListener('change', () => { state.takes.status = $('f_st_status').value; state.takes.page = 1; loadTakes(); });
     $('f_st_from').addEventListener('change', () => { state.takes.from = $('f_st_from').value; state.takes.page = 1; loadTakes(); });
     $('f_st_to').addEventListener('change', () => { state.takes.to = $('f_st_to').value; state.takes.page = 1; loadTakes(); });
@@ -1156,8 +1527,13 @@
     adminShell.init('inventory');
     bindEvents();
     await loadDropdowns();
-    await loadStats();
-    await loadStock();
+    const _kind = new URLSearchParams(location.search).get('kind');
+    if (_kind === 'in' || _kind === 'out') {
+      await Promise.all([loadStats(), loadReturnRequestStats()]);
+      switchTab(_kind === 'in' ? 'receipts-in' : 'receipts-out');
+    } else {
+      await Promise.all([loadStats(), loadStock(), loadReturnRequestStats()]);
+    }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

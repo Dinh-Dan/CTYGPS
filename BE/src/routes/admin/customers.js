@@ -12,7 +12,7 @@ const adminOnly = requireRole('admin');
 // Cac field tac dong toi tien/cong no -> chi admin moi duoc set qua POST/PUT.
 // Staff van CRUD khach binh thuong, nhung khong duoc dong vao gia/han no.
 const ADMIN_ONLY_FIELDS = [
-  'debt_limit', 'credit_term_days', 'discount_rate', 'default_tier_id',
+  'debt_limit', 'credit_term_days',
 ];
 function stripAdminFields(body) {
   for (const k of ADMIN_ONLY_FIELDS) delete body[k];
@@ -352,7 +352,7 @@ router.post('/:id/password', adminOnly, async (req, res, next) => {
 });
 
 // ---- DELETE /api/admin/customers/:id (soft delete) ------------
-router.delete('/:id', adminOnly, async (req, res, next) => {
+router.delete('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const [result] = await db.query(
       `UPDATE customers SET is_deleted = 1 WHERE id = ? AND is_deleted = 0`,

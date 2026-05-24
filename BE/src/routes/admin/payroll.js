@@ -50,7 +50,7 @@ async function fetchOrders(conn, staffId, fromStart, toEnd, lock = false) {
             o.tech_commission_note
        FROM orders o
       WHERE o.assigned_staff_id=? AND o.is_deleted=0
-        AND o.debt_carried_at IS NULL
+        AND o.payslip_id IS NULL
         AND o.completed_at >= ? AND o.completed_at < ?
         AND o.status='done'
       ORDER BY o.completed_at ASC, o.id ASC${lock ? ' FOR UPDATE' : ''}`,
@@ -360,7 +360,7 @@ router.get('/my-current-period', async (req, res, next) => {
          FROM orders o
          LEFT JOIN customers c ON c.id=o.customer_id
         WHERE o.assigned_staff_id=? AND o.is_deleted=0
-          AND o.debt_carried_at IS NULL AND o.wage_amount > 0
+          AND o.payslip_id IS NULL AND o.wage_amount > 0
           AND o.status='done'
         ORDER BY o.completed_at DESC`,
       [staffId]
@@ -596,7 +596,7 @@ router.get('/:id/payslip/draft', canManage, async (req, res, next) => {
       } else {
         const [[firstOrder]] = await db.query(
           `SELECT DATE(completed_at) AS d FROM orders
-            WHERE assigned_staff_id=? AND is_deleted=0 AND debt_carried_at IS NULL AND status='done'
+            WHERE assigned_staff_id=? AND is_deleted=0 AND payslip_id IS NULL AND status='done'
             ORDER BY completed_at ASC LIMIT 1`, [staffId]
         );
         if (firstOrder?.d) {

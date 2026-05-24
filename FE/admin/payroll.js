@@ -94,6 +94,25 @@
 
   function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
+  // Gộp các dòng cùng order_id thành 1 hàng (cộng wage + commission)
+  function mergeOrderRows(rows) {
+    const map = new Map();
+    const result = [];
+    for (const r of rows) {
+      if (!r.order_id) { result.push({ ...r }); continue; }
+      if (map.has(r.order_id)) {
+        const m = map.get(r.order_id);
+        m.wage       = (m.wage       || 0) + (r.wage       || 0);
+        m.commission = (m.commission || 0) + (r.commission || 0);
+      } else {
+        const copy = { ...r };
+        map.set(r.order_id, copy);
+        result.push(copy);
+      }
+    }
+    return result;
+  }
+
   function resetUI() {
     $('draftArea').innerHTML = '<div class="pl-empty">Chọn nhân viên để bắt đầu tính lương.</div>';
     $('slipListArea').innerHTML = '<div class="pl-empty">Chọn nhân viên để xem phiếu lương.</div>';
@@ -145,16 +164,18 @@
     const totalAdvances   = advances.reduce((s, a) => s + (Number(a.amount) || 0), 0);
     const gross = S.base + totalWage + totalCommission + totalExtras - totalDeductions - totalAdvances + (d.carried_debt || 0);
 
-    // Gộp đơn + phiếu ứng vào 1 timeline
+    // Gộp các dòng cùng order_id, rồi gộp với phiếu ứng vào 1 timeline
+    const mergedFiltered = mergeOrderRows(filtered);
     const allRows = [];
-    filtered.forEach(r  => allRows.push({ _kind: 'order',   _date: r.date           || '', _data: r }));
-    advances.forEach(a  => allRows.push({ _kind: 'advance', _date: a.created_at     || '', _data: a }));
+    mergedFiltered.forEach(r => allRows.push({ _kind: 'order',   _date: r.date       || '', _data: r }));
+    advances.forEach(a       => allRows.push({ _kind: 'advance', _date: a.created_at || '', _data: a }));
     allRows.sort((a, b) => a._date.localeCompare(b._date));
 
+    const mergedTotal = mergeOrderRows(d.rows).length;
     const pendingAdvances = d.pending_advances || [];
     const filterTag = filtered.length !== d.rows.length
-      ? `<span style="color:#64748b;font-size:12px">${filtered.length}/${d.rows.length} đơn</span>`
-      : `<span style="color:#64748b;font-size:12px">${d.rows.length} đơn · ${advances.length} phiếu ứng</span>`;
+      ? `<span style="color:#64748b;font-size:12px">${mergedFiltered.length}/${mergedTotal} đơn</span>`
+      : `<span style="color:#64748b;font-size:12px">${mergedTotal} đơn · ${advances.length} phiếu ứng</span>`;
 
     let html = `
       <!-- Hàng điều khiển: kỳ + filter + ứng lương -->
@@ -221,9 +242,6 @@
           orderIdx++;
           const r = item._data;
           const device = [r.bien_so, r.imei].filter(Boolean).join(' / ');
-          const badge  = r.row_type === 'commission'
-            ? '<span style="font-size:10px;background:#ede9fe;color:#6d28d9;padding:1px 5px;border-radius:4px;margin-left:4px">hoa hồng</span>'
-            : '';
           const infoLines = [];
           if (r.tai_khoan) infoLines.push(`<span style="color:#0369a1">${r.tai_khoan}</span>`);
           if (device)      infoLines.push(`<span style="color:#475569">${device}</span>`);
@@ -232,7 +250,7 @@
             <tr>
               <td class="center" style="color:#94a3b8">${orderIdx}</td>
               <td style="white-space:nowrap">${fmtDateShort(r.date)}</td>
-              <td><a class="link order-link" data-id="${r.order_id}" href="/admin/order-detail.html?id=${r.order_id}">${r.code || '—'}${badge}</a>${r.code ? ui.copyCodeBtn(r.code) : ''}</td>
+              <td><a class="link order-link" data-id="${r.order_id}" href="/admin/order-detail.html?id=${r.order_id}">${r.code || '—'}</a>${r.code ? ui.copyCodeBtn(r.code) : ''}</td>
               <td style="font-size:12.5px">${r.service || '—'}</td>
               <td style="font-size:12px;line-height:1.5">${infoCell}</td>
               <td class="num" style="color:#0369a1;font-weight:600">${r.wage ? fmtMoney(r.wage) : '<span style="color:#cbd5e1">—</span>'}</td>
@@ -258,7 +276,7 @@
               </tbody>
               <tfoot>
                 <tr style="background:#f0fdf4;font-weight:700">
-                  <td colspan="4" style="text-align:right;color:#475569;font-size:12px">Tổng (${d.rows.length} đơn):</td>
+                  <td colspan="4" style="text-align:right;color:#475569;font-size:12px">Tổng (${mergedTotal} đơn):</td>
                   <td></td>
                   <td class="num" style="color:#0369a1;font-size:14px">${fmtMoney(totalWage)}</td>
                   <td class="num" style="color:#7c3aed;font-size:14px">${totalCommission ? fmtMoney(totalCommission) : '—'}</td>
@@ -697,17 +715,16 @@
         </tr></thead>
         <tbody>`;
 
-    rows.forEach((r, i) => {
+    mergeOrderRows(rows).forEach((r, i) => {
       const infoLines2 = [];
       if (r.tai_khoan) infoLines2.push(`<span style="color:#0369a1">TK: ${r.tai_khoan}</span>`);
       if (r.bien_so)   infoLines2.push(`BSX: ${r.bien_so}`);
       if (r.imei)      infoLines2.push(`IMEI: ${r.imei}`);
       const infoCell2 = infoLines2.join('<br>') || '—';
-      const badge = r.row_type === 'commission' ? '<span style="font-size:10px;background:#ede9fe;color:#6d28d9;padding:1px 4px;border-radius:3px;margin-left:3px">hoa hồng</span>' : '';
       body += `<tr>
         <td style="color:#94a3b8">${i+1}</td>
         <td style="white-space:nowrap">${fmtDateShort(r.date)}</td>
-        <td><a class="link" href="/admin/order-detail.html?id=${r.order_id}" target="_blank">${r.code||'—'}${badge}</a>${r.code ? ui.copyCodeBtn(r.code) : ''}</td>
+        <td><a class="link" href="/admin/order-detail.html?id=${r.order_id}" target="_blank">${r.code||'—'}</a>${r.code ? ui.copyCodeBtn(r.code) : ''}</td>
         <td style="font-size:12px">${r.service||'—'}</td>
         <td style="font-size:11.5px;line-height:1.5">${infoCell2}</td>
         <td class="num" style="font-weight:600;color:#0369a1">${r.wage ? fmtMoney(r.wage) : '<span style="color:#cbd5e1">—</span>'}</td>

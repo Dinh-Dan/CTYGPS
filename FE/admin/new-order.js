@@ -292,11 +292,11 @@
 
   // ---- LINES --------------------------------------------------
   async function addLine(templateId) {
-    const tplId = templateId || (state.templates[0] && state.templates[0].id);
+    const tplId = templateId || null;
     const line = {
       lid: newLineId(),
       template_id: tplId || null,
-      custom_name: tplId ? null : 'Công việc mới',
+      custom_name: tplId ? null : '',
       items: [newItem()],
       charges: [],
     };
@@ -1466,7 +1466,7 @@
     await loadStaff();
     // Tu dong them 1 line dau tien
     if (state.templates.length) {
-      await addLine(state.templates[0].id);
+      await addLine();
     } else {
       const $box = document.getElementById('linesBox');
       $box.innerHTML = '<div class="hint" style="color:#dc2626;text-align:center;padding:14px">Chưa có loại công việc. Liên hệ kỹ thuật để chạy migration 053.</div>';
