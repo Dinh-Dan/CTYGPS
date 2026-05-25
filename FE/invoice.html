@@ -197,22 +197,32 @@
     }
 
     .inv-info {
-      display: flex;
+      display: grid;
+      grid-template-columns: 2fr 1fr;
       gap: 14px;
-      flex-wrap: wrap;
       margin-bottom: 16px;
       font-size: 13px;
     }
 
     .inv-info .col {
-      flex: 1;
-      min-width: 240px;
       line-height: 1.75;
+      min-width: 0;
+    }
+
+.inv-info-company {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 4px;
+    }
+
+.inv-info .col > div {
+      display: flex;
+      gap: 4px;
     }
 
     .inv-info .lbl {
       color: #64748b;
-      display: inline-block;
+      flex-shrink: 0;
       min-width: 90px;
     }
 
@@ -972,8 +982,8 @@
             + '</div>'
           + '</div>'
           + '<div class="inv-info">'
+            + (o.customer_company ? '<div class="inv-info-company"><span class="lbl">Đơn vị:</span> <b>' + esc(o.customer_company) + '</b></div>' : '')
             + '<div class="col">'
-              + (o.customer_company ? '<div><span class="lbl">Công ty:</span> <b>' + esc(o.customer_company) + '</b></div>' : '')
               + '<div><span class="lbl">Khách hàng:</span> <b>' + esc(o.customer_name || '') + '</b></div>'
               + '<div><span class="lbl">SĐT:</span> ' + esc(o.customer_phone || '—') + '</div>'
               + (o.customer_tax ? '<div><span class="lbl">MST:</span> ' + esc(o.customer_tax) + '</div>' : '')
@@ -984,7 +994,7 @@
             + '<div class="col">'
               + (o.customer_code ? '<div><span class="lbl">Mã KH:</span> ' + esc(o.customer_code) + '</div>' : '')
               + (o.status === 'done' ? '<div><span class="lbl">Trạng thái:</span> <b>' + esc(statusLabelMap[o.status] || o.status) + '</b></div>' : '')
-              + '<div><span class="lbl">KTV:</span> ' + esc(o.staff_name || '—') + '</div>'
+              + '<div><span class="lbl">Kỹ thuật viên:</span> ' + esc(o.staff_name || '—') + '</div>'
             + '</div>'
           + '</div>'
           + (lineBlocks || '<div style="padding:20px;text-align:center;color:#94a3b8">Đơn chưa có dòng công việc nào.</div>')

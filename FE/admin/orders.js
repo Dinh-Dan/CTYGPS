@@ -481,6 +481,7 @@
   function closeDetail() {
     $('modal').classList.remove('open');
     state.currentDetail = null;
+    state.products = null;
     if (location.hash.startsWith('#order-')) {
       history.replaceState(null, '', location.pathname + location.search);
     }
@@ -1859,7 +1860,8 @@
   async function editLines() {
     const o = state.currentDetail;
     if (!state.products) {
-      const r = await api.get('/admin/products?limit=300').catch(() => null);
+      const cid = o && o.customer_id ? '&customer_id=' + o.customer_id : '';
+      const r = await api.get('/admin/products?limit=300' + cid).catch(() => null);
       state.products = (r && r.items) || [];
     }
     if (!state.templates || !state.templates.length) {
@@ -2285,7 +2287,7 @@
                   wlines[lnIdx].items[ii].product_id = pid;
                   const pp = prodMap[pid];
                   if (pp && !wlines[lnIdx].items[ii].unit_price) {
-                    wlines[lnIdx].items[ii].unit_price = Number(pp.sale_price) || Number(pp.cost_price) || 0;
+                    wlines[lnIdx].items[ii].unit_price = Number(pp.sale_price ?? pp.price) || 0;
                   }
                   drop.hidden = true;
                   rebuild();

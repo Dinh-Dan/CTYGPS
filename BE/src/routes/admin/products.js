@@ -128,6 +128,12 @@ router.get('/', async (req, res, next) => {
          LIMIT ? OFFSET ?`,
       [...args, limit, offset]
     );
+
+    if (customerId) {
+      const priceMap = await resolvePriceMap(db, rows.map(r => r.id), customerId);
+      rows.forEach(r => { r.sale_price = priceMap.get(r.id) ?? r.price ?? 0; });
+    }
+
     res.json({ items: rows, total: count[0].total, page, limit });
   } catch (err) { next(err); }
 });

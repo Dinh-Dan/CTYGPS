@@ -275,7 +275,7 @@
       ln.items.forEach(it => {
         if (it.product_id) {
           const p = state.products.find(x => x.id === it.product_id);
-          if (p) it.unit_price = Number(p.price) || 0;
+          if (p) it.unit_price = Number(p.sale_price ?? p.price) || 0;
         }
       });
     });
@@ -618,7 +618,7 @@
     function pickProd(pid) {
       const p = state.products.find(x => x.id === pid);
       ln.items[ii].product_id = pid;
-      if (p) ln.items[ii].unit_price = Number(p.price) || 0;
+      if (p) ln.items[ii].unit_price = Number(p.sale_price ?? p.price) || 0;
       inp.value = p ? p.name : '';
       lastQuery = inp.value;
       combo.classList.add('has-val');
