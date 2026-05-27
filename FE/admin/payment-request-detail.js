@@ -476,11 +476,16 @@
       <div class="quote-section">
         <h3>1. Thông tin khách hàng</h3>
         <div class="cust-info">
-          <div><b>Họ tên:</b> ${escape(cust.company_name || cust.full_name || '—')}</div>
-          <div><b>Mã KH:</b> ${escape(cust.code || '—')}</div>
-          <div><b>Điện thoại:</b> ${escape(cust.phone || '—')}</div>
-          <div><b>Địa chỉ:</b> ${escape(cust.address || '—')}</div>
-          ${cust.tax_code ? `<div><b>Mã số thuế:</b> ${escape(cust.tax_code)}</div>` : ''}
+          ${cust.company_name ? `<div class="cust-info-company"><span class="lbl">Đơn vị:</span> <b>${escape(cust.company_name)}</b></div>` : ''}
+          <div class="col">
+            <div><span class="lbl">Khách hàng:</span> <b>${escape(cust.full_name || '—')}</b></div>
+            ${cust.address ? `<div><span class="lbl">Địa chỉ:</span> ${escape(cust.address)}</div>` : ''}
+          </div>
+          <div class="col">
+            <div><span class="lbl">Mã KH:</span> ${escape(cust.code || '—')}</div>
+            <div><span class="lbl">Điện thoại:</span> ${escape(cust.phone || '—')}</div>
+            ${cust.tax_code ? `<div><span class="lbl">Mã số thuế:</span> ${escape(cust.tax_code)}</div>` : ''}
+          </div>
         </div>
       </div>
 

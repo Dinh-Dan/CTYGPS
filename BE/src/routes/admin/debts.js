@@ -729,6 +729,14 @@ router.get('/:customer_id', async (req, res, next) => {
       [customerId]
     );
 
+    const [oldDebts] = await db.query(
+      `SELECT id, amount, note, debt_date, created_by
+         FROM customer_old_debts
+        WHERE customer_id = ?
+        ORDER BY debt_date DESC, id DESC`,
+      [customerId]
+    );
+
     res.json({
       customer: custRows[0],
       opening_balance: debt.opening_balance,
@@ -738,6 +746,7 @@ router.get('/:customer_id', async (req, res, next) => {
       pending_orders: debt.pending_orders,
       pending_requests: debt.pending_requests,
       history,
+      old_debts: oldDebts,
     });
   } catch (err) { next(err); }
 });
@@ -746,7 +755,7 @@ router.get('/:customer_id', async (req, res, next) => {
 // POST /api/admin/debts/:customer_id/old-debts — Tao phieu no cu
 // Body: { amount, note, debt_date }
 // ==============================================================
-router.post('/:customer_id/old-debts', adminOnly, async (req, res, next) => {
+router.post('/:customer_id/old-debts', requireRole('admin', 'staff'), async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const customerId = Number(req.params.customer_id);
@@ -802,6 +811,91 @@ router.post('/:customer_id/old-debts', adminOnly, async (req, res, next) => {
   } finally {
     conn.release();
   }
+});
+
+// ==============================================================
+// PATCH /api/admin/debts/:customer_id/old-debts/:id — Sua phieu no cu
+// Body: { amount, note, debt_date }
+// ==============================================================
+router.patch('/:customer_id/old-debts/:id', requireRole('admin', 'staff'), async (req, res, next) => {
+  const conn = await db.getConnection();
+  try {
+    const customerId = Number(req.params.customer_id);
+    const debtId     = Number(req.params.id);
+    if (!Number.isFinite(customerId) || customerId <= 0 || !Number.isFinite(debtId) || debtId <= 0) {
+      conn.release();
+      return res.status(400).json({ error: 'ID khong hop le' });
+    }
+    const newAmount = Number(req.body.amount) || 0;
+    const note      = String(req.body.note || '').trim() || null;
+    const debtDate  = req.body.debt_date || null;
+    if (newAmount === 0) { conn.release(); return res.status(400).json({ error: 'So tien phai khac 0' }); }
+    if (!debtDate)       { conn.release(); return res.status(400).json({ error: 'Thieu ngay no' }); }
+
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query(
+      `SELECT id, amount FROM customer_old_debts WHERE id = ? AND customer_id = ? FOR UPDATE`,
+      [debtId, customerId]
+    );
+    if (!rows.length) { await conn.rollback(); conn.release(); return res.status(404).json({ error: 'Khong tim thay phieu no' }); }
+
+    const oldAmount = Number(rows[0].amount);
+    const diff = newAmount - oldAmount;
+
+    await conn.query(
+      `UPDATE customer_old_debts SET amount = ?, note = ?, debt_date = ? WHERE id = ?`,
+      [newAmount, note, debtDate, debtId]
+    );
+    await conn.query(
+      `UPDATE customers SET opening_balance = opening_balance + ? WHERE id = ?`,
+      [diff, customerId]
+    );
+
+    await conn.commit();
+    const [[cust]] = await db.query(`SELECT opening_balance FROM customers WHERE id = ?`, [customerId]);
+    res.json({ success: true, new_opening_balance: cust.opening_balance });
+  } catch (err) {
+    try { await conn.rollback(); } catch (_) {}
+    next(err);
+  } finally { conn.release(); }
+});
+
+// ==============================================================
+// DELETE /api/admin/debts/:customer_id/old-debts/:id — Xoa phieu no cu
+// ==============================================================
+router.delete('/:customer_id/old-debts/:id', requireRole('admin', 'staff'), async (req, res, next) => {
+  const conn = await db.getConnection();
+  try {
+    const customerId = Number(req.params.customer_id);
+    const debtId     = Number(req.params.id);
+    if (!Number.isFinite(customerId) || customerId <= 0 || !Number.isFinite(debtId) || debtId <= 0) {
+      conn.release();
+      return res.status(400).json({ error: 'ID khong hop le' });
+    }
+
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query(
+      `SELECT id, amount FROM customer_old_debts WHERE id = ? AND customer_id = ? FOR UPDATE`,
+      [debtId, customerId]
+    );
+    if (!rows.length) { await conn.rollback(); conn.release(); return res.status(404).json({ error: 'Khong tim thay phieu no' }); }
+
+    const amount = Number(rows[0].amount);
+    await conn.query(`DELETE FROM customer_old_debts WHERE id = ?`, [debtId]);
+    await conn.query(
+      `UPDATE customers SET opening_balance = opening_balance - ? WHERE id = ?`,
+      [amount, customerId]
+    );
+
+    await conn.commit();
+    const [[cust]] = await db.query(`SELECT opening_balance FROM customers WHERE id = ?`, [customerId]);
+    res.json({ success: true, new_opening_balance: cust.opening_balance });
+  } catch (err) {
+    try { await conn.rollback(); } catch (_) {}
+    next(err);
+  } finally { conn.release(); }
 });
 
 module.exports = router;

@@ -741,6 +741,30 @@
       }
     }
 
+    // ==== Nợ đầu kỳ (customer_old_debts) ====
+    const oldDebts = r.old_debts || [];
+    html += `<div class="section-title" style="margin-top:16px">
+      <h4>📌 Nợ đầu kỳ (${oldDebts.length})</h4>
+    </div>`;
+    if (oldDebts.length) {
+      html += oldDebts.map(od => `
+        <div class="history-row" style="align-items:center">
+          <div>
+            <b style="color:#dc2626">${fmtVnd(Number(od.amount))}</b>
+            <span class="text-muted" style="font-size:12px;margin-left:8px">${fmtDate(od.debt_date)}</span>
+            ${od.note ? `<span class="text-muted" style="font-size:12px;margin-left:8px">· ${escape(od.note)}</span>` : ''}
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn ghost sm" data-act="edit-old-debt" data-id="${od.id}" data-cid="${c.id}"
+              data-amount="${od.amount}" data-date="${od.debt_date || ''}" data-note="${escape(od.note || '')}">Sửa</button>
+            <button class="btn ghost sm" style="color:#dc2626;border-color:#fecaca"
+              data-act="del-old-debt" data-id="${od.id}" data-cid="${c.id}">Xoá</button>
+          </div>
+        </div>`).join('');
+    } else {
+      html += '<div class="text-muted" style="padding:10px 0;font-size:13px">Chưa có phiếu nợ đầu kỳ nào.</div>';
+    }
+
     $('cmBody').innerHTML = html;
     $('cmSettle').style.display = '';
     $('cmSettle').disabled = r.total_debt <= 0;
@@ -1139,6 +1163,10 @@
     if (cancelReqBtn) return cancelPaymentRequest(Number(cancelReqBtn.dataset.rid));
     const settleStaff = e.target.closest('button[data-act="settle-staff"]');
     if (settleStaff) return openStaffSettleModal(settleStaff);
+    const editOldDebt = e.target.closest('button[data-act="edit-old-debt"]');
+    if (editOldDebt) return openEditOldDebtModal(editOldDebt);
+    const delOldDebt = e.target.closest('button[data-act="del-old-debt"]');
+    if (delOldDebt) return deleteOldDebt(delOldDebt);
     const pact = e.target.closest('button[data-pact]');
     if (pact) {
       const id = Number(pact.dataset.rid);
@@ -1195,6 +1223,32 @@
     renderSettlementList(state._slHistory || []);
   };
 
+  // ==== SUA / XOA PHIEU NO CU ==================================
+  function openEditOldDebtModal(btn) {
+    state.editingOldDebtId  = Number(btn.dataset.id);
+    state.editingOldDebtCid = Number(btn.dataset.cid);
+    $('od_customer_id').value     = btn.dataset.cid;
+    $('od_customer_search').value = '(đang sửa — không đổi khách)';
+    $('od_customer_wrap').style.pointerEvents = 'none';
+    $('od_customer_wrap').style.opacity = '0.5';
+    Money.set($('od_amount'), Number(btn.dataset.amount));
+    $('od_date').value  = btn.dataset.date || '';
+    $('od_note').value  = btn.dataset.note || '';
+    $('oldDebtModal').querySelector('h3').textContent = 'Sửa phiếu nợ đầu kỳ';
+    $('oldDebtModal').classList.add('open');
+  }
+
+  async function deleteOldDebt(btn) {
+    const id  = Number(btn.dataset.id);
+    const cid = Number(btn.dataset.cid);
+    const ok = await ui.confirm({ title: 'Xác nhận xoá', type: 'danger',
+      message: 'Xoá phiếu nợ đầu kỳ này? Số tiền sẽ bị trừ khỏi nợ đầu kỳ của khách.' });
+    if (!ok) return;
+    const res = await api.delete(`/admin/debts/${cid}/old-debts/${id}`, {},
+      { loading: true, successMessage: 'Đã xoá phiếu nợ đầu kỳ' }).catch(() => null);
+    if (res) openCustModal(cid);
+  }
+
   // ==== MODAL: GHI NO CU =======================================
   function renderOldDebtCustomerOptions(filterStr = '') {
     const term = filterStr.toLowerCase();
@@ -1224,11 +1278,17 @@
   }
 
   async function openOldDebtModal() {
+    state.editingOldDebtId  = null;
+    state.editingOldDebtCid = null;
     $('od_customer_id').value = '';
     $('od_customer_search').value = '';
+    $('od_customer_wrap').style.pointerEvents = '';
+    $('od_customer_wrap').style.opacity = '';
     $('od_amount').value = '';
     $('od_date').value = new Date().toISOString().slice(0, 10);
     $('od_note').value = '';
+    $('oldDebtModal').querySelector('h3').textContent = 'Nhập số dư nợ đầu kỳ (Nợ cũ)';
+    state.allCustomersForDebt = null;
     $('od_customer_list').style.display = 'none';
     $('od_customer_list').innerHTML = '<div style="padding:8px 12px; color:#64748b;">Đang tải danh sách...</div>';
     $('oldDebtModal').classList.add('open');
@@ -1239,7 +1299,12 @@
       return;
     }
     state.allCustomersForDebt = r.items;
-    renderOldDebtCustomerOptions('');
+    renderOldDebtCustomerOptions($('od_customer_search').value);
+    // Nếu user đã focus vào ô tìm kiếm trong lúc đang tải, tự hiện list
+    if (document.activeElement === $('od_customer_search')) {
+      positionOdList();
+      $('od_customer_list').style.display = 'block';
+    }
   }
 
   async function submitOldDebt(e) {
@@ -1257,13 +1322,21 @@
     const btn = $('oldDebtModal').querySelector('button[type="submit"]');
     btn.disabled = true;
     try {
-      const ok = await api.post(`/admin/debts/${cid}/old-debts`, data, {
-        loading: true, successMessage: 'Đã tạo phiếu nợ cũ thành công'
-      }).catch(() => null);
+      let ok;
+      if (state.editingOldDebtId) {
+        ok = await api.patch(`/admin/debts/${cid}/old-debts/${state.editingOldDebtId}`, data, {
+          loading: true, successMessage: 'Đã cập nhật phiếu nợ đầu kỳ'
+        }).catch(() => null);
+      } else {
+        ok = await api.post(`/admin/debts/${cid}/old-debts`, data, {
+          loading: true, successMessage: 'Đã tạo phiếu nợ cũ thành công'
+        }).catch(() => null);
+      }
       if (ok) {
         $('oldDebtModal').classList.remove('open');
         loadSummary();
         loadCustomers();
+        if (state.editingOldDebtId) openCustModal(cid);
       }
     } finally {
       btn.disabled = false;
@@ -1275,13 +1348,25 @@
   $('odCancel') && ($('odCancel').onclick = () => $('oldDebtModal').classList.remove('open'));
   $('odForm') && ($('odForm').onsubmit = submitOldDebt);
 
+  function positionOdList() {
+    const input = $('od_customer_search');
+    const list  = $('od_customer_list');
+    if (!input || !list) return;
+    const rect = input.getBoundingClientRect();
+    list.style.top   = (rect.bottom + 4) + 'px';
+    list.style.left  = rect.left + 'px';
+    list.style.width = rect.width + 'px';
+  }
+
   if ($('od_customer_search')) {
     $('od_customer_search').onfocus = () => {
+      positionOdList();
       $('od_customer_list').style.display = 'block';
-      renderOldDebtCustomerOptions($('od_customer_search').value);
+      if (state.allCustomersForDebt) renderOldDebtCustomerOptions($('od_customer_search').value);
     };
     $('od_customer_search').oninput = (e) => {
       $('od_customer_id').value = '';
+      positionOdList();
       $('od_customer_list').style.display = 'block';
       renderOldDebtCustomerOptions(e.target.value);
     };

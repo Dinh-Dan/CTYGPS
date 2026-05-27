@@ -47,8 +47,11 @@
       font-size: 14px; font-weight: 700; color: #0f172a; text-transform: uppercase;
       border-bottom: 1px solid #cbd5e1; padding-bottom: 6px; margin-bottom: 12px
     }
-    .cust-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; font-size: 14px; line-height: 1.5 }
-    .cust-info b { color: #0f172a; font-weight: 600; display: inline-block; width: 100px }
+    .cust-info { display: grid; grid-template-columns: 2fr 1fr; gap: 6px 24px; font-size: 13px }
+    .cust-info-company { grid-column: 1/-1; display: flex; gap: 4px; font-size: 13px; line-height: 1.6 }
+    .cust-info .col { line-height: 1.75; min-width: 0 }
+    .cust-info .col > div { display: flex; gap: 4px }
+    .cust-info .lbl { color: #64748b; flex-shrink: 0; min-width: 100px }
     .order-card { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px dashed #cbd5e1 }
     .order-card:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0 }
     .order-card .oc-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px }
