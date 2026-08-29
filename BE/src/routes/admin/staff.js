@@ -39,7 +39,7 @@ function pickPayload(body, { isUpdate = false } = {}) {
   }
   if (body.full_name !== undefined)  out.full_name = String(body.full_name).trim();
   if (body.role !== undefined) {
-    if (!ROLES.includes(body.role)) throw httpErr(400, 'role phai la admin, kithuat hoac staff');
+    if (!ROLES.includes(body.role)) throw httpErr(400, 'role phải là admin, kithuat hoặc staff');
     out.role = body.role;
   }
   if (body.area !== undefined)       out.area = body.area || null;
@@ -49,7 +49,7 @@ function pickPayload(body, { isUpdate = false } = {}) {
   if (body.avatar_url !== undefined) out.avatar_url = body.avatar_url || null;
 
   if (!isUpdate) {
-    if (!out.full_name) throw httpErr(400, 'Thieu ho ten');
+    if (!out.full_name) throw httpErr(400, 'Thiếu họ tên');
     if (!out.role)      out.role = 'kithuat';
   }
   return out;
@@ -133,7 +133,7 @@ router.get('/:id', async (req, res, next) => {
          FROM staff WHERE id = ? AND is_deleted = 0`,
       [req.params.id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay nhan vien' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy nhân viên' });
 
     const [stats] = await db.query(
       `SELECT
@@ -158,7 +158,7 @@ async function generateStaffUsername(role) {
     );
     if (!rows.length) return u;
   }
-  throw httpErr(500, 'Khong sinh duoc username');
+  throw httpErr(500, 'Không sinh được username');
 }
 
 // ---- POST /api/admin/staff ------------------------------------
@@ -166,7 +166,7 @@ async function generateStaffUsername(role) {
 router.post('/', canManage, async (req, res, next) => {
   try {
     const password = String(req.body.password || '');
-    if (password.length < 4) throw httpErr(400, 'Mat khau toi thieu 4 ky tu');
+    if (password.length < 4) throw httpErr(400, 'Mật khẩu tối thiểu 4 ký tự');
 
     const data = pickPayload(req.body, { isUpdate: false });
 
@@ -178,7 +178,7 @@ router.post('/', canManage, async (req, res, next) => {
       `SELECT id FROM staff WHERE username = ? AND is_deleted = 0 LIMIT 1`,
       [data.username]
     );
-    if (dup.length) return res.status(409).json({ error: 'Username da ton tai' });
+    if (dup.length) return res.status(409).json({ error: 'Username đã tồn tại' });
 
     const password_hash = await bcrypt.hash(password, 10);
     const cols = [...Object.keys(data), 'password_hash'];
@@ -200,12 +200,12 @@ router.put('/:id', canManage, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) {
-      return res.status(400).json({ error: 'id khong hop le' });
+      return res.status(400).json({ error: 'id không hợp lệ' });
     }
     const [exist] = await db.query(
       `SELECT id, role FROM staff WHERE id = ? AND is_deleted = 0`, [id]
     );
-    if (!exist.length) return res.status(404).json({ error: 'Khong tim thay nhan vien' });
+    if (!exist.length) return res.status(404).json({ error: 'Không tìm thấy nhân viên' });
 
     const data = pickPayload(req.body, { isUpdate: true });
 
@@ -213,7 +213,7 @@ router.put('/:id', canManage, async (req, res, next) => {
     if (data.role && data.role !== exist[0].role) {
       // Cam tu doi role chinh minh
       if (Number(req.user && req.user.sub) === id) {
-        return res.status(400).json({ error: 'Khong the tu thay doi role cua minh' });
+        return res.status(400).json({ error: 'Không thể tự thay đổi role của mình' });
       }
       // Neu dang ha cap admin xuong non-admin: kiem tra so admin con lai
       if (exist[0].role === 'admin' && data.role !== 'admin') {
@@ -221,7 +221,7 @@ router.put('/:id', canManage, async (req, res, next) => {
           `SELECT COUNT(*) AS n FROM staff WHERE role = 'admin' AND is_deleted = 0`
         );
         if (Number(cnt[0].n) <= 1) {
-          return res.status(400).json({ error: 'Khong the ha cap admin cuoi cung' });
+          return res.status(400).json({ error: 'Không thể hạ cấp admin cuối cùng' });
         }
       }
     }
@@ -231,11 +231,11 @@ router.put('/:id', canManage, async (req, res, next) => {
         `SELECT id FROM staff WHERE username = ? AND id <> ? AND is_deleted = 0 LIMIT 1`,
         [data.username, id]
       );
-      if (dup.length) return res.status(409).json({ error: 'Username da ton tai' });
+      if (dup.length) return res.status(409).json({ error: 'Username đã tồn tại' });
     }
 
     const cols = Object.keys(data);
-    if (!cols.length) return res.status(400).json({ error: 'Khong co truong nao de cap nhat' });
+    if (!cols.length) return res.status(400).json({ error: 'Không có trường nào để cập nhật' });
 
     const setSql = cols.map(c => `${c} = ?`).join(', ');
     const values = cols.map(c => data[c]);
@@ -250,12 +250,12 @@ router.put('/:id', canManage, async (req, res, next) => {
 router.post('/:id/password', canManage, async (req, res, next) => {
   try {
     const password = String(req.body.password || '');
-    if (password.length < 4) return res.status(400).json({ error: 'Mat khau toi thieu 4 ky tu' });
+    if (password.length < 4) return res.status(400).json({ error: 'Mật khẩu tối thiểu 4 ký tự' });
 
     const [exist] = await db.query(
       `SELECT id FROM staff WHERE id = ? AND is_deleted = 0`, [req.params.id]
     );
-    if (!exist.length) return res.status(404).json({ error: 'Khong tim thay nhan vien' });
+    if (!exist.length) return res.status(404).json({ error: 'Không tìm thấy nhân viên' });
 
     const hash = await bcrypt.hash(password, 10);
     await db.query(`UPDATE staff SET password_hash = ? WHERE id = ?`, [hash, req.params.id]);
@@ -273,16 +273,16 @@ router.delete('/:id', canManage, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) {
-      return res.status(400).json({ error: 'id khong hop le' });
+      return res.status(400).json({ error: 'id không hợp lệ' });
     }
     if (id === Number(req.user.sub)) {
-      return res.status(400).json({ error: 'Khong the xoa chinh tai khoan dang dang nhap' });
+      return res.status(400).json({ error: 'Không thể xóa chính tài khoản đang đăng nhập' });
     }
 
     const [exist] = await db.query(
       `SELECT id, username, role FROM staff WHERE id = ? AND is_deleted = 0`, [id]
     );
-    if (!exist.length) return res.status(404).json({ error: 'Khong tim thay nhan vien' });
+    if (!exist.length) return res.status(404).json({ error: 'Không tìm thấy nhân viên' });
 
     // Khong cho xoa admin cuoi cung
     if (exist[0].role === 'admin') {
@@ -290,7 +290,7 @@ router.delete('/:id', canManage, async (req, res, next) => {
         `SELECT COUNT(*) AS n FROM staff WHERE role = 'admin' AND is_deleted = 0`
       );
       if (Number(cnt[0].n) <= 1) {
-        return res.status(400).json({ error: 'Khong the xoa admin cuoi cung' });
+        return res.status(400).json({ error: 'Không thể xóa admin cuối cùng' });
       }
     }
 
@@ -317,11 +317,11 @@ router.delete('/:id', canManage, async (req, res, next) => {
 
     if (active > 0 || held > 0 || pool > 0) {
       const parts = [];
-      if (active) parts.push(`${active} cong viec dang xu ly`);
-      if (held)   parts.push(`${held} thiet bi dang giu`);
-      if (pool)   parts.push(`${pool} thiet bi cho nhan`);
+      if (active) parts.push(`${active} công việc đang xử lý`);
+      if (held)   parts.push(`${held} thiết bị đang giữ`);
+      if (pool)   parts.push(`${pool} thiết bị chờ nhận`);
       return res.status(409).json({
-        error: `Khong the xoa: nhan vien con ${parts.join(', ')}. Vui long gan lai cong viec va thu hoi thiet bi truoc.`,
+        error: `Không thể xóa: nhân viên còn ${parts.join(', ')}. Vui lòng gắn lại công việc và thu hồi thiết bị trước.`,
         blockers: { active_tasks: active, held_qty: held, pool_qty: pool },
       });
     }
@@ -330,7 +330,7 @@ router.delete('/:id', canManage, async (req, res, next) => {
       `UPDATE staff SET is_deleted = 1 WHERE id = ? AND is_deleted = 0`,
       [id]
     );
-    if (!result.affectedRows) return res.status(404).json({ error: 'Khong tim thay nhan vien' });
+    if (!result.affectedRows) return res.status(404).json({ error: 'Không tìm thấy nhân viên' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -348,7 +348,7 @@ router.delete('/:id', canManage, async (req, res, next) => {
 router.get('/me/advances', async (req, res, next) => {
   try {
     const staffId = Number(req.user && req.user.sub);
-    if (!staffId) return res.status(401).json({ error: 'Chua dang nhap' });
+    if (!staffId) return res.status(401).json({ error: 'Chưa đăng nhập' });
     const status = req.query.status || null;
     const where = ['sa.staff_id = ?', 'sa.is_deleted = 0'];
     const args = [staffId];
@@ -368,12 +368,12 @@ router.get('/me/advances', async (req, res, next) => {
 router.post('/me/advances', async (req, res, next) => {
   try {
     const staffId = Number(req.user && req.user.sub);
-    if (!staffId) return res.status(401).json({ error: 'Chua dang nhap' });
+    if (!staffId) return res.status(401).json({ error: 'Chưa đăng nhập' });
     const period = String(req.body.period || '').trim();
     const amount = Number(req.body.amount) || 0;
     const note   = String(req.body.note || '').trim() || '';
-    if (!period || !/^\d{4}-\d{2}$/.test(period)) return res.status(400).json({ error: 'Ky luong khong hop le (YYYY-MM)' });
-    if (amount <= 0) return res.status(400).json({ error: 'So tien phai > 0' });
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) return res.status(400).json({ error: 'Kỳ lương không hợp lệ (YYYY-MM)' });
+    if (amount <= 0) return res.status(400).json({ error: 'Số tiền phải > 0' });
     const [ins] = await db.query(
       `INSERT INTO staff_advances (staff_id, period, amount, note, created_by, status, created_at)
        VALUES (?, ?, ?, ?, ?, 'pending', NOW())`,
@@ -414,7 +414,7 @@ router.patch('/:id/advances/:aid/approve', adminOnly, async (req, res, next) => 
   try {
     const staffId = Number(req.params.id);
     const advId   = Number(req.params.aid);
-    if (!staffId || !advId) { conn.release(); return res.status(400).json({ error: 'Tham so khong hop le' }); }
+    if (!staffId || !advId) { conn.release(); return res.status(400).json({ error: 'Tham số không hợp lệ' }); }
 
     await conn.beginTransaction();
     const [[adv]] = await conn.query(
@@ -422,8 +422,8 @@ router.patch('/:id/advances/:aid/approve', adminOnly, async (req, res, next) => 
          FROM staff_advances WHERE id = ? AND staff_id = ? AND is_deleted = 0 FOR UPDATE`,
       [advId, staffId]
     );
-    if (!adv) { await conn.rollback(); return res.status(404).json({ error: 'Khong tim thay yeu cau' }); }
-    if (adv.status !== 'pending') { await conn.rollback(); return res.status(409).json({ error: 'Yeu cau da duoc xu ly' }); }
+    if (!adv) { await conn.rollback(); return res.status(404).json({ error: 'Không tìm thấy yêu cầu' }); }
+    if (adv.status !== 'pending') { await conn.rollback(); return res.status(409).json({ error: 'Yêu cầu đã được xử lý' }); }
 
     // Cap nhat trang thai yeu cau
     await conn.query(
@@ -467,14 +467,14 @@ router.patch('/:id/advances/:aid/reject', adminOnly, async (req, res, next) => {
   try {
     const staffId = Number(req.params.id);
     const advId   = Number(req.params.aid);
-    if (!staffId || !advId) return res.status(400).json({ error: 'Tham so khong hop le' });
+    if (!staffId || !advId) return res.status(400).json({ error: 'Tham số không hợp lệ' });
     const reason = String(req.body.reason || '').trim() || null;
     const [[adv]] = await db.query(
       `SELECT id, status FROM staff_advances WHERE id = ? AND staff_id = ? AND is_deleted = 0`,
       [advId, staffId]
     );
-    if (!adv) return res.status(404).json({ error: 'Khong tim thay yeu cau' });
-    if (adv.status !== 'pending') return res.status(409).json({ error: 'Yeu cau da duoc xu ly' });
+    if (!adv) return res.status(404).json({ error: 'Không tìm thấy yêu cầu' });
+    if (adv.status !== 'pending') return res.status(409).json({ error: 'Yêu cầu đã được xử lý' });
     await db.query(
       `UPDATE staff_advances SET status='rejected', approved_by=?, approved_at=NOW(), reject_reason=? WHERE id=?`,
       [req.user.sub, reason, advId]

@@ -5,6 +5,18 @@
   const $ = id => document.getElementById(id);
   const fmt = new Intl.NumberFormat('vi-VN');
   const fmtM = n => fmt.format(Math.round(Number(n) || 0));
+  function fmtInputDate(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  function getCurrentMonthRange() {
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return { from: fmtInputDate(from), to: fmtInputDate(to) };
+  }
 
   function esc(s) {
     if (s == null) return '';
@@ -495,6 +507,11 @@
   // ================================================================
   function init() {
     techShell.init('salary');
+    const monthRange = getCurrentMonthRange();
+    W.from = monthRange.from;
+    W.to = monthRange.to;
+    $('draftFrom').value = monthRange.from;
+    $('draftTo').value = monthRange.to;
 
     // Slip modal
     [$('btnCloseSlipModal'), $('btnCloseSlipModal2')].forEach(b =>
@@ -540,7 +557,7 @@
 
     // Load initial data
     loadStats();
-    loadWork();
+    loadWork(W.from, W.to);
     loadSlips();
   }
 

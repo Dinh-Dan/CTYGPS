@@ -42,19 +42,19 @@ router.post('/', (req, res, next) => {
     const folder = ALLOWED_FOLDERS.has(req.body.folder) ? req.body.folder : 'avatars';
 
     if (!dataUrl || typeof dataUrl !== 'string') {
-      return res.status(400).json({ error: 'Thieu dataUrl' });
+      return res.status(400).json({ error: 'Thiếu dataUrl' });
     }
 
     const m = dataUrl.match(/^data:([\w/+-]+);base64,(.+)$/);
-    if (!m) return res.status(400).json({ error: 'dataUrl khong dung dinh dang base64' });
+    if (!m) return res.status(400).json({ error: 'dataUrl không đúng định dạng base64' });
 
     const mime = m[1].toLowerCase();
     const ext = MIME_EXT[mime];
-    if (!ext) return res.status(400).json({ error: 'Dinh dang khong ho tro (anh: jpg/png/webp/gif; video: mp4/webm/mov)' });
+    if (!ext) return res.status(400).json({ error: 'Định dạng không hỗ trợ (ảnh: jpg/png/webp/gif; video: mp4/webm/mov)' });
 
     const buf = Buffer.from(m[2], 'base64');
-    if (buf.length === 0)        return res.status(400).json({ error: 'File rong' });
-    if (buf.length > MAX_BYTES)  return res.status(413).json({ error: 'File qua 50MB' });
+    if (buf.length === 0)        return res.status(400).json({ error: 'File rỗng' });
+    if (buf.length > MAX_BYTES)  return res.status(413).json({ error: 'File quá 50MB' });
 
     const dir = path.join(UPLOAD_ROOT, folder);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });

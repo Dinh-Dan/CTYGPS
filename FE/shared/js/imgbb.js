@@ -28,10 +28,10 @@
         cv.width = w; cv.height = h;
         cv.getContext('2d').drawImage(img, 0, 0, w, h);
         URL.revokeObjectURL(url);
-        cv.toBlob(b => b ? resolve(b) : reject(new Error('Khong nen duoc anh')),
+        cv.toBlob(b => b ? resolve(b) : reject(new Error('Không nén được ảnh')),
           'image/jpeg', JPEG_Q);
       };
-      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Khong doc duoc anh')); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Không đọc được ảnh')); };
       img.src = url;
     });
   }
@@ -44,14 +44,14 @@
         const i = s.indexOf(',');
         resolve(i >= 0 ? s.slice(i + 1) : s);
       };
-      r.onerror = () => reject(new Error('Khong doc duoc file'));
+      r.onerror = () => reject(new Error('Không đọc được file'));
       r.readAsDataURL(file);
     });
   }
 
   async function upload(file, opts) {
-    if (!file) throw new Error('Thieu file');
-    if (file.size > MAX_BYTES) throw new Error('Anh qua 32MB');
+    if (!file) throw new Error('Thiếu file');
+    if (file.size > MAX_BYTES) throw new Error('Ảnh quá 32MB');
     opts = opts || {};
 
     let payload = file;

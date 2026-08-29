@@ -3,209 +3,715 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>VinaGPS – Thiết bị định vị &amp; Camera hành trình</title>
+<title>VinaGPS – Thiết bị định vị GPS & Camera hành trình chính hãng</title>
+<meta name="description" content="Công ty TNHH Viễn thông VinaGPS – Chuyên thiết bị định vị ô tô, xe máy, xe tải. Lắp đặt tận nơi TP.HCM. Bảo hành 24 tháng. Gọi: 0942.155.160">
 <link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+/* ===== TOP BAR ===== */
+.vg-topbar{background:#0b1a33;color:#cbd5e1;font-size:13px;padding:7px 0}
+.vg-topbar .container{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.vg-topbar a{color:#94a3b8;text-decoration:none}
+.vg-topbar a:hover{color:#fff}
+.vg-topbar .hotline{color:#ff9500;font-weight:700;font-size:14px}
+
+/* ===== HEADER ===== */
+.vg-header{background:#fff;border-bottom:2px solid #e2e8f0;position:sticky;top:0;z-index:50;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.vg-header-inner{display:flex;align-items:center;gap:20px;padding:12px 20px}
+.vg-logo{display:flex;align-items:center;gap:12px;text-decoration:none;flex-shrink:0}
+.vg-logo-img{width:52px;height:52px;border-radius:50%;background:#fff;border:2px solid #e2e8f0;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:2px}
+.vg-logo-img svg{width:46px;height:46px}
+.vg-logo-text{line-height:1.25}
+.vg-logo-text strong{display:block;font-size:17px;color:#0b1a33;font-weight:800;letter-spacing:.3px}
+.vg-logo-text span{font-size:11px;color:#64748b}
+.vg-search{flex:1;max-width:420px;display:flex;border:2px solid #1f6feb;border-radius:8px;overflow:hidden}
+.vg-search input{flex:1;padding:9px 14px;border:none;outline:none;font-size:14px;min-width:0}
+.vg-search button{background:#1f6feb;color:#fff;border:none;padding:0 16px;cursor:pointer;font-size:16px;flex-shrink:0}
+.vg-search button:hover{background:#1357c7}
+.vg-header-info{display:flex;flex-direction:column;align-items:flex-end;gap:2px;margin-left:auto;flex-shrink:0}
+.vg-header-info .tel{font-size:20px;font-weight:800;color:#1f6feb;white-space:nowrap}
+.vg-header-info .tel-sub{font-size:12px;color:#64748b}
+.vg-header-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
+/* NAV */
+.vg-nav{background:#1f6feb}
+.vg-nav .container{display:flex;align-items:center}
+.vg-nav a{color:rgba(255,255,255,.85);padding:11px 18px;font-size:14px;font-weight:600;white-space:nowrap;text-decoration:none;display:block}
+.vg-nav a:hover,.vg-nav a.active{color:#fff;background:rgba(255,255,255,.15)}
+.vg-nav .btn-order{background:#ff7a00;color:#fff !important;margin-left:auto;border-radius:0}
+.vg-nav .btn-order:hover{background:#e06c00}
+/* Mobile header */
+.vg-hamburger{display:none;background:none;border:1px solid #e2e8f0;border-radius:6px;padding:7px 10px;font-size:20px;cursor:pointer;color:#0b1a33;flex-shrink:0}
+.vg-nav-mobile{display:none}
+@media(max-width:960px){
+  .vg-topbar .container{justify-content:center;gap:12px}
+  .vg-header-inner{flex-wrap:wrap;padding:10px 14px;gap:12px}
+  .vg-search{max-width:100%;order:3;flex-basis:100%}
+  .vg-header-info{display:none}
+  .vg-header-actions{margin-left:auto}
+  .vg-hamburger{display:block}
+  .vg-nav{display:none}
+  .vg-nav-mobile{display:flex;flex-direction:column;background:#1f6feb}
+  .vg-nav-mobile a{color:rgba(255,255,255,.9);padding:12px 20px;font-size:14px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1);text-decoration:none}
+  .vg-nav-mobile a.btn-order{background:#ff7a00}
+  .vg-nav-mobile.hide{display:none}
+}
+
+/* ===== HERO / BANNER ===== */
+.vg-hero{background:linear-gradient(135deg,#0b1a33 0%,#1a3a70 60%,#1f6feb 100%);color:#fff;padding:52px 0 44px;position:relative;overflow:hidden}
+.vg-hero::before{content:'';position:absolute;right:-80px;top:-60px;width:400px;height:400px;background:rgba(255,255,255,.04);border-radius:50%}
+.vg-hero::after{content:'';position:absolute;right:60px;bottom:-100px;width:280px;height:280px;background:rgba(31,111,235,.3);border-radius:50%}
+.vg-hero .container{position:relative;z-index:1;display:flex;gap:40px;align-items:center}
+.vg-hero-text{flex:1}
+.vg-hero-text .tag{display:inline-flex;align-items:center;gap:6px;background:rgba(255,165,0,.2);border:1px solid rgba(255,165,0,.4);color:#fbbf24;padding:5px 14px;border-radius:999px;font-size:12px;font-weight:700;margin-bottom:16px}
+.vg-hero-text h1{font-size:38px;line-height:1.2;margin-bottom:14px;font-weight:800}
+.vg-hero-text h1 span{color:#ff9500}
+.vg-hero-text p{font-size:16px;color:#c9d4e6;margin-bottom:24px;max-width:520px}
+.vg-hero-btns{display:flex;gap:12px;flex-wrap:wrap}
+.vg-hero-btns .btn-primary-lg{background:#ff7a00;color:#fff;padding:13px 28px;border-radius:8px;font-size:15px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:.15s}
+.vg-hero-btns .btn-primary-lg:hover{background:#e06c00;text-decoration:none;color:#fff}
+.vg-hero-btns .btn-ghost-lg{background:rgba(255,255,255,.12);color:#fff;border:1.5px solid rgba(255,255,255,.3);padding:12px 24px;border-radius:8px;font-size:15px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:.15s}
+.vg-hero-btns .btn-ghost-lg:hover{background:rgba(255,255,255,.2);text-decoration:none;color:#fff}
+.vg-hero-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px}
+.vg-hero-chips span{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);padding:5px 12px;border-radius:999px;font-size:12px;color:#e2e8f0}
+.vg-hero-visual{flex:0 0 300px;display:flex;flex-direction:column;gap:12px}
+.vg-hero-stat-card{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:16px 20px;backdrop-filter:blur(10px)}
+.vg-hero-stat-card .num{font-size:32px;font-weight:800;color:#fff}
+.vg-hero-stat-card .lbl{font-size:13px;color:#94a3b8;margin-top:2px}
+.vg-hero-stat-row{display:flex;gap:12px}
+.vg-hero-stat-row .vg-hero-stat-card{flex:1;text-align:center}
+.vg-hero-stat-row .vg-hero-stat-card .num{font-size:22px}
+@media(max-width:960px){
+  .vg-hero .container{flex-direction:column;gap:28px}
+  .vg-hero-text h1{font-size:26px}
+  .vg-hero-visual{flex:none;width:100%}
+  .vg-hero{padding:36px 0 30px}
+}
+
+/* ===== CATEGORY TABS ===== */
+.vg-cats{background:#fff;border-bottom:1px solid #e2e8f0;padding:0}
+.vg-cats .container{display:flex;overflow-x:auto;gap:0}
+.vg-cats a{display:flex;flex-direction:column;align-items:center;gap:5px;padding:14px 22px;text-decoration:none;color:#475569;font-size:13px;font-weight:600;border-bottom:3px solid transparent;white-space:nowrap;flex-shrink:0;transition:.15s}
+.vg-cats a:hover{color:#1f6feb;border-color:#1f6feb}
+.vg-cats a.active{color:#1f6feb;border-color:#1f6feb}
+.vg-cats a .cat-icon{font-size:24px;line-height:1}
+@media(max-width:600px){.vg-cats a{padding:10px 14px}}
+
+/* ===== SECTION HEADING ===== */
+.vg-sec-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:24px;gap:12px;flex-wrap:wrap}
+.vg-sec-head h2{font-size:24px;margin:0;color:#0b1a33}
+.vg-sec-head h2::after{content:'';display:block;width:48px;height:3px;background:#1f6feb;border-radius:2px;margin-top:6px}
+.vg-sec-head .view-all{color:#1f6feb;font-size:13px;font-weight:600;text-decoration:none}
+.vg-sec-head .view-all:hover{text-decoration:underline}
+
+/* ===== PRODUCTS ===== */
+.vg-products{background:#f0f4f9;padding:40px 0}
+.vg-product-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+@media(max-width:900px){.vg-product-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:480px){.vg-product-grid{grid-template-columns:1fr}}
+
+/* ===== FEATURES BANNER ===== */
+.vg-features{background:#fff;padding:32px 0;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0}
+.vg-feature-list{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden}
+.vg-feature-item{display:flex;align-items:center;gap:14px;padding:20px 22px;border-right:1px solid #e2e8f0}
+.vg-feature-item:last-child{border-right:none}
+.vg-feature-item .icon{font-size:32px;flex-shrink:0}
+.vg-feature-item strong{font-size:14px;color:#0b1a33;display:block}
+.vg-feature-item span{font-size:12px;color:#64748b}
+@media(max-width:900px){
+  .vg-feature-list{grid-template-columns:repeat(2,1fr)}
+  .vg-feature-item:nth-child(2){border-right:none}
+  .vg-feature-item:nth-child(3){border-right:1px solid #e2e8f0}
+  .vg-feature-item{border-bottom:1px solid #e2e8f0}
+  .vg-feature-item:nth-child(3),.vg-feature-item:last-child{border-bottom:none}
+}
+@media(max-width:480px){
+  .vg-feature-list{grid-template-columns:1fr}
+  .vg-feature-item{border-right:none !important;border-bottom:1px solid #e2e8f0}
+  .vg-feature-item:last-child{border-bottom:none}
+}
+
+/* ===== SERVICES ===== */
+.vg-services{background:#fff;padding:50px 0}
+.vg-service-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+@media(max-width:768px){.vg-service-grid{grid-template-columns:1fr}}
+.vg-service-card{border:1px solid #e2e8f0;border-radius:12px;padding:28px 24px;transition:.2s;cursor:default;text-decoration:none;color:inherit;display:block}
+.vg-service-card:hover{box-shadow:0 8px 24px rgba(31,111,235,.12);border-color:#93c5fd;transform:translateY(-2px);text-decoration:none}
+.vg-service-card .svc-icon{width:56px;height:56px;border-radius:12px;background:#e8f1ff;display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:16px}
+.vg-service-card h3{font-size:17px;color:#0b1a33;margin-bottom:8px}
+.vg-service-card p{font-size:14px;color:#64748b;line-height:1.6;margin:0}
+.vg-service-card .svc-price{margin-top:14px;font-weight:700;color:#1f6feb;font-size:15px}
+
+/* ===== WHY US ===== */
+.vg-why{background:#f0f4f9;padding:50px 0}
+.vg-why-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media(max-width:768px){.vg-why-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:480px){.vg-why-grid{grid-template-columns:1fr}}
+.vg-why-item{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:22px 18px;display:flex;gap:14px;align-items:flex-start}
+.vg-why-item .wi-icon{width:44px;height:44px;border-radius:10px;background:#e8f1ff;display:grid;place-items:center;font-size:22px;flex-shrink:0}
+.vg-why-item h4{font-size:15px;margin:0 0 5px;color:#0b1a33}
+.vg-why-item p{font-size:13px;color:#64748b;margin:0;line-height:1.5}
+
+/* ===== CTA SECTION ===== */
+.vg-cta{background:linear-gradient(135deg,#1f6feb,#0b1a33);padding:50px 0;color:#fff}
+.vg-cta-inner{display:flex;gap:40px;align-items:center;flex-wrap:wrap}
+.vg-cta-text{flex:1;min-width:280px}
+.vg-cta-text h2{font-size:28px;color:#fff;margin-bottom:10px}
+.vg-cta-text p{color:#94a3b8;margin:0}
+.vg-cta-form{flex:0 0 380px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:14px;padding:24px}
+.vg-cta-form h3{color:#fff;font-size:17px;margin:0 0 16px}
+.vg-cta-form .field label{color:#cbd5e1}
+.vg-cta-form .input,.vg-cta-form .select{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff}
+.vg-cta-form .input::placeholder{color:#94a3b8}
+.vg-cta-form .input:focus,.vg-cta-form .select:focus{border-color:#60a5fa;background:rgba(255,255,255,.15)}
+.vg-cta-form .select option{background:#0b1a33;color:#fff}
+@media(max-width:768px){
+  .vg-cta-form{flex:none;width:100%}
+  .vg-cta-text h2{font-size:22px}
+}
+
+/* ===== NEWS ===== */
+.vg-news{background:#fff;padding:50px 0}
+.vg-news-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+@media(max-width:768px){.vg-news-grid{grid-template-columns:1fr}}
+.vg-news-card{border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;transition:.2s;text-decoration:none;color:inherit;display:flex;flex-direction:column}
+.vg-news-card:hover{box-shadow:0 8px 20px rgba(0,0,0,.08);transform:translateY(-2px);text-decoration:none;color:inherit}
+.vg-news-card .nc-thumb{background:linear-gradient(135deg,#dbeafe,#bfdbfe);aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;font-size:52px}
+.vg-news-card .nc-body{padding:16px;flex:1;display:flex;flex-direction:column}
+.vg-news-card .nc-cat{display:inline-block;background:#e8f1ff;color:#1f6feb;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;margin-bottom:8px}
+.vg-news-card h3{font-size:15px;line-height:1.45;margin:0 0 8px;color:#0b1a33;-webkit-line-clamp:2;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
+.vg-news-card p{font-size:13px;color:#64748b;line-height:1.5;margin:0;flex:1}
+.vg-news-card .nc-date{font-size:12px;color:#94a3b8;margin-top:10px}
+
+/* ===== FOOTER ===== */
+.vg-footer{background:#0b1a33;color:#94a3b8;padding:50px 0 0}
+.vg-footer-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:32px;margin-bottom:36px}
+@media(max-width:900px){.vg-footer-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){.vg-footer-grid{grid-template-columns:1fr}}
+.vg-footer h4{color:#fff;font-size:14px;font-weight:700;margin:0 0 14px;text-transform:uppercase;letter-spacing:.5px}
+.vg-footer a{color:#94a3b8;display:block;padding:4px 0;font-size:13.5px;text-decoration:none}
+.vg-footer a:hover{color:#fff}
+.vg-footer .company-desc{font-size:13.5px;line-height:1.7;margin-bottom:14px}
+.vg-footer .company-info{font-size:13px;line-height:1.8}
+.vg-footer .company-info strong{color:#fff}
+.vg-footer-logo{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.vg-footer-logo .logo-mark{width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center}
+.vg-footer-logo .logo-mark svg{width:34px;height:34px}
+.vg-footer-logo strong{color:#fff;font-size:17px;font-weight:800}
+.vg-footer-bottom{border-top:1px solid #1f2e4f;padding:16px 0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;font-size:12.5px}
+.vg-footer-bottom a{color:#64748b;text-decoration:none}
+.vg-footer-bottom a:hover{color:#94a3b8}
+
+/* ===== HOTLINE FLOAT ===== */
+.vg-float-call{position:fixed;bottom:100px;right:20px;background:#25d366;color:#fff;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-size:26px;box-shadow:0 4px 16px rgba(37,211,102,.4);z-index:90;text-decoration:none;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 4px 16px rgba(37,211,102,.4)}50%{box-shadow:0 4px 24px rgba(37,211,102,.7)}}
+.vg-float-call:hover{color:#fff;text-decoration:none;transform:scale(1.08)}
+</style>
 </head>
 <body>
 
-<div class="topbar">
+<!-- TOP BAR -->
+<div class="vg-topbar">
   <div class="container">
-    <div>☎ (028) 6682 5658 &nbsp;|&nbsp; 📱 0949.155.160</div>
-    <div id="topbarRight"></div>
+    <div>📍 190/19/12 TTH 21, P. Tân Thới Hiệp, TP.HCM &nbsp;|&nbsp; ✉ vinagps@gmail.com</div>
+    <div style="display:flex;gap:16px;align-items:center">
+      <span>☎ <a href="tel:0942155160" class="hotline">0942.155.160</a></span>
+      <span>📱 <a href="tel:0949155160" class="hotline">0949.155.160</a></span>
+      <div id="topbarRight"></div>
+    </div>
   </div>
 </div>
-<header class="site">
-  <div class="container">
-    <a class="logo" href="/customer/"><span class="logo-mark">VG</span> VINAGPS</a>
-    <button class="nav-toggle" aria-label="Mở menu" onclick="this.nextElementSibling.classList.toggle('open')">☰</button>
-    <nav class="main">
-      <a href="/customer/" class="active">Trang chủ</a>
-      <a href="/customer/products.html">Sản phẩm</a>
-      <a href="/customer/order.html">Đặt dịch vụ</a>
-      <a href="/customer/compliance.html">Nghị định 10</a>
-      <a href="/customer/guide.html">Hướng dẫn</a>
-      <a href="/customer/about.html">Về chúng tôi</a>
-    </nav>
-    <div class="header-actions">
-      <a class="btn ghost sm" href="/customer/my-orders.html">Đơn của tôi</a>
-      <a class="btn sm" href="/customer/order.html">+ Đặt dịch vụ</a>
-    </div>
-  </div>
-</header>
 
-<section class="hero">
-  <div class="container spread">
-    <div style="max-width:560px">
-      <span class="chip">🇻🇳 Sản phẩm chính hãng • 10+ năm kinh nghiệm</span>
-      <h1>Định vị GPS &amp; Camera hành trình chuyên nghiệp</h1>
-      <p class="lead">Giám sát xe 24/7, cảnh báo tốc độ, hành trình 90 ngày. Bảo hành tận nơi, gia hạn trực tuyến – chỉ 30 giây.</p>
-      <div class="row">
-        <a class="btn accent" href="/customer/order.html">Đặt lắp ngay</a>
-        <a class="btn ghost" href="/customer/products.html">Xem sản phẩm →</a>
+<!-- HEADER -->
+<div class="vg-header">
+  <div class="vg-header-inner container">
+    <!-- LOGO -->
+    <a class="vg-logo" href="/customer/">
+      <div class="vg-logo-img">
+        <svg viewBox="0 0 46 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="23" cy="23" r="22" fill="#0b1a33"/>
+          <circle cx="23" cy="21" r="8" fill="none" stroke="#ff9500" stroke-width="2.5"/>
+          <circle cx="23" cy="21" r="3" fill="#ff9500"/>
+          <path d="M23 29 L23 38" stroke="#ff9500" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M17 36 Q23 32 29 36" stroke="#ff9500" stroke-width="2" stroke-linecap="round" fill="none"/>
+          <text x="23" y="46" text-anchor="middle" fill="#fff" font-size="5" font-weight="bold" font-family="Arial">GPS</text>
+        </svg>
       </div>
-      <div class="chips">
-        <span class="chip">✓ Chuẩn Nghị định 10</span>
-        <span class="chip">✓ Bảo hành 24 tháng</span>
-        <span class="chip">✓ Kỹ thuật tận nơi TP.HCM</span>
+      <div class="vg-logo-text">
+        <strong>VINAGPS</strong>
+        <span>Viễn thông VinaGPS</span>
+      </div>
+    </a>
+
+    <!-- SEARCH -->
+    <form class="vg-search" onsubmit="doSearch(event)">
+      <input id="headerSearch" type="text" placeholder="Tìm thiết bị định vị, camera hành trình...">
+      <button type="submit">🔍</button>
+    </form>
+
+    <!-- HOTLINE -->
+    <div class="vg-header-info">
+      <a href="tel:0942155160" class="tel" style="text-decoration:none">📞 0942.155.160</a>
+      <span class="tel-sub">Hỗ trợ 7h – 21h hàng ngày</span>
+    </div>
+
+    <!-- ACTIONS -->
+    <div class="vg-header-actions">
+      <a class="btn ghost sm" href="/customer/orders.html" id="btnMyOrders" style="display:none">Đơn của tôi</a>
+      <a class="btn sm" href="/customer/order.html">Đặt dịch vụ</a>
+      <button class="vg-hamburger" onclick="toggleMobileNav()">☰</button>
+    </div>
+  </div>
+
+  <!-- NAV DESKTOP -->
+  <nav class="vg-nav">
+    <div class="container">
+      <a href="/customer/" class="active">🏠 Trang chủ</a>
+      <a href="/customer/products.html">📦 Sản phẩm</a>
+      <a href="/customer/order.html">🛠 Dịch vụ lắp GPS</a>
+      <a href="/customer/compliance.html">📋 Nghị định 10</a>
+      <a href="/customer/guide.html">📖 Hướng dẫn</a>
+      <a href="/customer/about.html">🏢 Về chúng tôi</a>
+      <a href="/customer/order.html" class="btn-order">📞 Báo giá ngay</a>
+    </div>
+  </nav>
+
+  <!-- NAV MOBILE -->
+  <nav class="vg-nav-mobile hide" id="mobileNav">
+    <a href="/customer/" onclick="closeMobileNav()">🏠 Trang chủ</a>
+    <a href="/customer/products.html" onclick="closeMobileNav()">📦 Sản phẩm</a>
+    <a href="/customer/order.html" onclick="closeMobileNav()">🛠 Dịch vụ lắp GPS</a>
+    <a href="/customer/compliance.html" onclick="closeMobileNav()">📋 Nghị định 10</a>
+    <a href="/customer/guide.html" onclick="closeMobileNav()">📖 Hướng dẫn</a>
+    <a href="/customer/about.html" onclick="closeMobileNav()">🏢 Về chúng tôi</a>
+    <a href="/customer/order.html" class="btn-order" onclick="closeMobileNav()">📞 Báo giá ngay</a>
+  </nav>
+</div>
+
+<!-- HERO / BANNER -->
+<section class="vg-hero">
+  <div class="container">
+    <div class="vg-hero-text">
+      <div class="tag">🏆 Đại lý GPS chính hãng – 10+ năm kinh nghiệm</div>
+      <h1>Định vị GPS &<br><span>Camera hành trình</span><br>chuyên nghiệp</h1>
+      <p>Giám sát xe 24/7, cảnh báo tốc độ, lưu hành trình 90 ngày. Lắp đặt tận nơi TP.HCM, bảo hành 24 tháng – kỹ thuật viên đến trong ngày.</p>
+      <div class="vg-hero-btns">
+        <a class="btn-primary-lg" href="/customer/order.html">🚀 Đặt lắp ngay</a>
+        <a class="btn-ghost-lg" href="tel:0942155160">📞 Gọi tư vấn miễn phí</a>
+      </div>
+      <div class="vg-hero-chips">
+        <span>✓ Chuẩn Nghị định 10/2020</span>
+        <span>✓ Bảo hành 12–24 tháng</span>
+        <span>✓ Kỹ thuật tận nơi TP.HCM</span>
+        <span>✓ Phần mềm quản lý miễn phí</span>
       </div>
     </div>
-    <div style="font-size:180px;line-height:1">🛰️</div>
-  </div>
-</section>
-
-<!-- QUICK ACTIONS -->
-<section class="section">
-  <div class="container">
-    <h2>Bạn cần hỗ trợ gì hôm nay?</h2>
-    <p class="subtitle">Chọn dịch vụ bạn muốn sử dụng. Mọi thao tác đều online, không cần chờ nhắn tin.</p>
-    <div class="grid cols-2" style="gap:20px">
-      <a class="card hover" href="/customer/order.html" style="text-decoration:none;color:inherit;text-align:center">
-        <div style="font-size:44px">📝</div>
-        <h3>Tạo đơn yêu cầu</h3>
-        <p class="text-muted">Chọn loại đơn (lắp đặt / bảo hành / sửa chữa…) — admin tiếp nhận và phản hồi.</p>
-      </a>
-      <a class="card hover" href="/customer/orders.html" style="text-decoration:none;color:inherit;text-align:center">
-        <div style="font-size:44px">📦</div>
-        <h3>Đơn của tôi</h3>
-        <p class="text-muted">Theo dõi tiến trình từng đơn, ảnh nhận-giao thiết bị, hoá đơn.</p>
-      </a>
-    </div>
-  </div>
-</section>
-
-<!-- PRODUCTS -->
-<section class="section" style="background:#eef2f7">
-  <div class="container">
-    <div class="spread mb-3">
-      <div>
-        <h2 style="text-align:left">Sản phẩm nổi bật</h2>
-        <p class="text-muted mb-0">Được tin dùng bởi 3.000+ xe khắp các tỉnh miền Nam</p>
+    <div class="vg-hero-visual">
+      <div class="vg-hero-stat-card" style="text-align:center">
+        <div class="num">5.000+</div>
+        <div class="lbl">🚗 Xe đã lắp đặt</div>
       </div>
-      <a class="btn ghost" href="/customer/products.html">Xem tất cả →</a>
-    </div>
-    <div class="grid cols-4" id="products-grid"></div>
-  </div>
-</section>
-
-<!-- BADGE SERVICE PROMO -->
-<section class="section" style="background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%)">
-  <div class="container">
-    <div class="grid cols-2" style="align-items:center">
-      <div>
-        <span class="badge warn">🆕 DỊCH VỤ MỚI</span>
-        <h2 style="text-align:left;margin:10px 0">Làm phù hiệu xe vận tải — trọn gói</h2>
-        <p class="text-muted">Theo <b>Nghị định 10/2020/NĐ-CP</b>, xe kinh doanh vận tải bắt buộc phải có phù hiệu. Chúng tôi lo toàn bộ: chuẩn bị hồ sơ, nộp sở GTVT, nhận kết quả và giao tận nơi.</p>
-        <div class="grid cols-2 mt-2">
-          <div><b>🚚 Xe tải</b><div class="text-muted" style="font-size:13px">Từ 800.000₫/xe</div></div>
-          <div><b>🚐 Xe hợp đồng</b><div class="text-muted" style="font-size:13px">Từ 900.000₫/xe</div></div>
-          <div><b>🚌 Xe khách / du lịch</b><div class="text-muted" style="font-size:13px">Từ 1.200.000₫/xe</div></div>
-          <div><b>🚛 Xe container</b><div class="text-muted" style="font-size:13px">Từ 1.500.000₫/xe</div></div>
+      <div class="vg-hero-stat-row">
+        <div class="vg-hero-stat-card">
+          <div class="num">10+</div>
+          <div class="lbl">Năm kinh nghiệm</div>
         </div>
-        <div class="row mt-3">
-          <a class="btn accent" href="/customer/order.html">🪪 Tạo đơn yêu cầu</a>
-          <a class="btn ghost" href="/customer/compliance.html">Tìm hiểu NĐ 10 →</a>
+        <div class="vg-hero-stat-card">
+          <div class="num">98%</div>
+          <div class="lbl">Khách hài lòng</div>
         </div>
       </div>
-      <div class="text-center" style="font-size:180px">🪪</div>
+      <div class="vg-hero-stat-card" style="text-align:center;background:rgba(255,119,0,.15);border-color:rgba(255,119,0,.3)">
+        <div style="font-size:13px;color:#fbbf24;font-weight:700;margin-bottom:4px">🔥 KHUYẾN MÃI THÁNG NÀY</div>
+        <div style="font-size:13px;color:#e2e8f0">Lắp 2 thiết bị <strong style="color:#ff9500">tặng 1 tháng</strong> phí dịch vụ</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES STRIP -->
+<div class="vg-features">
+  <div class="container">
+    <div class="vg-feature-list">
+      <div class="vg-feature-item">
+        <span class="icon">🏷️</span>
+        <div><strong>Hàng chính hãng 100%</strong><span>Đại lý cấp cao, có tem bảo hành</span></div>
+      </div>
+      <div class="vg-feature-item">
+        <span class="icon">⚡</span>
+        <div><strong>Lắp trong ngày</strong><span>Kỹ thuật đến tận nơi toàn TP.HCM</span></div>
+      </div>
+      <div class="vg-feature-item">
+        <span class="icon">🛡️</span>
+        <div><strong>Bảo hành 24 tháng</strong><span>Đổi mới nếu lỗi nhà sản xuất</span></div>
+      </div>
+      <div class="vg-feature-item">
+        <span class="icon">💳</span>
+        <div><strong>Gia hạn dễ dàng</strong><span>Quét QR thanh toán, tự động gia hạn</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CATEGORY QUICK LINKS -->
+<div class="vg-cats">
+  <div class="container">
+    <a href="/customer/products.html?cat=dinh-vi-o-to" class="active" data-cat-filter="">
+      <span class="cat-icon">🚗</span> Tất cả sản phẩm
+    </a>
+    <a href="/customer/products.html" data-cat-filter="oto">
+      <span class="cat-icon">🚙</span> Định vị ô tô
+    </a>
+    <a href="/customer/products.html" data-cat-filter="xemay">
+      <span class="cat-icon">🛵</span> Định vị xe máy
+    </a>
+    <a href="/customer/products.html" data-cat-filter="xetai">
+      <span class="cat-icon">🚚</span> Định vị xe tải
+    </a>
+    <a href="/customer/products.html" data-cat-filter="camera">
+      <span class="cat-icon">📷</span> Camera hành trình
+    </a>
+    <a href="/customer/products.html" data-cat-filter="khongday">
+      <span class="cat-icon">📡</span> Định vị không dây
+    </a>
+  </div>
+</div>
+
+<!-- PRODUCTS SECTION -->
+<section class="vg-products">
+  <div class="container">
+    <div class="vg-sec-head">
+      <h2>Sản phẩm nổi bật</h2>
+      <a class="view-all" href="/customer/products.html">Xem tất cả sản phẩm →</a>
+    </div>
+    <div class="vg-product-grid" id="products-grid">
+      <!-- Loading skeleton -->
+      <div class="product" style="min-height:280px;opacity:.4"></div>
+      <div class="product" style="min-height:280px;opacity:.4"></div>
+      <div class="product" style="min-height:280px;opacity:.4"></div>
+      <div class="product" style="min-height:280px;opacity:.4"></div>
+    </div>
+  </div>
+</section>
+
+<!-- SERVICES -->
+<section class="vg-services">
+  <div class="container">
+    <div class="vg-sec-head">
+      <h2>Dịch vụ của chúng tôi</h2>
+      <a class="view-all" href="/customer/order.html">Đặt dịch vụ →</a>
+    </div>
+    <div class="vg-service-grid">
+      <a class="vg-service-card" href="/customer/order.html">
+        <div class="svc-icon">📍</div>
+        <h3>Lắp đặt thiết bị định vị GPS</h3>
+        <p>Kỹ thuật viên đến tận nơi, lắp trong 30 phút. Hỗ trợ toàn TP.HCM và các tỉnh lân cận. Chuẩn Nghị định 10/2020.</p>
+        <div class="svc-price">Từ 1.200.000đ / xe</div>
+      </a>
+      <a class="vg-service-card" href="/customer/order.html">
+        <div class="svc-icon">📷</div>
+        <h3>Lắp camera hành trình & giám sát</h3>
+        <p>Camera trước/sau HD, ghi hình liên tục, cảnh báo buồn ngủ. Lưu trữ cloud, xem lại qua app mọi lúc.</p>
+        <div class="svc-price">Từ 2.500.000đ / bộ</div>
+      </a>
+      <a class="vg-service-card" href="/customer/order.html">
+        <div class="svc-icon">🪪</div>
+        <h3>Làm phù hiệu xe vận tải</h3>
+        <p>Theo <b>Nghị định 10/2020</b>, xe kinh doanh bắt buộc có phù hiệu. Chúng tôi lo toàn bộ hồ sơ, nộp Sở GTVT, giao tận nơi.</p>
+        <div class="svc-price">Từ 800.000đ / xe</div>
+      </a>
+      <a class="vg-service-card" href="/customer/order.html">
+        <div class="svc-icon">🔧</div>
+        <h3>Bảo trì & sửa chữa thiết bị</h3>
+        <p>Kiểm tra định kỳ, vệ sinh đầu đọc, cập nhật firmware. Sửa chữa hoặc thay mới trong ngày, bảo hành sau sửa 3 tháng.</p>
+        <div class="svc-price">Miễn phí trong bảo hành</div>
+      </a>
+      <a class="vg-service-card" href="/customer/order.html">
+        <div class="svc-icon">🔄</div>
+        <h3>Gia hạn dịch vụ GPS</h3>
+        <p>Gia hạn phí dịch vụ 1–3 năm, nhận thêm ưu đãi khi gia hạn sớm. Thanh toán qua QR, tự động kích hoạt ngay lập tức.</p>
+        <div class="svc-price">Từ 300.000đ / năm</div>
+      </a>
+      <a class="vg-service-card" href="/customer/order.html">
+        <div class="svc-icon">📦</div>
+        <h3>Lắp đặt cho đội xe doanh nghiệp</h3>
+        <p>Giải pháp trọn gói cho đội xe từ 5 xe trở lên. Chiết khấu đặc biệt, hỗ trợ phần mềm quản lý tập trung, báo cáo định kỳ.</p>
+        <div class="svc-price">Báo giá theo đội xe</div>
+      </a>
     </div>
   </div>
 </section>
 
 <!-- WHY US -->
-<section class="section">
+<section class="vg-why">
   <div class="container">
-    <h2>Vì sao chọn VinaGPS?</h2>
-    <p class="subtitle">Không chỉ bán thiết bị – chúng tôi đồng hành với khách hàng trong suốt vòng đời sử dụng.</p>
-    <div class="grid cols-3">
-      <div class="card"><div style="font-size:36px">🎯</div><h3>Chính hãng 100%</h3><p class="text-muted">Đại lý cấp cao của các hãng lớn, cam kết linh kiện chính hãng, đúng chuẩn Nghị định.</p></div>
-      <div class="card"><div style="font-size:36px">⚡</div><h3>Lắp nhanh 30 phút</h3><p class="text-muted">Kỹ thuật đến tận nơi trong ngày, quy trình 15 bước chuẩn hoá.</p></div>
-      <div class="card"><div style="font-size:36px">🛡️</div><h3>Bảo hành dài hạn</h3><p class="text-muted">12–24 tháng, hỗ trợ đổi mới nếu lỗi nhà sản xuất.</p></div>
-      <div class="card"><div style="font-size:36px">📱</div><h3>App thân thiện</h3><p class="text-muted">Xem vị trí xe, hành trình trên điện thoại mọi lúc mọi nơi.</p></div>
-      <div class="card"><div style="font-size:36px">💳</div><h3>Gia hạn online</h3><p class="text-muted">Quét QR thanh toán, tự động gia hạn – không cần gọi điện.</p></div>
-      <div class="card"><div style="font-size:36px">🤝</div><h3>Chiết khấu đại lý</h3><p class="text-muted">Chính sách giá riêng cho đại lý cấp dưới, hỗ trợ công nợ linh hoạt.</p></div>
+    <div class="vg-sec-head">
+      <h2>Vì sao chọn VinaGPS?</h2>
+    </div>
+    <div class="vg-why-grid">
+      <div class="vg-why-item">
+        <div class="wi-icon">🎯</div>
+        <div><h4>Chính hãng 100%</h4><p>Đại lý cấp cao của các hãng lớn, cam kết linh kiện chính hãng, đúng chuẩn Nghị định.</p></div>
+      </div>
+      <div class="vg-why-item">
+        <div class="wi-icon">⚡</div>
+        <div><h4>Lắp nhanh trong ngày</h4><p>Kỹ thuật đến tận nơi, quy trình chuẩn hoá 15 bước, hoàn thành trong 30–45 phút.</p></div>
+      </div>
+      <div class="vg-why-item">
+        <div class="wi-icon">🛡️</div>
+        <div><h4>Bảo hành dài hạn</h4><p>12–24 tháng, hỗ trợ đổi thiết bị mới nếu lỗi do nhà sản xuất, không thu thêm phí.</p></div>
+      </div>
+      <div class="vg-why-item">
+        <div class="wi-icon">📱</div>
+        <div><h4>App theo dõi thân thiện</h4><p>Xem vị trí xe, phát lại hành trình 90 ngày trên điện thoại mọi lúc mọi nơi.</p></div>
+      </div>
+      <div class="vg-why-item">
+        <div class="wi-icon">💳</div>
+        <div><h4>Gia hạn dễ dàng</h4><p>Quét QR thanh toán, hệ thống tự động gia hạn – không cần gọi điện, không mất kết nối.</p></div>
+      </div>
+      <div class="vg-why-item">
+        <div class="wi-icon">🤝</div>
+        <div><h4>Hỗ trợ tận tâm</h4><p>Đội ngũ kỹ thuật sẵn sàng hỗ trợ 7h–21h. Bảo hành tận nơi, giải quyết trong 24h.</p></div>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- CTA -->
-<section class="section" style="background:linear-gradient(135deg,#1f6feb,#0b1a33);color:#fff;text-align:center">
+<!-- CTA WITH QUOTE FORM -->
+<section class="vg-cta">
   <div class="container">
-    <h2 style="color:#fff">Sẵn sàng lắp đặt cho xe của bạn?</h2>
-    <p class="subtitle" style="color:#cbd5e1">Điền thông tin và kỹ thuật sẽ liên hệ trong 15 phút</p>
-    <a class="btn accent" href="/customer/order.html">Đặt lịch ngay →</a>
+    <div class="vg-cta-inner">
+      <div class="vg-cta-text">
+        <h2>Nhận báo giá miễn phí ngay hôm nay</h2>
+        <p>Điền thông tin, kỹ thuật viên sẽ liên hệ trong 15 phút để tư vấn giải pháp phù hợp với nhu cầu của bạn.</p>
+        <div style="margin-top:24px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px;color:#cbd5e1;font-size:14px">
+            <span style="background:rgba(255,255,255,.1);width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:16px;flex-shrink:0">📞</span>
+            <div><strong style="color:#fff;display:block">Hotline: 0942.155.160</strong>Gọi ngay để được tư vấn trực tiếp</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;color:#cbd5e1;font-size:14px">
+            <span style="background:rgba(255,255,255,.1);width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:16px;flex-shrink:0">📍</span>
+            <div><strong style="color:#fff;display:block">190/19/12 TTH 21, P. Tân Thới Hiệp</strong>TP. Hồ Chí Minh</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;color:#cbd5e1;font-size:14px">
+            <span style="background:rgba(255,255,255,.1);width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:16px;flex-shrink:0">🕐</span>
+            <div><strong style="color:#fff;display:block">Giờ làm việc: 7:00 – 21:00</strong>Thứ 2 – Chủ nhật</div>
+          </div>
+        </div>
+      </div>
+      <div class="vg-cta-form">
+        <h3>📋 Yêu cầu báo giá</h3>
+        <form id="quoteForm" onsubmit="submitQuote(event)">
+          <div class="field">
+            <label>Họ và tên *</label>
+            <input class="input" id="qName" placeholder="Nguyễn Văn A" required>
+          </div>
+          <div class="field">
+            <label>Số điện thoại *</label>
+            <input class="input" id="qPhone" type="tel" placeholder="0909 xxx xxx" required>
+          </div>
+          <div class="field">
+            <label>Loại xe</label>
+            <select class="select" id="qType">
+              <option value="">-- Chọn loại xe --</option>
+              <option>Ô tô cá nhân</option>
+              <option>Xe máy</option>
+              <option>Xe tải / xe thương mại</option>
+              <option>Xe khách / xe du lịch</option>
+              <option>Đội xe doanh nghiệp</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Dịch vụ cần</label>
+            <select class="select" id="qService">
+              <option value="">-- Chọn dịch vụ --</option>
+              <option>Lắp định vị GPS</option>
+              <option>Lắp camera hành trình</option>
+              <option>Làm phù hiệu</option>
+              <option>Bảo hành / sửa chữa</option>
+              <option>Gia hạn dịch vụ</option>
+            </select>
+          </div>
+          <button type="submit" class="btn accent block" style="margin-top:4px">Gửi yêu cầu báo giá →</button>
+        </form>
+      </div>
+    </div>
   </div>
 </section>
 
-<footer class="site">
-  <div class="container grid cols-4">
-    <div>
-      <h4>VinaGPS</h4>
-      <p>Thiết bị định vị, camera hành trình, hộp đen ô tô chính hãng.</p>
-      <p>☎ (028) 6682 5658<br>📱 0949.155.160<br>📍 190 TTH 21, P. Tân Thới Hiệp, Q.12, TP.HCM</p>
+<!-- NEWS -->
+<section class="vg-news">
+  <div class="container">
+    <div class="vg-sec-head">
+      <h2>Tin tức & kiến thức GPS</h2>
+      <a class="view-all" href="#">Xem thêm →</a>
     </div>
-    <div>
-      <h4>Sản phẩm</h4>
-      <a href="/customer/products.html">Định vị xe máy</a>
-      <a href="/customer/products.html">Định vị ô tô</a>
-      <a href="/customer/products.html">Camera hành trình</a>
-      <a href="/customer/products.html">Hộp đen xe tải</a>
-    </div>
-    <div>
-      <h4>Hỗ trợ</h4>
-      <a href="/customer/guide.html">Hướng dẫn sử dụng</a>
-      
-      <a href="/customer/compliance.html">Nghị định 10 &amp; QCVN 31</a>
-      <a href="/customer/order.html">Đặt dịch vụ</a>
-      <a href="/customer/about.html">Chính sách</a>
-    </div>
-    <div>
-      <h4>Tài khoản</h4>
-      <a href="javascript:void(0)" onclick="ui.loginDialog()">Đăng nhập</a>
-      <a href="/customer/my-orders.html">Đơn của tôi</a>
-      <a href="/">Cổng nội bộ</a>
+    <div class="vg-news-grid">
+      <a class="vg-news-card" href="/customer/compliance.html">
+        <div class="nc-thumb">📋</div>
+        <div class="nc-body">
+          <span class="nc-cat">Pháp lý</span>
+          <h3>Nghị định 10/2020 – Những điều doanh nghiệp vận tải cần biết ngay</h3>
+          <p>Xe kinh doanh vận tải bắt buộc lắp thiết bị giám sát hành trình từ năm 2021. Phạt đến 8 triệu đồng nếu không tuân thủ...</p>
+          <span class="nc-date">📅 Cập nhật: 01/2026</span>
+        </div>
+      </a>
+      <a class="vg-news-card" href="/customer/guide.html">
+        <div class="nc-thumb" style="background:linear-gradient(135deg,#dcfce7,#bbf7d0)">🗺️</div>
+        <div class="nc-body">
+          <span class="nc-cat">Hướng dẫn</span>
+          <h3>Cách xem lại hành trình 90 ngày trên app Fast Track GPS</h3>
+          <p>Hướng dẫn chi tiết cách truy cập lịch sử hành trình, xuất báo cáo tháng, cài đặt cảnh báo tốc độ...</p>
+          <span class="nc-date">📅 Cập nhật: 12/2025</span>
+        </div>
+      </a>
+      <a class="vg-news-card" href="/customer/compliance.html">
+        <div class="nc-thumb" style="background:linear-gradient(135deg,#fef3c7,#fde68a)">💡</div>
+        <div class="nc-body">
+          <span class="nc-cat">Mẹo hay</span>
+          <h3>5 cách tiết kiệm nhiên liệu xe tải nhờ phân tích dữ liệu GPS</h3>
+          <p>Dữ liệu hành trình từ thiết bị định vị giúp phát hiện lái xe tắt máy chờ, tăng tốc đột ngột, đi vòng...</p>
+          <span class="nc-date">📅 Cập nhật: 11/2025</span>
+        </div>
+      </a>
     </div>
   </div>
-  <div class="bottom container">© 2026 VinaGPS — 190 TTH 21, P. Tân Thới Hiệp, Q.12, TP.HCM</div>
+</section>
+
+<!-- FOOTER -->
+<footer class="vg-footer">
+  <div class="container">
+    <div class="vg-footer-grid">
+      <div>
+        <div class="vg-footer-logo">
+          <div class="logo-mark">
+            <svg viewBox="0 0 46 46" fill="none"><circle cx="23" cy="23" r="22" fill="#1f6feb"/><circle cx="23" cy="21" r="8" fill="none" stroke="#ff9500" stroke-width="2.5"/><circle cx="23" cy="21" r="3" fill="#ff9500"/><path d="M23 29 L23 38" stroke="#ff9500" stroke-width="2.5" stroke-linecap="round"/></svg>
+          </div>
+          <strong>VINAGPS</strong>
+        </div>
+        <p class="company-desc">Công ty TNHH Viễn thông VinaGPS – chuyên cung cấp thiết bị định vị GPS, camera hành trình chính hãng và dịch vụ lắp đặt tận nơi TP.HCM.</p>
+        <div class="company-info">
+          <div>📍 <strong>190/19/12 TTH 21, P. Tân Thới Hiệp, TP.HCM</strong></div>
+          <div>☎ <strong>0942.155.160</strong> - <strong>0949.155.160</strong></div>
+          <div>🕐 Mở cửa: 7:00 – 21:00 (Thứ 2 – CN)</div>
+        </div>
+      </div>
+      <div>
+        <h4>Sản phẩm</h4>
+        <a href="/customer/products.html">Định vị xe máy</a>
+        <a href="/customer/products.html">Định vị ô tô</a>
+        <a href="/customer/products.html">Định vị xe tải</a>
+        <a href="/customer/products.html">Camera hành trình</a>
+        <a href="/customer/products.html">Định vị không dây</a>
+      </div>
+      <div>
+        <h4>Dịch vụ</h4>
+        <a href="/customer/order.html">Lắp đặt GPS</a>
+        <a href="/customer/order.html">Làm phù hiệu</a>
+        <a href="/customer/order.html">Bảo hành sửa chữa</a>
+        <a href="/customer/order.html">Gia hạn dịch vụ</a>
+        <a href="/customer/compliance.html">Tư vấn Nghị định 10</a>
+      </div>
+      <div>
+        <h4>Hỗ trợ</h4>
+        <a href="/customer/guide.html">Hướng dẫn sử dụng</a>
+        <a href="/customer/compliance.html">Nghị định 10 & QCVN 31</a>
+        <a href="/customer/about.html">Chính sách bảo hành</a>
+        <a href="/customer/my-orders.html">Tra cứu đơn hàng</a>
+        <a href="javascript:void(0)" onclick="ui.loginDialog()">Đăng nhập</a>
+      </div>
+    </div>
+    <div class="vg-footer-bottom">
+      <span>© 2026 Công ty TNHH Viễn thông VinaGPS. Tất cả quyền được bảo lưu.</span>
+      <div style="display:flex;gap:16px">
+        <a href="/customer/about.html">Chính sách bảo mật</a>
+        <a href="/customer/about.html">Điều khoản sử dụng</a>
+      </div>
+    </div>
+  </div>
 </footer>
 
+<!-- FLOAT CALL BUTTON -->
+<a class="vg-float-call" href="tel:0942155160" title="Gọi ngay: 0942.155.160">📞</a>
+
+<!-- SCRIPTS -->
 <script src="/shared/js/ui.js"></script>
 <script src="/shared/js/api.js"></script>
 <script src="/shared/js/auth.js"></script>
 <script src="/shared/js/customer-topbar.js"></script>
-<script src="/shared/js/app.js"></script>
 <script src="/shared/js/chat-with-admin.js"></script>
+<script src="/shared/js/app.js"></script>
 <script>
-  const fmt = new Intl.NumberFormat('vi-VN');
+const fmt = new Intl.NumberFormat('vi-VN');
 
-  // ---- Featured products (4) -------------------------------
-  function iconFor(catName) {
-    const n = (catName || '').toLowerCase();
-    if (n.includes('định vị') || n.includes('dinh vi')) return '📍';
-    if (n.includes('camera')) return '📷';
-    if (n.includes('sim')) return '📡';
-    return '📦';
+// Mobile nav
+function toggleMobileNav() {
+  document.getElementById('mobileNav').classList.toggle('hide');
+}
+function closeMobileNav() {
+  document.getElementById('mobileNav').classList.add('hide');
+}
+
+// Header search
+function doSearch(e) {
+  e.preventDefault();
+  const q = document.getElementById('headerSearch').value.trim();
+  if (q) window.location.href = '/customer/products.html?q=' + encodeURIComponent(q);
+}
+
+// Show "Đơn của tôi" button when logged in
+document.addEventListener('DOMContentLoaded', () => {
+  if (window.auth && auth.isLoggedIn && auth.isLoggedIn()) {
+    document.getElementById('btnMyOrders').style.display = '';
   }
-  api.get('/public/products?limit=4&sort=newest', { silent: true })
-    .then(res => {
-      if (!res || !res.items) return;
-      const g = document.getElementById('products-grid');
-      g.innerHTML = res.items.map(p => `
-        <div class="product">
-          <div class="thumb">${p.image_url ? `<img src="${p.image_url}" alt="">` : `<span class="thumb-icon">${iconFor(p.category_name)}</span>`}</div>
-          <div class="body">
-            <span class="badge new">${p.category_name || ''}</span>
-            <h4>${p.name}</h4>
-            <div class="price">${p.retail_price ? fmt.format(p.retail_price) + 'đ' : 'Liên hệ'}</div>
-            <div class="meta">Bảo hành ${p.warranty_months || 0} tháng</div>
-            <div class="actions">
-              <a class="btn sm" href="/customer/product-detail.html?id=${p.id}">Chi tiết</a>
-              <a class="btn sm ghost" href="/customer/order.html?product=${p.code}">Đặt lắp</a>
-            </div>
+});
+
+// Featured products
+function iconFor(catName) {
+  const n = (catName || '').toLowerCase();
+  if (n.includes('camera')) return '📷';
+  if (n.includes('sim') || n.includes('không dây')) return '📡';
+  if (n.includes('định vị') || n.includes('dinh vi')) return '📍';
+  return '📦';
+}
+
+api.get('/public/products?limit=8&sort=newest', { silent: true })
+  .then(res => {
+    if (!res || !res.items) return;
+    const g = document.getElementById('products-grid');
+    if (!res.items.length) { g.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:#64748b">Chưa có sản phẩm</p>'; return; }
+    g.innerHTML = res.items.map(p => `
+      <a class="product" href="/customer/product-detail.html?id=${p.id}" style="text-decoration:none">
+        <div class="thumb">
+          ${p.thumbnail_url || p.image_url
+            ? `<img src="${p.thumbnail_url || p.image_url}" alt="${p.name}">`
+            : `<span class="thumb-icon">${iconFor(p.category_name)}</span>`}
+        </div>
+        <div class="body">
+          ${p.category_name ? `<span class="badge">${p.category_name}</span>` : ''}
+          <h4>${p.name}</h4>
+          <div class="price">${p.retail_price ? fmt.format(p.retail_price) + 'đ' : '<span style="color:#64748b;font-size:14px">Liên hệ</span>'}</div>
+          <div class="meta">Bảo hành ${p.warranty_months || 0} tháng</div>
+          <div class="actions">
+            <span class="btn sm" style="pointer-events:none;background:#f1f5f9;color:#334155">Chi tiết</span>
+            <span class="btn sm accent" style="pointer-events:none">Đặt lắp</span>
           </div>
         </div>
-      `).join('');
-    })
-    .catch(() => {});
+      </a>`).join('');
+  }).catch(() => {
+    document.getElementById('products-grid').innerHTML =
+      '<p style="grid-column:1/-1;text-align:center;color:#94a3b8;padding:40px">Đang tải sản phẩm...</p>';
+  });
+
+// Quote form
+function submitQuote(e) {
+  e.preventDefault();
+  const name  = document.getElementById('qName').value.trim();
+  const phone = document.getElementById('qPhone').value.trim();
+  const type  = document.getElementById('qType').value;
+  const svc   = document.getElementById('qService').value;
+  if (!name || !phone) return;
+  // Redirect to order page with prefilled query
+  window.location.href = `/customer/order.html?name=${encodeURIComponent(name)}&phone=${encodeURIComponent(phone)}&type=${encodeURIComponent(type)}&service=${encodeURIComponent(svc)}`;
+}
 </script>
 </body>
 </html>

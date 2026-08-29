@@ -30,15 +30,15 @@ function normPhone(s) {
 // Nhan ca dinh dang +84 / 84 va tu chuyen sang prefix 0.
 function validatePhone(input) {
   const raw = String(input == null ? '' : input).trim();
-  if (!raw) return { ok: false, error: 'Vui long nhap so dien thoai' };
-  if (raw.length > 20) return { ok: false, error: 'So dien thoai qua dai' };
+  if (!raw) return { ok: false, error: 'Vui lòng nhập số điện thoại' };
+  if (raw.length > 20) return { ok: false, error: 'Số điện thoại quá dài' };
   let digits = raw.replace(/\D/g, '');
   // +84xxxxxxxxx (11 digits sau khi bo +) -> 0xxxxxxxxx
   if (digits.length === 11 && digits.startsWith('84')) digits = '0' + digits.slice(2);
   // 840xxxxxxxxx (du 84 va 0) -> 0xxxxxxxxx
   if (digits.length === 12 && digits.startsWith('840')) digits = '0' + digits.slice(3);
   if (!/^0[35789]\d{8}$/.test(digits)) {
-    return { ok: false, error: 'So dien thoai khong hop le (10 chu so, bat dau 03/05/07/08/09)' };
+    return { ok: false, error: 'Số điện thoại không hợp lệ (10 chữ số, bắt đầu 03/05/07/08/09)' };
   }
   return { ok: true, value: digits };
 }
@@ -46,10 +46,10 @@ function validatePhone(input) {
 // Ho ten: 2-100 ky tu, khong chua < > " ' ` (chong XSS / inject).
 function validateName(input) {
   const v = String(input == null ? '' : input).trim();
-  if (!v) return { ok: false, error: 'Vui long nhap ho ten' };
-  if (v.length < 2)  return { ok: false, error: 'Ho ten qua ngan (toi thieu 2 ky tu)' };
-  if (v.length > 100) return { ok: false, error: 'Ho ten qua dai (toi da 100 ky tu)' };
-  if (/[<>"'`]/.test(v)) return { ok: false, error: 'Ho ten chua ky tu khong hop le' };
+  if (!v) return { ok: false, error: 'Vui lòng nhập họ tên' };
+  if (v.length < 2)  return { ok: false, error: 'Họ tên quá ngắn (tối thiểu 2 ký tự)' };
+  if (v.length > 100) return { ok: false, error: 'Họ tên quá dài (tối đa 100 ký tự)' };
+  if (/[<>"'`]/.test(v)) return { ok: false, error: 'Họ tên chứa ký tự không hợp lệ' };
   return { ok: true, value: v };
 }
 
@@ -58,8 +58,8 @@ function validateAddress(input) {
   if (input == null || input === '') return { ok: true, value: null };
   const v = String(input).trim();
   if (!v) return { ok: true, value: null };
-  if (v.length > 300) return { ok: false, error: 'Dia chi qua dai (toi da 300 ky tu)' };
-  if (/[<>]/.test(v))  return { ok: false, error: 'Dia chi chua ky tu khong hop le' };
+  if (v.length > 300) return { ok: false, error: 'Địa chỉ quá dài (tối đa 300 ký tự)' };
+  if (/[<>]/.test(v))  return { ok: false, error: 'Địa chỉ chứa ký tự không hợp lệ' };
   return { ok: true, value: v };
 }
 
@@ -83,7 +83,7 @@ router.post('/login-customer', async (req, res, next) => {
     );
 
     if (!rows.length) {
-      return res.status(401).json({ error: 'So dien thoai chua duoc dang ky' });
+      return res.status(401).json({ error: 'Số điện thoại chưa được đăng ký' });
     }
 
     const c = rows[0];
@@ -144,7 +144,7 @@ router.post('/quick-register-customer', async (req, res, next) => {
       if (exclusive) {
         await conn.rollback();
         return res.status(409).json({
-          error: 'So dien thoai nay da co tai khoan. Vui long dang nhap.',
+          error: 'Số điện thoại này đã có tài khoản. Vui lòng đăng nhập.',
           code: 'PHONE_EXISTS',
         });
       }
@@ -178,7 +178,7 @@ router.post('/quick-register-customer', async (req, res, next) => {
       }
       if (!c2) {
         await conn.rollback();
-        throw lastErr || new Error('Khong sinh duoc ma khach');
+        throw lastErr || new Error('Không sinh được mã khách');
       }
       await conn.commit();
       c = c2;
@@ -207,7 +207,7 @@ router.post('/login-dealer', async (req, res, next) => {
     const code = String(req.body.code || '').trim();
     const password = String(req.body.password || '');
     if (!code || !password) {
-      return res.status(400).json({ error: 'Thieu ma dai ly hoac mat khau' });
+      return res.status(400).json({ error: 'Thiếu mã đại lý hoặc mật khẩu' });
     }
 
     const [rows] = await db.query(
@@ -219,17 +219,17 @@ router.post('/login-dealer', async (req, res, next) => {
     );
 
     if (!rows.length) {
-      return res.status(401).json({ error: 'Sai ma dai ly hoac mat khau' });
+      return res.status(401).json({ error: 'Sai mã đại lý hoặc mật khẩu' });
     }
     const d = rows[0];
 
     if (!d.password_hash) {
-      return res.status(401).json({ error: 'Tai khoan chua co mat khau, lien he admin' });
+      return res.status(401).json({ error: 'Tài khoản chưa có mật khẩu, liên hệ admin' });
     }
 
     const ok = await bcrypt.compare(password, d.password_hash);
     if (!ok) {
-      return res.status(401).json({ error: 'Sai ma dai ly hoac mat khau' });
+      return res.status(401).json({ error: 'Sai mã đại lý hoặc mật khẩu' });
     }
 
     const token = signToken({ sub: d.id, role: 'daily', code: d.code });
@@ -250,7 +250,7 @@ router.post('/login-staff', async (req, res, next) => {
     const username = String(req.body.username || '').trim();
     const password = String(req.body.password || '');
     if (!username || !password) {
-      return res.status(400).json({ error: 'Thieu tai khoan hoac mat khau' });
+      return res.status(400).json({ error: 'Thiếu tài khoản hoặc mật khẩu' });
     }
 
     const [rows] = await db.query(
@@ -262,13 +262,13 @@ router.post('/login-staff', async (req, res, next) => {
     );
 
     if (!rows.length) {
-      return res.status(401).json({ error: 'Sai tai khoan hoac mat khau' });
+      return res.status(401).json({ error: 'Sai tài khoản hoặc mật khẩu' });
     }
     const s = rows[0];
 
     const ok = await bcrypt.compare(password, s.password_hash);
     if (!ok) {
-      return res.status(401).json({ error: 'Sai tai khoan hoac mat khau' });
+      return res.status(401).json({ error: 'Sai tài khoản hoặc mật khẩu' });
     }
 
     const token = signToken({ sub: s.id, role: s.role, username: s.username });
@@ -292,7 +292,7 @@ router.get('/me', verifyToken, async (req, res, next) => {
         `SELECT id, username, full_name, role, avatar_url, phone, email
            FROM staff WHERE id = ? AND is_deleted = 0`, [sub]
       );
-      if (!rows.length) return res.status(401).json({ error: 'Tai khoan khong ton tai' });
+      if (!rows.length) return res.status(401).json({ error: 'Tài khoản không tồn tại' });
       return res.json({ user: rows[0] });
     }
     // customer hoac daily
@@ -302,7 +302,7 @@ router.get('/me', verifyToken, async (req, res, next) => {
               debt_limit, credit_term_days, discount_rate
          FROM customers WHERE id = ? AND is_deleted = 0`, [sub]
     );
-    if (!rows.length) return res.status(401).json({ error: 'Tai khoan khong ton tai' });
+    if (!rows.length) return res.status(401).json({ error: 'Tài khoản không tồn tại' });
     res.json({ user: { ...rows[0], role } });
   } catch (err) { next(err); }
 });

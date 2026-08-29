@@ -855,8 +855,8 @@
         const defaultSlot = Number(s['bank.default_qr_slot'] || 1);
         const co = {
           name: s['company.name'] || 'CÔNG TY TNHH VIỄN THÔNG VINAGPS',
-          address: s['company.address'] || '190 TTH 21, P. Tân Thới Hiệp, Q.12, TP.HCM',
-          phone: s['company.phone'] || 'ĐT: (028) 6682 5658 — DĐ: 0949.155.160',
+          address: s['company.address'] || '190/19/12 TTH 21, P. Tân Thới Hiệp, TP.HCM',
+          phone: s['company.phone'] || 'ĐT: 0942.155.160 - 0949.155.160',
           tax: s['company.tax_code'] || '',
 
           bank: s[`qr.slot${defaultSlot}.bank_name`] || s['bank.bank_name'] || '',
@@ -1034,6 +1034,7 @@
             + '<div><div class="role">Kỹ thuật viên</div><div class="hint">(Ký, ghi rõ họ tên)</div><div class="name">' + esc(o.staff_name || '') + '</div></div>'
             + '<div><div class="role">Đại diện công ty</div><div class="hint">(Ký, đóng dấu)</div><div class="name"></div></div>'
           + '</div>'
+          + '<p style="text-align:center;font-size:10.5px;color:#94a3b8;margin-top:28px;line-height:1.6;">Web được thiết kế bởi <b>Nguyễn Đình Dân</b> · 0362 469 321 · Chuyên hỗ trợ các vấn đề kỹ thuật, công nghệ, dự án phần mềm, web, tool</p>'
           + '</div>';
 
         document.querySelectorAll('tbody.lineBody tr.clickable').forEach(tr => {

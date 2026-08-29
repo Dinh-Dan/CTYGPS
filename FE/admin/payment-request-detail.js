@@ -430,7 +430,7 @@
   // ─── Render toan trang ────────────────────────────────────────────────────────
 
   function render(d, co) {
-    co = co || { name: 'CÔNG TY TNHH VIỄN THÔNG VINAGPS', address: '190 TTH 21, P. Tân Thới Hiệp, Q.12, TP.HCM', phone: '(028) 6682 5658 — DĐ: 0949.155.160', tax: '' };
+    co = co || { name: 'CÔNG TY TNHH VIỄN THÔNG VINAGPS', address: '190/19/12 TTH 21, P. Tân Thới Hiệp, TP.HCM', phone: 'ĐT: 0942.155.160 - 0949.155.160', tax: '' };
     const req  = d.request;
     const cust = d.customer || {};
 
@@ -593,8 +593,8 @@
     const s = rawSettings || {};
     const co = {
       name:    s['company.name']     || 'CÔNG TY TNHH VIỄN THÔNG VINAGPS',
-      address: s['company.address']  || '190 TTH 21, P. Tân Thới Hiệp, Q.12, TP.HCM',
-      phone:   s['company.phone']    || '(028) 6682 5658 — DĐ: 0949.155.160',
+      address: s['company.address']  || '190/19/12 TTH 21, P. Tân Thới Hiệp, TP.HCM',
+      phone:   s['company.phone']    || 'ĐT: 0942.155.160 - 0949.155.160',
       tax:     s['company.tax_code'] || '',
     };
 

@@ -37,17 +37,17 @@ function httpErr(status, message) {
 
 // Throw HTTP error neu sai input. Tra ve filepath URL khi thanh cong.
 function saveDataUrl(dataUrl, folder, { maxBytes = 50 * 1024 * 1024 } = {}) {
-  if (!dataUrl || typeof dataUrl !== 'string') throw httpErr(400, 'Thieu dataUrl');
+  if (!dataUrl || typeof dataUrl !== 'string') throw httpErr(400, 'Thiếu dataUrl');
   const m = dataUrl.match(/^data:([\w/+-]+);base64,(.+)$/);
-  if (!m) throw httpErr(400, 'dataUrl khong dung dinh dang base64');
+  if (!m) throw httpErr(400, 'dataUrl không đúng định dạng base64');
 
   const mime = m[1].toLowerCase();
   const ext = MIME_EXT[mime];
-  if (!ext) throw httpErr(400, 'Dinh dang file khong ho tro');
+  if (!ext) throw httpErr(400, 'Định dạng file không hỗ trợ');
 
   const buf = Buffer.from(m[2], 'base64');
-  if (buf.length === 0)       throw httpErr(400, 'File rong');
-  if (buf.length > maxBytes)  throw httpErr(413, `File qua ${Math.round(maxBytes / 1024 / 1024)}MB`);
+  if (buf.length === 0)       throw httpErr(400, 'File rỗng');
+  if (buf.length > maxBytes)  throw httpErr(413, `File quá ${Math.round(maxBytes / 1024 / 1024)}MB`);
 
   const dir = path.join(UPLOAD_ROOT, folder);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });

@@ -11,6 +11,16 @@ const {
   recalcPaymentStatus, recalcOrderTotal,
   loadTemplateSteps, validateTransition,
 } = require('../utils/orderState');
+const {
+  WARRANTY_SERVICE_KIND,
+  ensureWarrantySchema,
+  upsertWarrantyMeta,
+  replaceWarrantyItems,
+  loadWarrantyDetail,
+  createWarrantyMove,
+  syncWarrantyOrderState,
+  deliverWarrantyReplacement,
+} = require('../utils/orderWarranty');
 const notify = require('../utils/notify');
 
 const router = express.Router();
@@ -30,21 +40,60 @@ function httpErr(status, message) {
   return e;
 }
 
+async function appendOrderNote(dbOrConn, orderId, note, req) {
+  const actor = req?.user?.username || 'KTV';
+  const d = new Date();
+  const ts = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  const line = `[${ts} - ${actor}] ${note}`;
+  try {
+    await dbOrConn.query(
+      `UPDATE orders
+          SET progress_note = CONCAT(
+            COALESCE(progress_note, ''),
+            CASE
+              WHEN progress_note IS NULL OR progress_note = '' OR RIGHT(progress_note, 1) = '\n'
+                THEN ''
+              ELSE '\n'
+            END,
+            ?,
+            '\n'
+          )
+        WHERE id = ?`,
+      [line, orderId]
+    );
+  } catch (_) {}
+}
+
+async function loadAssignedWarrantyOrderRow(conn, orderId, staffId) {
+  await ensureWarrantySchema(conn);
+  const [rows] = await conn.query(
+    `SELECT id, code, service_kind, assigned_staff_id, status
+       FROM orders
+      WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
+    [orderId, staffId]
+  );
+  if (!rows.length) throw httpErr(404, 'Không tìm thấy đơn');
+  if (rows[0].service_kind !== WARRANTY_SERVICE_KIND) {
+    throw httpErr(409, 'Đơn này không phải đơn bảo hành');
+  }
+  return rows[0];
+}
+
 router.get('/ping', (req, res) => res.json({ ok: true, role: 'kithuat', user: req.user }));
 
 // Helper: nhan dataUrl, ghi xuong dia, tra ve URL
 function saveDataUrl(dataUrl, folder) {
-  if (!dataUrl) throw httpErr(400, 'Thieu dataUrl');
+  if (!dataUrl) throw httpErr(400, 'Thiếu dataUrl');
   if (!ALLOWED_FOLDERS.has(folder)) folder = 'tasks';
 
   const m = String(dataUrl).match(/^data:([\w/+-]+);base64,(.+)$/);
-  if (!m) throw httpErr(400, 'dataUrl khong hop le');
+  if (!m) throw httpErr(400, 'dataUrl không hợp lệ');
   const ext = MIME_EXT[m[1].toLowerCase()];
-  if (!ext) throw httpErr(400, 'Dinh dang khong ho tro');
+  if (!ext) throw httpErr(400, 'Định dạng không hỗ trợ');
 
   const buf = Buffer.from(m[2], 'base64');
-  if (buf.length > MAX_BYTES) throw httpErr(413, 'Anh qua 5MB');
-  if (buf.length === 0)        throw httpErr(400, 'Anh rong');
+  if (buf.length > MAX_BYTES) throw httpErr(413, 'Ảnh quá 5MB');
+  if (buf.length === 0)        throw httpErr(400, 'Ảnh rỗng');
 
   const dir = path.join(UPLOAD_ROOT, folder);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -72,7 +121,7 @@ router.get('/me', async (req, res, next) => {
               avatar_url, online_status, rating
          FROM staff WHERE id = ? AND is_deleted = 0`, [id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy' });
 
     const [stats] = await db.query(
       `SELECT
@@ -126,7 +175,7 @@ router.patch('/me', async (req, res, next) => {
     if (req.body.cccd !== undefined)       updates.cccd = req.body.cccd || null;
     if (req.body.avatar_url !== undefined) updates.avatar_url = req.body.avatar_url || null;
     const cols = Object.keys(updates);
-    if (!cols.length) return res.status(400).json({ error: 'Khong co truong de cap nhat' });
+    if (!cols.length) return res.status(400).json({ error: 'Không có trường để cập nhật' });
 
     const setSql = cols.map(c => `${c} = ?`).join(', ');
     const values = cols.map(c => updates[c]);
@@ -208,7 +257,7 @@ router.get('/orders', async (req, res, next) => {
     const whereSql = 'WHERE ' + where.join(' AND ');
 
     const [rows] = await db.query(
-      `SELECT o.id, o.code, o.status, o.payment_status,
+      `SELECT o.id, o.code, o.status, o.payment_status, o.service_kind,
               o.due_at, o.started_at, o.completed_at,
               o.wage_amount, o.ktv_note,
               o.address,
@@ -242,7 +291,7 @@ router.get('/orders', async (req, res, next) => {
 router.get('/orders/:id', async (req, res, next) => {
   try {
     const [rows] = await db.query(
-      `SELECT o.id, o.code, o.status, o.payment_status,
+      `SELECT o.id, o.code, o.status, o.payment_status, o.service_kind,
               o.due_at, o.started_at, o.completed_at,
               o.wage_amount, o.ktv_note, o.assigned_staff_id,
               o.address,
@@ -262,7 +311,7 @@ router.get('/orders/:id', async (req, res, next) => {
         WHERE o.id = ? AND o.assigned_staff_id = ? AND o.is_deleted = 0`,
       [req.params.id, req.user.sub]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay don' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy đơn' });
 
     const [lines] = await db.query(
       `SELECT ol.id, ol.template_id, ol.custom_name, ol.seq, ol.subtotal, ol.note,
@@ -307,13 +356,229 @@ router.get('/orders/:id', async (req, res, next) => {
     for (const c of charges) if (lineMap.has(c.line_id)) lineMap.get(c.line_id).charges.push(c);
 
     const steps = await loadTemplateSteps(db);
-    res.json({
+    const detail = {
       ...rows[0],
       lines: Array.from(lineMap.values()),
       step_photos: photos,
       workflow_steps: steps,
+    };
+    if (detail.service_kind === WARRANTY_SERVICE_KIND) {
+      detail.warranty = await loadWarrantyDetail(db, Number(req.params.id));
+    }
+    res.json(detail);
+  } catch (err) { next(err); }
+});
+
+router.get('/warranty/lookups', async (req, res, next) => {
+  try {
+    await ensureWarrantySchema(db);
+    const [products, suppliers] = await Promise.all([
+      db.query(
+        `SELECT id, code, name
+           FROM products
+          WHERE is_deleted = 0
+          ORDER BY name ASC, id ASC
+          LIMIT 500`
+      ),
+      db.query(
+        `SELECT id, name
+           FROM suppliers
+          WHERE is_deleted = 0
+          ORDER BY name ASC, id ASC`
+      ),
+    ]);
+    res.json({
+      products: products[0] || [],
+      suppliers: suppliers[0] || [],
     });
   } catch (err) { next(err); }
+});
+
+router.get('/warranty/worklist', async (req, res, next) => {
+  try {
+    await ensureWarrantySchema(db);
+    const staffId = Number(req.user.sub);
+    const baseSelect = `
+      SELECT wi.id, wi.order_id, wi.product_id, wi.qty, wi.device_name, wi.imei, wi.license_plate,
+             wi.account_name, wi.sim_number, wi.condition_note, wi.note_text,
+             wi.handling_type, wi.customer_status, wi.current_status, wi.current_location,
+             wi.replacement_product_id, wi.replacement_source_scope, wi.replacement_staff_id,
+             o.code AS order_code, o.assigned_staff_id,
+             c.full_name AS customer_name, c.phone AS customer_phone,
+             p.code AS product_code, p.name AS product_name,
+             rp.code AS replacement_product_code, rp.name AS replacement_product_name
+        FROM order_warranty_items wi
+        JOIN orders o ON o.id = wi.order_id AND o.service_kind = ? AND o.is_deleted = 0
+        LEFT JOIN customers c ON c.id = o.customer_id
+        LEFT JOIN products p ON p.id = wi.product_id
+        LEFT JOIN products rp ON rp.id = wi.replacement_product_id
+       WHERE wi.is_deleted = 0
+    `;
+    const [bagRows, deliveryRows, companyRows] = await Promise.all([
+      db.query(
+        `${baseSelect}
+          AND wi.current_status IN ('technician_holding','pending_company_receipt')
+          AND wi.current_location = 'technician'
+          AND wi.holder_staff_id = ?
+        ORDER BY wi.updated_at DESC, wi.id DESC
+        LIMIT 200`,
+        [WARRANTY_SERVICE_KIND, staffId]
+      ),
+      db.query(
+        `${baseSelect}
+          AND wi.customer_status <> 'completed'
+          AND wi.replacement_staff_id = ?
+          AND wi.replacement_product_id IS NOT NULL
+          AND wi.replacement_source_scope IN ('company_stock','technician_stock','supplier_returned_item')
+        ORDER BY wi.updated_at DESC, wi.id DESC
+        LIMIT 200`,
+        [WARRANTY_SERVICE_KIND, staffId]
+      ),
+      db.query(
+        `${baseSelect}
+          AND o.assigned_staff_id = ?
+          AND wi.current_status IN ('company_warranty_stock','sent_to_supplier','supplier_returned')
+          AND NOT (
+            wi.customer_status <> 'completed'
+            AND wi.replacement_staff_id = ?
+            AND wi.replacement_product_id IS NOT NULL
+            AND wi.replacement_source_scope IN ('company_stock','technician_stock','supplier_returned_item')
+          )
+        ORDER BY wi.updated_at DESC, wi.id DESC
+        LIMIT 200`,
+        [WARRANTY_SERVICE_KIND, staffId, staffId]
+      ),
+    ]);
+    res.json({
+      technician_bag: bagRows[0] || [],
+      waiting_delivery: deliveryRows[0] || [],
+      company_flow: companyRows[0] || [],
+    });
+  } catch (err) { next(err); }
+});
+
+router.get('/orders/:id/warranty', async (req, res, next) => {
+  try {
+    const orderId = Number(req.params.id);
+    await loadAssignedWarrantyOrderRow(db, orderId, req.user.sub);
+    const warranty = await loadWarrantyDetail(db, orderId);
+    res.json(warranty);
+  } catch (err) { next(err); }
+});
+
+router.put('/orders/:id/warranty', async (req, res, next) => {
+  const conn = await db.getConnection();
+  try {
+    const orderId = Number(req.params.id);
+    await loadAssignedWarrantyOrderRow(conn, orderId, req.user.sub);
+    const body = req.body || {};
+    const sets = [];
+    const args = [];
+
+    if (body.address !== undefined) {
+      sets.push('address = ?');
+      args.push(body.address == null ? null : String(body.address).trim().slice(0, 300) || null);
+    }
+    if (body.note !== undefined) {
+      sets.push('note = ?');
+      args.push(body.note == null ? null : String(body.note).trim().slice(0, 1000) || null);
+    }
+    // KHONG cho ghi de "Thuc te hien tai" (progress_note) — chi duoc ghi them
+    // qua endpoint PATCH /orders/:id/progress-note. Bo qua neu client gui len.
+
+    const metaPayload = body.meta || {
+      warranty_mode: body.warranty_mode,
+      default_supplier_id: body.default_supplier_id,
+      current_stage: body.current_stage,
+      note_text: body.note_text,
+    };
+
+    await conn.beginTransaction();
+    if (sets.length) {
+      args.push(orderId);
+      await conn.query(`UPDATE orders SET ${sets.join(', ')} WHERE id = ?`, args);
+    }
+    if (metaPayload && Object.values(metaPayload).some(v => v !== undefined)) {
+      await upsertWarrantyMeta(conn, orderId, metaPayload);
+    }
+    if (Array.isArray(body.items)) {
+      await replaceWarrantyItems(conn, orderId, body.items);
+    }
+    await syncWarrantyOrderState(conn, orderId);
+    await recalcOrderTotal(conn, orderId);
+    await recalcPaymentStatus(conn, orderId);
+    await conn.commit();
+    await appendOrderNote(conn, orderId, 'Cập nhật thông tin bảo hành', req);
+    const warranty = await loadWarrantyDetail(conn, orderId);
+    res.json({ ok: true, warranty });
+  } catch (err) {
+    try { await conn.rollback(); } catch (_) {}
+    next(err);
+  } finally {
+    conn.release();
+  }
+});
+
+router.post('/orders/:id/warranty/moves', async (req, res, next) => {
+  const conn = await db.getConnection();
+  try {
+    const orderId = Number(req.params.id);
+    const orderRow = await loadAssignedWarrantyOrderRow(conn, orderId, req.user.sub);
+    const actionCode = String(req.body.action_code || '').trim();
+    const actionLabels = {
+      mark_fixed: 'KTV đã khắc phục sản phẩm',
+      receive_from_customer: 'KTV nhận hàng từ khách',
+      handover_to_company: 'KTV gửi hàng lỗi về kho (chờ xác nhận)',
+      move_to_company_stock: 'Xác nhận đã nhận hàng lỗi về kho bảo hành',
+      send_to_supplier: 'Gửi nhà cung cấp',
+      receive_from_supplier: 'Nhận hàng từ nhà cung cấp',
+      reserve_replacement_from_company: 'Cấp hàng từ kho công ty / phân KTV đi giao',
+      reserve_replacement_from_technician: 'KTV đổi ngay từ túi đồ của mình',
+      deliver_to_customer: 'Trả bảo hành cho khách',
+      cancel_item: 'Huỷ item bảo hành',
+      note: 'Ghi chú bảo hành',
+    };
+
+    await conn.beginTransaction();
+    const result = await createWarrantyMove(conn, orderRow, req.body, req.user?.sub || null);
+    await recalcOrderTotal(conn, orderId);
+    await recalcPaymentStatus(conn, orderId);
+    await conn.commit();
+    await appendOrderNote(conn, orderId, actionLabels[actionCode] || 'Cập nhật kho bảo hành', req);
+    const warranty = await loadWarrantyDetail(conn, orderId);
+    res.status(201).json({ ok: true, receipt: result.receipt || null, warranty });
+  } catch (err) {
+    try { await conn.rollback(); } catch (_) {}
+    next(err);
+  } finally {
+    conn.release();
+  }
+});
+
+// R6: Lap san pham bao hanh cho khach (tu dong lay tui KTV hoac xuat kho cua hang).
+router.post('/orders/:id/warranty/deliver-device', async (req, res, next) => {
+  const conn = await db.getConnection();
+  try {
+    const orderId = Number(req.params.id);
+    const orderRow = await loadAssignedWarrantyOrderRow(conn, orderId, req.user.sub);
+
+    await conn.beginTransaction();
+    const result = await deliverWarrantyReplacement(conn, orderRow, req.body, req.user?.sub || null);
+    await recalcOrderTotal(conn, orderId);
+    await recalcPaymentStatus(conn, orderId);
+    await conn.commit();
+    const noteMsg = result.fromTechnicianBag
+      ? 'Lắp sản phẩm bảo hành cho khách (lấy từ túi KTV)'
+      : `Lắp sản phẩm bảo hành cho khách (xuất kho cửa hàng${result.receipt?.code ? ' — ' + result.receipt.code : ''})`;
+    await appendOrderNote(conn, orderId, noteMsg, req);
+    const warranty = await loadWarrantyDetail(conn, orderId);
+    res.status(201).json({ ok: true, receipt: result.receipt || null, warranty });
+  } catch (err) {
+    try { await conn.rollback(); } catch (_) {}
+    next(err);
+  } finally {
+    conn.release();
+  }
 });
 
 // POST /orders/:id/transition — KTV chuyen status (4 trang thai cung).
@@ -324,14 +589,18 @@ router.post('/orders/:id/transition', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const target = String(req.body.step_code || '').trim();
-    if (!target) throw httpErr(400, 'Thieu step_code');
+    if (!target) throw httpErr(400, 'Thiếu step_code');
 
     const [rows] = await conn.query(
-      `SELECT id, status, completed_at FROM orders
+      `SELECT id, status, completed_at, service_kind FROM orders
         WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
       [id, req.user.sub]
     );
-    if (!rows.length) throw httpErr(404, 'Khong tim thay don');
+    if (!rows.length) throw httpErr(404, 'Không tìm thấy đơn');
+    const isWarranty = rows[0].service_kind === WARRANTY_SERVICE_KIND;
+    if (isWarranty && target !== 'in_progress') {
+      throw httpErr(409, 'Đơn bảo hành chỉ dùng transition chung để bắt đầu làm; các bước còn lại cập nhật bằng luồng bảo hành');
+    }
 
     const steps = await loadTemplateSteps(conn);
     const v = validateTransition(steps, rows[0].status, target, 'ktv');
@@ -387,6 +656,15 @@ router.post('/orders/:id/transition', async (req, res, next) => {
     args.push(id);
     await conn.query(`UPDATE orders SET ${sets.join(', ')} WHERE id = ?`, args);
     await conn.commit();
+
+    // Ghi log vao "Thuc te hien tai" (progress_note) de phan anh dung tien trinh
+    const TRANSITION_LOG = {
+      confirmed:   'Xác nhận đơn',
+      in_progress: 'Bắt đầu làm việc',
+      done:        'Hoàn thành đơn',
+    };
+    await appendOrderNote(conn, id, TRANSITION_LOG[target] || `Chuyển trạng thái → ${target}`, req);
+
     res.json({ ok: true, status: target });
   } catch (err) {
     try { await conn.rollback(); } catch (_) {}
@@ -394,17 +672,21 @@ router.post('/orders/:id/transition', async (req, res, next) => {
   } finally { conn.release(); }
 });
 
-// PATCH /orders/:id/progress-note
+// PATCH /orders/:id/progress-note  — CHI GHI THEM (append-only), khong sua/xoa cu.
 router.patch('/orders/:id/progress-note', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const note = req.body.progress_note != null ? String(req.body.progress_note) : null;
-    const [r] = await db.query(
-      `UPDATE orders SET progress_note = ?
-        WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
-      [note, id, req.user.sub]
+    const note = req.body.progress_note != null ? String(req.body.progress_note).trim().slice(0, 1000) : '';
+    if (!note) return res.status(400).json({ error: 'Nội dung ghi chú trống' });
+    if (note.includes('<') || note.includes('>')) {
+      return res.status(400).json({ error: 'Ghi chú không được chứa ký tự < hoặc >' });
+    }
+    const [chk] = await db.query(
+      `SELECT id FROM orders WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
+      [id, req.user.sub]
     );
-    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay don' });
+    if (!chk.length) return res.status(404).json({ error: 'Không tìm thấy đơn' });
+    await appendOrderNote(db, id, note, req);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -425,7 +707,7 @@ router.patch('/orders/:id/end-customer', async (req, res, next) => {
         WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
       [orderId, req.user.sub]
     );
-    if (!orderRows.length) throw httpErr(404, 'Khong tim thay don');
+    if (!orderRows.length) throw httpErr(404, 'Không tìm thấy đơn');
 
     const action = String(req.body.action || '').trim();
     let endCustomerId = null;
@@ -433,18 +715,18 @@ router.patch('/orders/:id/end-customer', async (req, res, next) => {
 
     if (action === 'link') {
       endCustomerId = Number(req.body.customer_id);
-      if (!endCustomerId) throw httpErr(400, 'Thieu customer_id');
+      if (!endCustomerId) throw httpErr(400, 'Thiếu customer_id');
       const [ecRows] = await conn.query(
         `SELECT id, type, full_name, phone, code FROM customers WHERE id = ? AND is_deleted = 0`,
         [endCustomerId]
       );
-      if (!ecRows.length) throw httpErr(404, 'Khong tim thay khach hang');
-      if (ecRows[0].type !== 'retail') throw httpErr(400, 'Khach dau cuoi phai la khach le (retail)');
+      if (!ecRows.length) throw httpErr(404, 'Không tìm thấy khách hàng');
+      if (ecRows[0].type !== 'retail') throw httpErr(400, 'Khách đầu cuối phải là khách lẻ (retail)');
       newCustomer = ecRows[0];
 
     } else if (action === 'create') {
       const fullName = String(req.body.full_name || '').trim();
-      if (!fullName) throw httpErr(400, 'Thieu full_name');
+      if (!fullName) throw httpErr(400, 'Thiếu full_name');
       const phone = req.body.phone ? String(req.body.phone).trim() : null;
       const address = req.body.address ? String(req.body.address).trim() : null;
       const note = req.body.note ? String(req.body.note).trim() : null;
@@ -472,7 +754,7 @@ router.patch('/orders/:id/end-customer', async (req, res, next) => {
     } else if (action === 'unlink') {
       endCustomerId = null;
     } else {
-      throw httpErr(400, 'action phai la: link | create | unlink');
+      throw httpErr(400, 'action phải là: link | create | unlink');
     }
 
     if (!conn._inTransaction) await conn.beginTransaction();
@@ -517,15 +799,15 @@ router.patch('/orders/:id/field-values', async (req, res, next) => {
     const orderId = Number(req.params.id);
     const updates = req.body.updates;
     if (!Array.isArray(updates) || !updates.length)
-      return res.status(400).json({ error: 'Thieu updates' });
+      return res.status(400).json({ error: 'Thiếu updates' });
 
     const [t] = await db.query(
       `SELECT id, status FROM orders
         WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
       [orderId, req.user.sub]
     );
-    if (!t.length) return res.status(404).json({ error: 'Khong tim thay don' });
-    if (t[0].status === 'cancelled') return res.status(400).json({ error: 'Don da huy' });
+    if (!t.length) return res.status(404).json({ error: 'Không tìm thấy đơn' });
+    if (t[0].status === 'cancelled') return res.status(400).json({ error: 'Đơn đã huỷ' });
 
     for (const u of updates) {
       const id  = Number(u.id);
@@ -572,22 +854,22 @@ router.post('/orders/:id/field-values', async (req, res, next) => {
     const lineId  = Number(req.body.line_id) || null;
     const label   = String(req.body.label || '').trim();
     const value   = req.body.value != null ? String(req.body.value) : '';
-    if (!itemId)  return res.status(400).json({ error: 'Thieu item_id' });
-    if (!label)   return res.status(400).json({ error: 'Thieu label' });
+    if (!itemId)  return res.status(400).json({ error: 'Thiếu item_id' });
+    if (!label)   return res.status(400).json({ error: 'Thiếu label' });
 
     const [t] = await db.query(
       `SELECT id, status FROM orders
         WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
       [orderId, req.user.sub]
     );
-    if (!t.length) return res.status(404).json({ error: 'Khong tim thay don' });
-    if (t[0].status === 'cancelled') return res.status(400).json({ error: 'Don da huy' });
+    if (!t.length) return res.status(404).json({ error: 'Không tìm thấy đơn' });
+    if (t[0].status === 'cancelled') return res.status(400).json({ error: 'Đơn đã huỷ' });
 
     const [chk] = await db.query(
       `SELECT id FROM order_items WHERE id = ? AND order_id = ?`,
       [itemId, orderId]
     );
-    if (!chk.length) return res.status(404).json({ error: 'Khong tim thay item' });
+    if (!chk.length) return res.status(404).json({ error: 'Không tìm thấy item' });
 
     const [ins] = await db.query(
       `INSERT INTO order_field_values (order_id, line_id, item_id, label, value, seq, is_deleted)
@@ -609,8 +891,8 @@ router.delete('/orders/:id/field-values/:fvId', async (req, res, next) => {
         WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
       [orderId, req.user.sub]
     );
-    if (!t.length) return res.status(404).json({ error: 'Khong tim thay don' });
-    if (t[0].status === 'cancelled') return res.status(400).json({ error: 'Don da huy' });
+    if (!t.length) return res.status(404).json({ error: 'Không tìm thấy đơn' });
+    if (t[0].status === 'cancelled') return res.status(400).json({ error: 'Đơn đã huỷ' });
 
     await db.query(
       `UPDATE order_field_values SET is_deleted = 1
@@ -630,15 +912,15 @@ router.post('/orders/:id/photos', async (req, res, next) => {
         WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
       [req.params.id, req.user.sub]
     );
-    if (!t.length) return res.status(404).json({ error: 'Khong tim thay don' });
-    if (t[0].status === 'cancelled') return res.status(400).json({ error: 'Don da huy' });
+    if (!t.length) return res.status(404).json({ error: 'Không tìm thấy đơn' });
+    if (t[0].status === 'cancelled') return res.status(400).json({ error: 'Đơn đã huỷ' });
 
     const stepCode = String(req.body.step_code || 'in_progress').trim();
     const url     = String(req.body.url || '').trim();
     const caption = req.body.caption ? String(req.body.caption) : null;
-    if (url.length < 10 || url.length > 500) return res.status(400).json({ error: 'URL anh khong hop le' });
+    if (url.length < 10 || url.length > 500) return res.status(400).json({ error: 'URL ảnh không hợp lệ' });
     if (!/^https:\/\/(i\.ibb\.co|image\.ibb\.co)\//i.test(url)) {
-      return res.status(400).json({ error: 'URL phai la link imgbb (i.ibb.co)' });
+      return res.status(400).json({ error: 'URL phải là link imgbb (i.ibb.co)' });
     }
 
     const [result] = await db.query(
@@ -667,8 +949,8 @@ router.post('/orders/:id/photos', async (req, res, next) => {
         const o = info[0] || {};
         await notify.create(db, {
           type: 'order_receive_uploaded',
-          title: `${o.code || 'Don'}: KTV upload anh`,
-          message: `${o.staff_name || 'KTV'} — ${o.customer_name || 'khach'}`,
+          title: `${o.code || 'Đơn'}: KTV upload ảnh`,
+          message: `${o.staff_name || 'KTV'} — ${o.customer_name || 'khách'}`,
           link_url: `/admin/orders.html#order-${req.params.id}`,
           ref_order_id: Number(req.params.id),
           ref_customer_id: o.customer_id || null,
@@ -722,11 +1004,11 @@ router.patch('/orders/:id/complete', async (req, res, next) => {
       else if (legacy === 'debt')  debt = -1;
     }
 
-    if (toStaff < 0) throw httpErr(400, 'to_staff_amount khong duoc am');
-    if (toAdmin < 0 && toAdmin !== -1) throw httpErr(400, 'to_admin_amount khong duoc am');
-    if (debt    < 0 && debt    !== -1) throw httpErr(400, 'debt_amount khong duoc am');
+    if (toStaff < 0) throw httpErr(400, 'to_staff_amount không được âm');
+    if (toAdmin < 0 && toAdmin !== -1) throw httpErr(400, 'to_admin_amount không được âm');
+    if (debt    < 0 && debt    !== -1) throw httpErr(400, 'debt_amount không được âm');
     if (toStaff > 0 && !['cash', 'transfer'].includes(toStaffMethod)) {
-      throw httpErr(400, "Khi co tien KTV thu, to_staff_method phai la 'cash' hoac 'transfer'");
+      throw httpErr(400, "Khi có tiền KTV thu, to_staff_method phải là 'cash' hoặc 'transfer'");
     }
 
     const note = req.body.note != null ? String(req.body.note) : null;
@@ -735,23 +1017,23 @@ router.patch('/orders/:id/complete', async (req, res, next) => {
 
     const [orderRows] = await conn.query(
       `SELECT id, status, total_amount, paid_amount, ktv_note,
-              completed_at FROM orders
+              completed_at, service_kind FROM orders
         WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0 FOR UPDATE`,
       [id, req.user.sub]
     );
-    if (!orderRows.length) throw httpErr(404, 'Khong tim thay don');
+    if (!orderRows.length) throw httpErr(404, 'Không tìm thấy đơn');
     const order = orderRows[0];
-    if (order.completed_at) throw httpErr(400, 'Don da hoan thanh');
-    if (order.status === 'cancelled') throw httpErr(400, 'Don da huy');
+    if (order.completed_at) throw httpErr(400, 'Đơn đã hoàn thành');
+    if (order.status === 'cancelled') throw httpErr(400, 'Đơn đã huỷ');
 
     // Trang thai ket thuc duy nhat = 'done'
     const terminalStep = { code: 'done' };
 
     const remaining = Math.max(0, Number(order.total_amount) - Number(order.paid_amount));
     if (expected == null) expected = remaining;
-    if (expected < 0) throw httpErr(400, 'expected_amount khong duoc am');
+    if (expected < 0) throw httpErr(400, 'expected_amount không được âm');
     if (expected > remaining) {
-      throw httpErr(400, `Don chi con no ${remaining}d, khong the chia ${expected}d`);
+      throw httpErr(400, `Đơn chỉ còn nợ ${remaining}đ, không thể chia ${expected}đ`);
     }
 
     if (toAdmin === -1) toAdmin = expected - toStaff - (debt > 0 ? debt : 0);
@@ -762,11 +1044,29 @@ router.patch('/orders/:id/complete', async (req, res, next) => {
     const sum = toStaff + toAdmin + debt;
     if (sum !== expected) {
       throw httpErr(400,
-        `Tong 3 phan (${sum}d) phai bang phan KTV dam nhiem (${expected}d). ` +
-        `KTV: ${toStaff}, Admin: ${toAdmin}, No: ${debt}`);
+        `Tổng 3 phần (${sum}đ) phải bằng phần KTV đảm nhiệm (${expected}đ). ` +
+        `KTV: ${toStaff}, Admin: ${toAdmin}, Nợ: ${debt}`);
     }
 
     const finalNote = note != null ? note : order.ktv_note;
+
+    if (order.service_kind === WARRANTY_SERVICE_KIND) {
+      const [[wAgg]] = await conn.query(
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN customer_status = 'completed' OR current_status = 'delivered' OR current_location = 'customer_returned' THEN 1 ELSE 0 END) AS completed_count
+           FROM order_warranty_items
+          WHERE order_id = ? AND is_deleted = 0`,
+        [id]
+      );
+      const warrantyTotal = Number(wAgg.total || 0);
+      const warrantyCompleted = Number(wAgg.completed_count || 0);
+      if (!warrantyTotal) {
+        throw httpErr(409, 'Đơn bảo hành chưa có sản phẩm để hoàn thành');
+      }
+      if (warrantyCompleted < warrantyTotal) {
+        throw httpErr(409, 'Còn sản phẩm bảo hành chưa xử lý xong, chưa thể hoàn thành đơn');
+      }
+    } else {
 
     // Tru staff_holdings (auto) cho moi product trong don
     const [needs] = await conn.query(
@@ -804,6 +1104,7 @@ router.patch('/orders/:id/complete', async (req, res, next) => {
         );
       }
     }
+    }
 
     // Set completed_at + ktv_note + status='done'
     await conn.query(
@@ -837,7 +1138,7 @@ router.patch('/orders/:id/complete', async (req, res, next) => {
            (order_id, amount, source, confirmed, staff_id, note)
          VALUES (?, ?, 'admin_pending', 0, ?, ?)`,
         [id, toAdmin, req.user.sub,
-         'KTV bao khach da tra admin truc tiep — doi admin xac nhan']
+         'KTV báo khách đã trả admin trực tiếp — đợi admin xác nhận']
       );
     }
 
@@ -851,9 +1152,9 @@ router.patch('/orders/:id/complete', async (req, res, next) => {
       for (const raw of returns) {
         const productId = Number(raw.product_id);
         const qty = Number(raw.qty);
-        if (!productId) throw httpErr(400, 'returns: thieu product_id');
-        if (!qty || qty <= 0) throw httpErr(400, 'returns: qty phai > 0');
-        if (seenReturn.has(productId)) throw httpErr(400, 'returns: moi SP chi 1 dong');
+        if (!productId) throw httpErr(400, 'returns: thiếu product_id');
+        if (!qty || qty <= 0) throw httpErr(400, 'returns: qty phải > 0');
+        if (seenReturn.has(productId)) throw httpErr(400, 'returns: mỗi SP chỉ 1 dòng');
         seenReturn.add(productId);
         retLines.push({ product_id: productId, qty });
       }
@@ -872,7 +1173,7 @@ router.patch('/orders/:id/complete', async (req, res, next) => {
           [req.user.sub, l.product_id]
         );
         if (!shRows.length || shRows[0].qty < l.qty) {
-          throw httpErr(409, `Khong du de tra SP id=${l.product_id}: dang giu ${shRows[0]?.qty || 0}`);
+          throw httpErr(409, `Không đủ để trả SP id=${l.product_id}: đang giữ ${shRows[0]?.qty || 0}`);
         }
         if (shRows[0].qty === l.qty) {
           await conn.query(`DELETE FROM staff_holdings WHERE id = ?`, [shRows[0].id]);
@@ -906,7 +1207,18 @@ router.patch('/orders/:id/complete', async (req, res, next) => {
       const d = new Date();
       const ts = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
       await db.query(
-        `UPDATE orders SET progress_note = CONCAT(COALESCE(progress_note, ''), ?, '\n') WHERE id = ?`,
+        `UPDATE orders
+            SET progress_note = CONCAT(
+              COALESCE(progress_note, ''),
+              CASE
+                WHEN progress_note IS NULL OR progress_note = '' OR RIGHT(progress_note, 1) = '\n'
+                  THEN ''
+                ELSE '\n'
+              END,
+              ?,
+              '\n'
+            )
+          WHERE id = ?`,
         [`[${ts} - ${actor}] KTV hoàn thành đơn`, id]
       );
     } catch (_) {}
@@ -1016,7 +1328,7 @@ router.get('/history/export', async (req, res, next) => {
         ORDER BY o.completed_at DESC`,
       [req.user.sub, ...args]
     );
-    const head = 'Ngay,Don,Loai,Khach,San pham,Thu tien,Cong lap';
+    const head = 'Ngày,Đơn,Loại,Khách,Sản phẩm,Thu tiền,Công lắp';
     const esc = (v) => `"${String(v == null ? '' : v).replaceAll('"', '""')}"`;
     const lines = rows.map(r => [
       r.completed_at, r.order_code, r.template_name || '', r.customer_name || '',
@@ -1069,6 +1381,34 @@ router.get('/summary', async (req, res, next) => {
               o.tech_commission_requested_at,
               o.tech_commission_approved_at,
               o.payslip_id,
+              COALESCE((
+                SELECT SUM(sc.amount)
+                  FROM order_staff_commissions sc
+                 WHERE sc.order_id = o.id
+                   AND sc.staff_id = ?
+                   AND sc.is_deleted = 0
+              ), 0) AS assigned_staff_commission_amount,
+              (
+                SELECT MAX(sc.requested_at)
+                  FROM order_staff_commissions sc
+                 WHERE sc.order_id = o.id
+                   AND sc.staff_id = ?
+                   AND sc.is_deleted = 0
+              ) AS assigned_staff_commission_requested_at,
+              (
+                SELECT MAX(sc.approved_at)
+                  FROM order_staff_commissions sc
+                 WHERE sc.order_id = o.id
+                   AND sc.staff_id = ?
+                   AND sc.is_deleted = 0
+              ) AS assigned_staff_commission_approved_at,
+              (
+                SELECT MAX(sc.payslip_id)
+                  FROM order_staff_commissions sc
+                 WHERE sc.order_id = o.id
+                   AND sc.staff_id = ?
+                   AND sc.is_deleted = 0
+              ) AS assigned_staff_commission_payslip_id,
               CASE WHEN o.tech_commission_approved_at IS NOT NULL THEN COALESCE(o.tech_commission_amount,0) ELSE 0 END AS commission_amount,
               GREATEST(0, COALESCE(o.total_amount,0) - COALESCE(o.paid_amount,0)) AS debt_amount,
               c.full_name AS customer_name, c.phone AS customer_phone,
@@ -1081,7 +1421,7 @@ router.get('/summary', async (req, res, next) => {
          ${whereSql}
          ORDER BY COALESCE(o.completed_at, o.due_at, o.created_at) DESC, o.id DESC
          LIMIT 500`,
-      [req.user.sub, req.user.sub, ...args]
+      [req.user.sub, req.user.sub, req.user.sub, req.user.sub, req.user.sub, req.user.sub, ...args]
     );
 
     const [totRows] = await db.query(
@@ -1091,11 +1431,20 @@ router.get('/summary', async (req, res, next) => {
          COALESCE(SUM(o.paid_amount), 0)                               AS total_paid,
          COALESCE(SUM(GREATEST(0, o.total_amount - o.paid_amount)), 0) AS total_debt,
          COALESCE(SUM(CASE WHEN o.status='done' THEN o.wage_amount ELSE 0 END), 0) AS total_wage,
-         COALESCE(SUM(CASE WHEN o.tech_commission_approved_at IS NOT NULL THEN o.tech_commission_amount ELSE 0 END), 0) AS total_commission
+         COALESCE(SUM(CASE WHEN o.tech_commission_approved_at IS NOT NULL THEN o.tech_commission_amount ELSE 0 END), 0)
+         +
+         COALESCE(SUM((
+           SELECT COALESCE(SUM(sc.amount), 0)
+             FROM order_staff_commissions sc
+            WHERE sc.order_id = o.id
+              AND sc.staff_id = ?
+              AND sc.is_deleted = 0
+              AND sc.approved_at IS NOT NULL
+         )), 0) AS total_commission
          FROM orders o
          LEFT JOIN customers c ON c.id = o.customer_id
          ${whereSql}`,
-      args
+      [req.user.sub, ...args]
     );
 
     // Tong collections (chua nop / da nop) tren toan bo filter, khong gioi han 500 don.
@@ -1256,9 +1605,9 @@ router.post('/inventory/take', async (req, res, next) => {
     const orderId = Number(req.body.order_id);
     const productId = Number(req.body.product_id);
     const qty = Number(req.body.qty);
-    if (!orderId)    throw httpErr(400, 'Thieu order_id');
-    if (!productId)  throw httpErr(400, 'Thieu product_id');
-    if (!qty || qty <= 0) throw httpErr(400, 'qty phai > 0');
+    if (!orderId)    throw httpErr(400, 'Thiếu order_id');
+    if (!productId)  throw httpErr(400, 'Thiếu product_id');
+    if (!qty || qty <= 0) throw httpErr(400, 'qty phải > 0');
 
     await conn.beginTransaction();
     const [poolRows] = await conn.query(
@@ -1266,8 +1615,8 @@ router.post('/inventory/take', async (req, res, next) => {
         WHERE order_id = ? AND product_id = ? AND staff_id = ? FOR UPDATE`,
       [orderId, productId, req.user.sub]
     );
-    if (!poolRows.length) throw httpErr(404, 'Khong co thiet bi nay cho don');
-    if (poolRows[0].qty < qty) throw httpErr(409, `Pool con ${poolRows[0].qty}, can ${qty}`);
+    if (!poolRows.length) throw httpErr(404, 'Không có thiết bị này cho đơn');
+    if (poolRows[0].qty < qty) throw httpErr(409, `Pool còn ${poolRows[0].qty}, cần ${qty}`);
 
     if (poolRows[0].qty === qty) {
       await conn.query(`DELETE FROM release_pool WHERE id = ?`, [poolRows[0].id]);
@@ -1312,8 +1661,8 @@ router.post('/inventory/take-direct', async (req, res, next) => {
   try {
     const productId = Number(req.body.product_id);
     const qty = Number(req.body.qty);
-    if (!productId)        throw httpErr(400, 'Thieu product_id');
-    if (!qty || qty <= 0)  throw httpErr(400, 'qty phai > 0');
+    if (!productId)        throw httpErr(400, 'Thiếu product_id');
+    if (!qty || qty <= 0)  throw httpErr(400, 'qty phải > 0');
 
     await conn.beginTransaction();
     const [psRows] = await conn.query(
@@ -1321,7 +1670,7 @@ router.post('/inventory/take-direct', async (req, res, next) => {
       [productId]
     );
     const cur = psRows.length ? psRows[0].quantity : 0;
-    if (cur < qty) throw httpErr(409, `Khong du ton: con ${cur}, can ${qty}`);
+    if (cur < qty) throw httpErr(409, `Không đủ tồn: còn ${cur}, cần ${qty}`);
 
     await conn.query(
       `UPDATE product_stock SET quantity = quantity - ? WHERE product_id = ?`,
@@ -1361,15 +1710,15 @@ router.post('/inventory/return', async (req, res, next) => {
     const productId = Number(req.body.product_id);
     const qty = Number(req.body.qty);
     const note = req.body.note ? String(req.body.note).trim() : null;
-    if (!productId)       throw httpErr(400, 'Thieu product_id');
-    if (!qty || qty <= 0) throw httpErr(400, 'qty phai > 0');
+    if (!productId)       throw httpErr(400, 'Thiếu product_id');
+    if (!qty || qty <= 0) throw httpErr(400, 'qty phải > 0');
 
     const [shRows] = await db.query(
       `SELECT id, qty FROM staff_holdings WHERE staff_id = ? AND product_id = ?`,
       [req.user.sub, productId]
     );
     if (!shRows.length || shRows[0].qty < qty) {
-      throw httpErr(409, `Khong du de tra: dang giu ${shRows[0]?.qty || 0}`);
+      throw httpErr(409, `Không đủ để trả: đang giữ ${shRows[0]?.qty || 0}`);
     }
 
     const [ins] = await db.query(
@@ -1413,16 +1762,16 @@ router.post('/inventory/install', async (req, res, next) => {
     const productId = Number(req.body.product_id);
     const qty = Number(req.body.qty);
     const imeiList = req.body.imei_list ? String(req.body.imei_list).trim() : null;
-    if (!orderId)          throw httpErr(400, 'Thieu order_id');
-    if (!productId)        throw httpErr(400, 'Thieu product_id');
-    if (!qty || qty <= 0)  throw httpErr(400, 'qty phai > 0');
+    if (!orderId)          throw httpErr(400, 'Thiếu order_id');
+    if (!productId)        throw httpErr(400, 'Thiếu product_id');
+    if (!qty || qty <= 0)  throw httpErr(400, 'qty phải > 0');
 
     const [tRows] = await conn.query(
       `SELECT id FROM orders
         WHERE id = ? AND assigned_staff_id = ? AND is_deleted = 0`,
       [orderId, req.user.sub]
     );
-    if (!tRows.length) throw httpErr(404, 'Don khong thuoc KTV');
+    if (!tRows.length) throw httpErr(404, 'Đơn không thuộc KTV');
 
     await conn.beginTransaction();
     const [shRows] = await conn.query(
@@ -1431,7 +1780,7 @@ router.post('/inventory/install', async (req, res, next) => {
       [req.user.sub, productId]
     );
     if (!shRows.length || shRows[0].qty < qty) {
-      throw httpErr(409, `Khong du de lap: dang giu ${shRows[0]?.qty || 0}, can ${qty}`);
+      throw httpErr(409, `Không đủ để lắp: đang giữ ${shRows[0]?.qty || 0}, cần ${qty}`);
     }
 
     if (shRows[0].qty === qty) {
@@ -1511,16 +1860,16 @@ router.post('/orders/:id/commission-request', async (req, res, next) => {
     const staffId = req.user.sub;
     const amount  = Math.max(0, Math.round(Number(req.body.amount) || 0));
     const note    = (req.body.note || '').trim().slice(0, 300);
-    if (!amount) return res.status(400).json({ error: 'So tien phai lon hon 0' });
+    if (!amount) return res.status(400).json({ error: 'Số tiền phải lớn hơn 0' });
 
     const [[order]] = await db.query(
       `SELECT id, assigned_staff_id, tech_commission_approved_at
          FROM orders WHERE id = ? AND is_deleted = 0`,
       [orderId]
     );
-    if (!order) return res.status(404).json({ error: 'Khong tim thay don' });
-    if (order.assigned_staff_id !== staffId) return res.status(403).json({ error: 'Khong phai don cua ban' });
-    if (order.tech_commission_approved_at) return res.status(400).json({ error: 'Hoa hong da duoc duyet, khong the sua yeu cau' });
+    if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn' });
+    if (order.assigned_staff_id !== staffId) return res.status(403).json({ error: 'Không phải đơn của bạn' });
+    if (order.tech_commission_approved_at) return res.status(400).json({ error: 'Hoa hồng đã được duyệt, không thể sửa yêu cầu' });
 
     await db.query(
       `UPDATE orders
@@ -1549,9 +1898,9 @@ router.delete('/orders/:id/commission-request', async (req, res, next) => {
          FROM orders WHERE id = ? AND is_deleted = 0`,
       [orderId]
     );
-    if (!order) return res.status(404).json({ error: 'Khong tim thay don' });
-    if (order.assigned_staff_id !== staffId) return res.status(403).json({ error: 'Khong phai don cua ban' });
-    if (order.tech_commission_approved_at) return res.status(400).json({ error: 'Da duyet roi, lien he admin de huy' });
+    if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn' });
+    if (order.assigned_staff_id !== staffId) return res.status(403).json({ error: 'Không phải đơn của bạn' });
+    if (order.tech_commission_approved_at) return res.status(400).json({ error: 'Đã duyệt rồi, liên hệ admin để huỷ' });
 
     await db.query(
       `UPDATE orders
@@ -1626,8 +1975,8 @@ router.post('/remittances', async (req, res, next) => {
     const receiptUrl = req.body.receipt_url || null;
     const note = req.body.note || null;
 
-    if (!collectionIds.length) throw httpErr(400, 'Chon it nhat 1 collection');
-    if (!['cash','transfer'].includes(method)) throw httpErr(400, 'method khong hop le');
+    if (!collectionIds.length) throw httpErr(400, 'Chọn ít nhất 1 collection');
+    if (!['cash','transfer'].includes(method)) throw httpErr(400, 'method không hợp lệ');
 
     const ids = collectionIds.map(Number).filter(Boolean);
     const placeholders = ids.map(() => '?').join(',');
@@ -1638,7 +1987,7 @@ router.post('/remittances', async (req, res, next) => {
       [...ids, req.user.sub]
     );
     if (collections.length !== ids.length) {
-      throw httpErr(400, 'Co collection khong hop le hoac da nop');
+      throw httpErr(400, 'Có collection không hợp lệ hoặc đã nộp');
     }
     const totalCollected = collections.reduce((s, c) => s + Number(c.amount), 0);
 
@@ -1654,12 +2003,12 @@ router.post('/remittances', async (req, res, next) => {
         [...advanceIds, req.user.sub]
       );
       if (advRows.length !== advanceIds.length) {
-        throw httpErr(400, 'Co phieu ung khong hop le hoac da tat toan');
+        throw httpErr(400, 'Có phiếu ứng không hợp lệ hoặc đã tất toán');
       }
       advancesDeducted = advRows.map(a => ({ id: a.id, amount: Number(a.amount), note: a.note, created_at: a.created_at }));
       totalAdvances = advancesDeducted.reduce((s, a) => s + a.amount, 0);
       if (totalAdvances > totalCollected) {
-        throw httpErr(400, 'Tong tien ung khau tru vuot qua tong tien thu ho');
+        throw httpErr(400, 'Tổng tiền ứng khấu trừ vượt quá tổng tiền thu hộ');
       }
     }
 
@@ -1784,7 +2133,7 @@ router.get('/conversations', async (req, res, next) => {
 router.get('/conversations/:id/messages', async (req, res, next) => {
   try {
     const m = await getMembership(db, req.params.id, req.user.sub);
-    if (!m) return res.status(404).json({ error: 'Khong tim thay' });
+    if (!m) return res.status(404).json({ error: 'Không tìm thấy' });
 
     // Neu da bi remove -> chi tra tin <= removed_at
     const where = ['conversation_id = ?'];
@@ -1812,11 +2161,11 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
 router.post('/conversations/:id/messages', async (req, res, next) => {
   try {
     const content = String(req.body.content || '').trim();
-    if (!content) return res.status(400).json({ error: 'Tin nhan rong' });
+    if (!content) return res.status(400).json({ error: 'Tin nhắn rỗng' });
 
     const m = await getMembership(db, req.params.id, req.user.sub);
-    if (!m) return res.status(404).json({ error: 'Khong tim thay' });
-    if (m.removed_at) return res.status(403).json({ error: 'Ban da bi xoa khoi cuoc tro chuyen' });
+    if (!m) return res.status(404).json({ error: 'Không tìm thấy' });
+    if (m.removed_at) return res.status(403).json({ error: 'Bạn đã bị xoá khỏi cuộc trò chuyện' });
 
     const [result] = await db.query(
       `INSERT INTO messages (conversation_id, sender_type, sender_id, content)
@@ -1843,7 +2192,7 @@ router.post('/conversations/:id/messages', async (req, res, next) => {
 router.patch('/conversations/:id/read', async (req, res, next) => {
   try {
     const m = await getMembership(db, req.params.id, req.user.sub);
-    if (!m) return res.status(404).json({ error: 'Khong tim thay' });
+    if (!m) return res.status(404).json({ error: 'Không tìm thấy' });
 
     await db.query(
       `UPDATE messages SET read_at = NOW()
@@ -1924,7 +2273,7 @@ router.get('/staff-issues', async (req, res, next) => {
 router.get('/staff-issues/:id', async (req, res, next) => {
   try {
     const detail = await loadKtvIssueDetail(Number(req.params.id), req.user.sub);
-    if (!detail) return res.status(404).json({ error: 'Khong tim thay phieu cap' });
+    if (!detail) return res.status(404).json({ error: 'Không tìm thấy phiếu cấp' });
     res.json(detail);
   } catch (err) { next(err); }
 });
@@ -1938,17 +2287,17 @@ router.post('/staff-issues/:id/receive', async (req, res, next) => {
     const id = Number(req.params.id);
     const staffId = req.user.sub;
     const photoUrl = req.body && req.body.photo_url ? String(req.body.photo_url).trim() : null;
-    if (!photoUrl) throw httpErr(400, 'Phai upload anh xac nhan');
+    if (!photoUrl) throw httpErr(400, 'Phải upload ảnh xác nhận');
 
     await conn.beginTransaction();
     const [rows] = await conn.query(
       `SELECT id, staff_id, status FROM staff_stock_issues
         WHERE id = ? AND is_deleted = 0 FOR UPDATE`, [id]
     );
-    if (!rows.length) throw httpErr(404, 'Khong tim thay phieu cap');
+    if (!rows.length) throw httpErr(404, 'Không tìm thấy phiếu cấp');
     const head = rows[0];
-    if (head.staff_id !== staffId) throw httpErr(403, 'Khong phai phieu cua ban');
-    if (head.status !== 'approved') throw httpErr(400, 'Chi xac nhan duoc phieu da duyet');
+    if (head.staff_id !== staffId) throw httpErr(403, 'Không phải phiếu của bạn');
+    if (head.status !== 'approved') throw httpErr(400, 'Chỉ xác nhận được phiếu đã duyệt');
 
     await conn.query(
       `UPDATE staff_stock_issues
@@ -1980,7 +2329,7 @@ const ASSET_KIND_CFG = {
 router.get('/customers/:id/assets', async (req, res, next) => {
   try {
     const cid = Number(req.params.id);
-    if (!cid) return res.status(400).json({ error: 'id khong hop le' });
+    if (!cid) return res.status(400).json({ error: 'id không hợp lệ' });
     const [accounts] = await db.query(
       `SELECT id, account_name, note FROM customer_accounts
         WHERE customer_id = ? AND is_deleted = 0 ORDER BY id DESC`, [cid]
@@ -2011,7 +2360,7 @@ router.get('/customers/:id/assets', async (req, res, next) => {
 router.post('/customers/:id/asset-requests/batch', async (req, res, next) => {
   try {
     const cid = Number(req.params.id);
-    if (!cid) return res.status(400).json({ error: 'id khong hop le' });
+    if (!cid) return res.status(400).json({ error: 'id không hợp lệ' });
 
     const changes = Array.isArray(req.body && req.body.changes) ? req.body.changes : [];
     if (!changes.length) return res.json({ ok: true, inserted: 0 });
@@ -2020,18 +2369,18 @@ router.post('/customers/:id/asset-requests/batch', async (req, res, next) => {
     const VALID_KINDS   = ['account', 'vehicle', 'sim'];
     const VALID_ACTIONS = ['add', 'update', 'delete'];
     for (const c of changes) {
-      if (!VALID_KINDS.includes(c.asset_kind))   return res.status(400).json({ error: `asset_kind khong hop le: ${c.asset_kind}` });
-      if (!VALID_ACTIONS.includes(c.action))     return res.status(400).json({ error: `action khong hop le: ${c.action}` });
+      if (!VALID_KINDS.includes(c.asset_kind))   return res.status(400).json({ error: `asset_kind không hợp lệ: ${c.asset_kind}` });
+      if (!VALID_ACTIONS.includes(c.action))     return res.status(400).json({ error: `action không hợp lệ: ${c.action}` });
       if ((c.action === 'add' || c.action === 'update') && !String(c.value || '').trim())
-        return res.status(400).json({ error: 'Thieu gia tri' });
+        return res.status(400).json({ error: 'Thiếu giá trị' });
       if ((c.action === 'update' || c.action === 'delete') && !c.target_id)
-        return res.status(400).json({ error: 'Thieu target_id' });
+        return res.status(400).json({ error: 'Thiếu target_id' });
     }
 
     const [[cust]] = await db.query(
       `SELECT id, full_name FROM customers WHERE id = ? AND is_deleted = 0`, [cid]
     );
-    if (!cust) return res.status(404).json({ error: 'Khong tim thay khach' });
+    if (!cust) return res.status(404).json({ error: 'Không tìm thấy khách' });
 
     const [[autoRow]] = await db.query(
       `SELECT \`value\` FROM app_settings WHERE \`key\` = 'assets.auto_approve'`
@@ -2113,27 +2462,27 @@ router.post('/customers/:id/asset-requests/batch', async (req, res, next) => {
 router.post('/customers/:id/asset-requests', async (req, res, next) => {
   try {
     const cid = Number(req.params.id);
-    if (!cid) return res.status(400).json({ error: 'id khong hop le' });
+    if (!cid) return res.status(400).json({ error: 'id không hợp lệ' });
 
     const kind = req.body && req.body.asset_kind;
     const action = req.body && req.body.action;
-    if (!ASSET_KIND_CFG[kind]) return res.status(400).json({ error: 'asset_kind khong hop le' });
+    if (!ASSET_KIND_CFG[kind]) return res.status(400).json({ error: 'asset_kind không hợp lệ' });
     if (!['add','update','delete'].includes(action)) {
-      return res.status(400).json({ error: 'action khong hop le' });
+      return res.status(400).json({ error: 'action không hợp lệ' });
     }
 
     let value = null;
     if (action === 'add' || action === 'update') {
       const v = String(req.body.value == null ? '' : req.body.value).trim();
-      if (!v) return res.status(400).json({ error: 'Thieu gia tri' });
-      if (v.length > 255) return res.status(400).json({ error: 'Gia tri qua dai' });
-      if (/[<>]/.test(v)) return res.status(400).json({ error: 'Gia tri co ky tu khong hop le' });
+      if (!v) return res.status(400).json({ error: 'Thiếu giá trị' });
+      if (v.length > 255) return res.status(400).json({ error: 'Giá trị quá dài' });
+      if (/[<>]/.test(v)) return res.status(400).json({ error: 'Giá trị có ký tự không hợp lệ' });
       value = v;
     }
     let target_id = null;
     if (action === 'update' || action === 'delete') {
       target_id = Number(req.body.target_id) || null;
-      if (!target_id) return res.status(400).json({ error: 'Thieu target_id' });
+      if (!target_id) return res.status(400).json({ error: 'Thiếu target_id' });
     }
     const note = req.body.note ? String(req.body.note).slice(0, 500) : null;
     const ref_order_id = req.body.ref_order_id ? Number(req.body.ref_order_id) : null;
@@ -2142,7 +2491,7 @@ router.post('/customers/:id/asset-requests', async (req, res, next) => {
     const [cust] = await db.query(
       `SELECT id, full_name FROM customers WHERE id = ? AND is_deleted = 0`, [cid]
     );
-    if (!cust.length) return res.status(404).json({ error: 'Khong tim thay khach' });
+    if (!cust.length) return res.status(404).json({ error: 'Không tìm thấy khách' });
 
     // Kiem tra che do tu dong duyet
     const [[autoRow]] = await db.query(
@@ -2195,13 +2544,13 @@ router.post('/customers/:id/asset-requests', async (req, res, next) => {
 
     // Luon thong bao admin — du tu dong hay thu cong
     try {
-      const labels = { account: 'tai khoan', vehicle: 'bien so', sim: 'so SIM' };
-      const actLabels = { add: 'them', update: 'sua', delete: 'xoa' };
+      const labels = { account: 'tài khoản', vehicle: 'biển số', sim: 'số SIM' };
+      const actLabels = { add: 'thêm', update: 'sửa', delete: 'xoá' };
       const prefix = autoApprove ? '[Tự động] ' : '';
       await notify.create(db, {
         type: 'customer_asset_request',
-        title: `${prefix}KTV de xuat ${actLabels[action]} ${labels[kind]}`,
-        message: `${cust[0].full_name}: ${value || '(xoa muc)'}${note ? ' — ' + note : ''}`,
+        title: `${prefix}KTV đề xuất ${actLabels[action]} ${labels[kind]}`,
+        message: `${cust[0].full_name}: ${value || '(xoá mục)'}${note ? ' — ' + note : ''}`,
         link_url: `/admin/customers.html?customer_id=${cid}&tab=requests`,
         ref_customer_id: cid,
         ref_staff_id: req.user.sub,
@@ -2249,13 +2598,13 @@ router.post('/advances', async (req, res, next) => {
       const now = new Date();
       period = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
     } else if (!/^\d{4}-\d{2}$/.test(period)) {
-      return res.status(400).json({ error: 'period sai dinh dang YYYY-MM' });
+      return res.status(400).json({ error: 'period sai định dạng YYYY-MM' });
     }
 
     const amount              = Math.max(0, Math.round(Number(req.body.amount) || 0));
     const note                = String(req.body.note || '').trim().slice(0, 300);
     const deductFromCollection = req.body.deduct_from_collection ? 1 : 0;
-    if (!amount) return res.status(400).json({ error: 'So tien ung phai lon hon 0' });
+    if (!amount) return res.status(400).json({ error: 'Số tiền ứng phải lớn hơn 0' });
 
     // Neu KTV chon tru vao thu ho: kiem tra co du tien thu ho chua
     if (deductFromCollection) {
@@ -2266,7 +2615,7 @@ router.post('/advances', async (req, res, next) => {
       );
       if (Number(colSum[0].total) < amount) {
         return res.status(400).json({
-          error: `Tien thu ho chua nop (${Number(colSum[0].total).toLocaleString('vi-VN')}đ) khong du de tru ${amount.toLocaleString('vi-VN')}đ`,
+          error: `Tiền thu hộ chưa nộp (${Number(colSum[0].total).toLocaleString('vi-VN')}đ) không đủ để trừ ${amount.toLocaleString('vi-VN')}đ`,
         });
       }
     }
@@ -2278,7 +2627,7 @@ router.post('/advances', async (req, res, next) => {
         LIMIT 1`,
       [staffId]
     );
-    if (snap.length) return res.status(409).json({ error: 'Ngay hom nay thuoc ky luong da chot, khong the gui yeu cau ung' });
+    if (snap.length) return res.status(409).json({ error: 'Ngày hôm nay thuộc kỳ lương đã chốt, không thể gửi yêu cầu ứng' });
 
     const [[staffRow]] = await db.query('SELECT full_name FROM staff WHERE id = ?', [staffId]);
     const staffName = staffRow?.full_name || `#${staffId}`;

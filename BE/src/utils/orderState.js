@@ -94,17 +94,17 @@ function isTerminalStatus(_steps, status) {
 // Validate chuyen trang thai. Tra ve { ok, error?, step? }
 function validateTransition(steps, currentStatus, targetStatus, role) {
   if (!ORDER_STATUSES.includes(targetStatus)) {
-    return { ok: false, error: `Trang thai "${targetStatus}" khong hop le` };
+    return { ok: false, error: `Trạng thái "${targetStatus}" không hợp lệ` };
   }
   const allowed = ALLOWED_TRANSITIONS[currentStatus] || [];
   if (!allowed.includes(targetStatus)) {
-    return { ok: false, error: `Khong the chuyen tu "${currentStatus}" sang "${targetStatus}"` };
+    return { ok: false, error: `Không thể chuyển từ "${currentStatus}" sang "${targetStatus}"` };
   }
   // Role check (admin bypass)
   if (role !== 'admin') {
     const roles = STATUS_ROLES[targetStatus] || [];
     if (!roles.includes(role)) {
-      return { ok: false, error: `Vai tro "${role}" khong duoc chuyen sang "${targetStatus}"` };
+      return { ok: false, error: `Vai trò "${role}" không được chuyển sang "${targetStatus}"` };
     }
   }
   const step = steps ? steps.find(s => s.code === targetStatus) : null;
@@ -213,7 +213,7 @@ async function recalcPaymentStatus(conn, orderId) {
   // Chi don da hoan thanh (status='done') moi duoc tag 'customer_owes'.
   // Don confirmed/in_progress chua chot don, khach tra thieu chi la 'partial'/'unpaid'.
   let next;
-  if (total <= 0 && paid <= 0)  next = 'unpaid';
+  if (total <= 0)               next = 'paid';
   else if (effective < total && o.status === 'done') next = 'customer_owes';
   else if (adminPending > 0)    next = 'pending_admin_confirm';
   else if (unremitted > 0)      next = 'staff_owes';
@@ -262,7 +262,7 @@ async function insertOrderWithRetry(conn, fn) {
       throw e;
     }
   }
-  throw new Error('Khong sinh duoc ma don sau nhieu lan thu');
+  throw new Error('Không sinh được mã đơn sau nhiều lần thử');
 }
 
 module.exports = {

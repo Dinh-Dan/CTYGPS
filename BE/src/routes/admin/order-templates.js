@@ -71,7 +71,7 @@ router.get('/:id', async (req, res, next) => {
         WHERE id = ? AND is_deleted = 0`,
       [id]
     );
-    if (!tRows.length) return res.status(404).json({ error: 'Khong tim thay loai don' });
+    if (!tRows.length) return res.status(404).json({ error: 'Không tìm thấy loại đơn' });
 
     // Steps gio global — tra ve toan bo workflow steps non-system.
     const [steps] = await db.query(
@@ -96,7 +96,7 @@ router.get('/:id', async (req, res, next) => {
 // ---- Tu mig 053: 5 loai cong viec co dinh, khong cho admin tao/sua/xoa.
 // Cac route POST/PUT/DELETE deu tra 410 Gone.
 const _tplGone = (req, res) => res.status(410).json({
-  error: 'Loai cong viec co dinh tu mig 053. Khong duoc tao/sua/xoa.'
+  error: 'Loại công việc cố định từ mig 053. Không được tạo/sửa/xoá.'
 });
 router.post  ('/',     _tplGone);
 router.put   ('/:id',  _tplGone);
@@ -107,7 +107,7 @@ router.delete('/:id',  _tplGone);
 // 4 route duoi tra 410 Gone — FE nen dung /api/admin/workflow-steps.
 // ============================================================
 const _stepsGone = (req, res) => res.status(410).json({
-  error: 'Workflow steps gio chung cho moi don, khong gan template. Dung /api/admin/workflow-steps.'
+  error: 'Workflow steps giờ chung cho mọi đơn, không gắn template. Dùng /api/admin/workflow-steps.'
 });
 router.post  ('/:id/steps',           _stepsGone);
 router.put   ('/:id/steps/:stepId',   _stepsGone);
@@ -131,7 +131,7 @@ async function ensureTemplateExists(id) {
 
 // ---- Tu mig 053: fields cung — khong cho admin tao/sua/xoa.
 const _fieldGone = (req, res) => res.status(410).json({
-  error: 'Fields cua loai cong viec co dinh tu mig 053. Khong duoc tao/sua/xoa.'
+  error: 'Fields của loại công việc cố định từ mig 053. Không được tạo/sửa/xoá.'
 });
 router.post  ('/:id/fields',                 _fieldGone);
 router.put   ('/:id/fields/:fieldId',        _fieldGone);

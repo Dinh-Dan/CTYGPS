@@ -141,7 +141,7 @@
   // ==== INIT ===================================================
   const _u = (window.auth && auth.user && auth.user()) || null;
   if (_u && _u.role && _u.role !== 'admin') {
-    if (window.ui && ui.toast) ui.toast('Chi admin moi truy cap duoc Cai dat', 'error');
+    if (window.ui && ui.toast) ui.toast('Chỉ admin mới truy cập được Cài đặt', 'error');
     location.href = '/admin/';
     return;
   }

@@ -29,7 +29,7 @@ function pickPayload(body, { isUpdate = false } = {}) {
 
   if (body.type !== undefined) {
     if (!TYPES.includes(body.type)) {
-      throw httpErr(400, 'type phai la "retail" hoac "dealer"');
+      throw httpErr(400, 'type phải là "retail" hoặc "dealer"');
     }
     out.type = body.type;
   }
@@ -57,7 +57,7 @@ function pickPayload(body, { isUpdate = false } = {}) {
   }
 
   if (!isUpdate) {
-    if (!out.full_name) throw httpErr(400, 'Thieu full_name');
+    if (!out.full_name) throw httpErr(400, 'Thiếu full_name');
     if (!out.type)      out.type = 'retail';
   }
 
@@ -194,7 +194,7 @@ router.get('/:id', async (req, res, next) => {
       `SELECT * FROM customers WHERE id = ? AND is_deleted = 0`,
       [req.params.id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay khach hang' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy khách hàng' });
 
     // Auto mark seen
     if (rows[0].seen_at == null) {
@@ -223,7 +223,7 @@ async function generateCustomerCode(type) {
     );
     if (!rows.length) return code;
   }
-  throw httpErr(500, 'Khong sinh duoc ma khach hang');
+  throw httpErr(500, 'Không sinh được mã khách hàng');
 }
 
 // Chuan hoa SDT giong auth.js (bo space/.-) de check trung
@@ -243,7 +243,7 @@ async function ensurePhoneUnique(phone, excludeId = null) {
   if (excludeId) { sql += ' AND id <> ?'; params.push(excludeId); }
   const [rows] = await db.query(sql + ' LIMIT 1', params);
   if (rows.length) {
-    throw httpErr(409, 'So dien thoai da duoc su dung boi khach hang khac');
+    throw httpErr(409, 'Số điện thoại đã được sử dụng bởi khách hàng khác');
   }
 }
 
@@ -268,7 +268,7 @@ router.post('/', async (req, res, next) => {
       `SELECT id FROM customers WHERE code = ? AND is_deleted = 0 LIMIT 1`,
       [data.code]
     );
-    if (dup.length) return res.status(409).json({ error: 'Ma khach hang da ton tai' });
+    if (dup.length) return res.status(409).json({ error: 'Mã khách hàng đã tồn tại' });
 
     await ensurePhoneUnique(data.phone);
 
@@ -293,7 +293,7 @@ router.put('/:id', async (req, res, next) => {
     const [exist] = await db.query(
       `SELECT id, type FROM customers WHERE id = ? AND is_deleted = 0`, [id]
     );
-    if (!exist.length) return res.status(404).json({ error: 'Khong tim thay khach hang' });
+    if (!exist.length) return res.status(404).json({ error: 'Không tìm thấy khách hàng' });
 
     // Neu khong gui type thi giu nguyen type cu (de pickPayload xu ly dung nhanh retail-reset)
     const body = { ...req.body };
@@ -307,14 +307,14 @@ router.put('/:id', async (req, res, next) => {
         `SELECT id FROM customers WHERE code = ? AND id <> ? AND is_deleted = 0 LIMIT 1`,
         [data.code, id]
       );
-      if (dup.length) return res.status(409).json({ error: 'Ma khach hang da ton tai' });
+      if (dup.length) return res.status(409).json({ error: 'Mã khách hàng đã tồn tại' });
     }
     if (data.phone !== undefined) {
       await ensurePhoneUnique(data.phone, id);
     }
 
     const cols = Object.keys(data);
-    if (!cols.length) return res.status(400).json({ error: 'Khong co truong nao de cap nhat' });
+    if (!cols.length) return res.status(400).json({ error: 'Không có trường nào để cập nhật' });
 
     const setSql = cols.map(c => `${c} = ?`).join(', ');
     const values = cols.map(c => data[c]);
@@ -333,16 +333,16 @@ router.post('/:id/password', adminOnly, async (req, res, next) => {
   try {
     const password = String(req.body.password || '');
     if (password.length < 4) {
-      return res.status(400).json({ error: 'Mat khau phai it nhat 4 ky tu' });
+      return res.status(400).json({ error: 'Mật khẩu phải ít nhất 4 ký tự' });
     }
 
     const [rows] = await db.query(
       `SELECT id, type FROM customers WHERE id = ? AND is_deleted = 0`,
       [req.params.id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay khach hang' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy khách hàng' });
     if (rows[0].type !== 'dealer') {
-      return res.status(400).json({ error: 'Chi dai ly moi co mat khau' });
+      return res.status(400).json({ error: 'Chỉ đại lý mới có mật khẩu' });
     }
 
     const hash = await bcrypt.hash(password, 10);
@@ -358,7 +358,7 @@ router.delete('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
       `UPDATE customers SET is_deleted = 1 WHERE id = ? AND is_deleted = 0`,
       [req.params.id]
     );
-    if (!result.affectedRows) return res.status(404).json({ error: 'Khong tim thay khach hang' });
+    if (!result.affectedRows) return res.status(404).json({ error: 'Không tìm thấy khách hàng' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -372,8 +372,8 @@ router.get('/:id/end-customers', async (req, res, next) => {
     const [chk] = await db.query(
       `SELECT id, type FROM customers WHERE id = ? AND is_deleted = 0`, [dealerId]
     );
-    if (!chk.length) return res.status(404).json({ error: 'Khong tim thay khach hang' });
-    if (chk[0].type !== 'dealer') return res.status(400).json({ error: 'Khach nay khong phai dai ly' });
+    if (!chk.length) return res.status(404).json({ error: 'Không tìm thấy khách hàng' });
+    if (chk[0].type !== 'dealer') return res.status(400).json({ error: 'Khách này không phải đại lý' });
 
     // Lay distinct khach dau cuoi + thong tin don gan nhat
     // gom khach duoc tao voi parent_id = dealerId HOAC khach co don hang (end_customer_id)

@@ -27,8 +27,8 @@ function pickPayload(body, { isUpdate = false } = {}) {
   if (body.description !== undefined)     out.description = body.description ? String(body.description) : null;
 
   if (!isUpdate) {
-    if (!out.code) throw httpErr(400, 'Thieu ma thiet bi');
-    if (!out.name) throw httpErr(400, 'Thieu ten san pham');
+    if (!out.code) throw httpErr(400, 'Thiếu mã thiết bị');
+    if (!out.name) throw httpErr(400, 'Thiếu tên sản phẩm');
   }
   return out;
 }
@@ -148,7 +148,7 @@ router.get('/:id', async (req, res, next) => {
         WHERE p.id = ? AND p.is_deleted = 0`,
       [req.params.id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay san pham' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy sản phẩm' });
 
     const [prices] = await db.query(
       `SELECT pp.id, pp.tier_id, pt.code AS tier_code, pt.name AS tier_name,
@@ -189,7 +189,7 @@ router.post('/', adminOnly, async (req, res, next) => {
     );
     if (dup.length) {
       await conn.rollback();
-      return res.status(409).json({ error: 'Ma thiet bi da ton tai' });
+      return res.status(409).json({ error: 'Mã thiết bị đã tồn tại' });
     }
 
     const cols = Object.keys(data);
@@ -251,7 +251,7 @@ router.put('/:id', adminOnly, async (req, res, next) => {
     );
     if (!exist.length) {
       await conn.rollback();
-      return res.status(404).json({ error: 'Khong tim thay san pham' });
+      return res.status(404).json({ error: 'Không tìm thấy sản phẩm' });
     }
 
     if (data.code) {
@@ -261,7 +261,7 @@ router.put('/:id', adminOnly, async (req, res, next) => {
       );
       if (dup.length) {
         await conn.rollback();
-        return res.status(409).json({ error: 'Ma thiet bi da ton tai' });
+        return res.status(409).json({ error: 'Mã thiết bị đã tồn tại' });
       }
     }
 
@@ -349,21 +349,21 @@ router.put('/:id/customer-prices', adminOnly, async (req, res, next) => {
     const customerId = Number(req.body.customer_id);
     const price = Number(req.body.price);
 
-    if (!customerId) return res.status(400).json({ error: 'Thieu customer_id' });
-    if (!Number.isFinite(price) || price < 0) return res.status(400).json({ error: 'Gia khong hop le' });
+    if (!customerId) return res.status(400).json({ error: 'Thiếu customer_id' });
+    if (!Number.isFinite(price) || price < 0) return res.status(400).json({ error: 'Giá không hợp lệ' });
 
     const [c] = await db.query(
       `SELECT id, type FROM customers WHERE id = ? AND is_deleted = 0`, [customerId]
     );
-    if (!c.length) return res.status(404).json({ error: 'Khach hang khong ton tai' });
+    if (!c.length) return res.status(404).json({ error: 'Khách hàng không tồn tại' });
     if (c[0].type !== 'dealer') {
-      return res.status(400).json({ error: 'Chi gan gia rieng cho dai ly' });
+      return res.status(400).json({ error: 'Chỉ gán giá riêng cho đại lý' });
     }
 
     const [p] = await db.query(
       `SELECT id FROM products WHERE id = ? AND is_deleted = 0`, [productId]
     );
-    if (!p.length) return res.status(404).json({ error: 'San pham khong ton tai' });
+    if (!p.length) return res.status(404).json({ error: 'Sản phẩm không tồn tại' });
 
     await db.query(
       `INSERT INTO customer_product_prices (customer_id, product_id, price)
@@ -383,7 +383,7 @@ router.delete('/:id/customer-prices/:customerId', adminOnly, async (req, res, ne
       `DELETE FROM customer_product_prices WHERE product_id = ? AND customer_id = ?`,
       [req.params.id, req.params.customerId]
     );
-    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay gia rieng' });
+    if (!r.affectedRows) return res.status(404).json({ error: 'Không tìm thấy giá riêng' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -397,7 +397,7 @@ router.delete('/:id', adminOnly, async (req, res, next) => {
       `UPDATE products SET is_deleted = 1 WHERE id = ? AND is_deleted = 0`,
       [req.params.id]
     );
-    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay san pham' });
+    if (!r.affectedRows) return res.status(404).json({ error: 'Không tìm thấy sản phẩm' });
 
     const [linked] = await db.query(
       `SELECT
@@ -412,7 +412,7 @@ router.delete('/:id', adminOnly, async (req, res, next) => {
     const total = stock + held + pool;
 
     const warning = total > 0
-      ? `San pham da bi an khoi danh sach, nhung con ${total} don vi ton dong (kho ${stock}, KTV giu ${held}, cho nhan ${pool}). Vui long don dep o trang kho.`
+      ? `Sản phẩm đã bị ẩn khỏi danh sách, nhưng còn ${total} đơn vị tồn đọng (kho ${stock}, KTV giữ ${held}, chờ nhận ${pool}). Vui lòng dọn dẹp ở trang kho.`
       : null;
 
     res.json({ ok: true, warning, leftover: { stock, held, pool } });

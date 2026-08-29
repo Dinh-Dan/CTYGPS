@@ -516,8 +516,17 @@
       - ta
       + (d.carried_debt || 0);
 
-    const advTxt = ta > 0 ? `\nTrừ ứng lương: ${fmtMoney(ta)} đ` : '';
-    if (!await ui.confirm(`Quyết toán kỳ lương ${fmtDate(d.from_date)} → ${fmtDate(d.to_date)}?\n\n${d.rows.length} đơn hàng sẽ được kết sổ.${advTxt}\n\nThực nhận: ${fmtMoney(gross)} đ`)) return;
+    const advTxt = ta > 0 ? `<div>Trừ ứng lương: <b>${fmtMoney(ta)} đ</b></div>` : '';
+    const ok = await ui.confirm({
+      title: 'Quyết toán kỳ lương',
+      body: `
+        <div>Kỳ lương <b>${fmtDate(d.from_date)} → ${fmtDate(d.to_date)}</b></div>
+        <div><b>${d.rows.length}</b> đơn hàng sẽ được kết sổ.</div>
+        ${advTxt}
+        <div style="margin-top:8px">Thực nhận: <b>${fmtMoney(gross)} đ</b></div>`,
+      okText: 'Quyết toán',
+    });
+    if (!ok) return;
 
     const btn = $('btnFinalize');
     btn.disabled = true; btn.textContent = 'Đang xử lý...';
@@ -582,7 +591,7 @@
   }
 
   async function approveAdvance(advId) {
-    if (!await ui.confirm('Duyệt yêu cầu ứng lương này? Phiếu ứng sẽ được tạo và tính vào lương kỳ này.')) return;
+    if (!await ui.confirm({ message: 'Duyệt yêu cầu ứng lương này? Phiếu ứng sẽ được tạo và tính vào lương kỳ này.' })) return;
     try {
       await api.patch(`/admin/staff/${S.staffId}/advances/${advId}/approve`, {});
       ui.toast('Đã duyệt — phiếu ứng lương đã được tạo', 'success');
@@ -605,7 +614,7 @@
   }
 
   async function deleteAdvance(advId) {
-    if (!await ui.confirm('Xóa phiếu ứng lương này?')) return;
+    if (!await ui.confirm({ message: 'Xóa phiếu ứng lương này?' })) return;
     try {
       await api.delete(`/admin/staff/${S.staffId}/advance/${advId}`);
       ui.toast('Đã xóa', 'success');
@@ -859,7 +868,7 @@
   }
 
   async function deleteSlip(slipId) {
-    if (!await ui.confirm('Xóa phiếu lương này? Các đơn hàng và ứng lương sẽ được giải phóng ra kỳ mới.')) return;
+    if (!await ui.confirm({ message: 'Xóa phiếu lương này? Các đơn hàng và ứng lương sẽ được giải phóng ra kỳ mới.' })) return;
     try {
       await api.delete(`/admin/staff/${S.staffId}/payslip/${slipId}`);
       ui.toast('Đã xóa phiếu', 'success');

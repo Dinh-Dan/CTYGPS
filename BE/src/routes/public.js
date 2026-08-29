@@ -144,7 +144,7 @@ router.get('/products/:id', async (req, res, next) => {
 router.get('/orders/:code', async (req, res, next) => {
   try {
     const code = String(req.params.code || '').trim();
-    if (!code) return res.status(400).json({ error: 'Thieu ma don' });
+    if (!code) return res.status(400).json({ error: 'Thiếu mã đơn' });
 
     const [orderRows] = await db.query(
       `SELECT o.id, o.code, o.status, o.payment_status,
@@ -160,7 +160,7 @@ router.get('/orders/:code', async (req, res, next) => {
         WHERE o.code = ? AND o.is_deleted = 0`,
       [code]
     );
-    if (!orderRows.length) return res.status(404).json({ error: 'Khong tim thay don' });
+    if (!orderRows.length) return res.status(404).json({ error: 'Không tìm thấy đơn' });
     const order = orderRows[0];
 
     const [items] = await db.query(
@@ -208,7 +208,7 @@ router.get('/orders/:code', async (req, res, next) => {
 router.get('/invoice/:code', async (req, res, next) => {
   try {
     const code = String(req.params.code || '').trim();
-    if (!code) return res.status(400).json({ error: 'Thieu ma don' });
+    if (!code) return res.status(400).json({ error: 'Thiếu mã đơn' });
 
     const [orderRows] = await db.query(
       `SELECT o.id, o.code, o.status, o.progress_note, o.payment_status,
@@ -225,7 +225,7 @@ router.get('/invoice/:code', async (req, res, next) => {
         WHERE o.code = ? AND o.is_deleted = 0`,
       [code]
     );
-    if (!orderRows.length) return res.status(404).json({ error: 'Khong tim thay don' });
+    if (!orderRows.length) return res.status(404).json({ error: 'Không tìm thấy đơn' });
     const order = orderRows[0];
 
     const [lines] = await db.query(
@@ -306,7 +306,7 @@ router.get('/debts/:customer_id/settle-preview', async (req, res, next) => {
   try {
     const customerId = Number(req.params.customer_id);
     if (!Number.isFinite(customerId) || customerId <= 0) {
-      return res.status(400).json({ error: 'customer_id khong hop le' });
+      return res.status(400).json({ error: 'customer_id không hợp lệ' });
     }
 
     const [custRows] = await db.query(
@@ -315,7 +315,7 @@ router.get('/debts/:customer_id/settle-preview', async (req, res, next) => {
          FROM customers WHERE id = ? AND is_deleted = 0`,
       [customerId]
     );
-    if (!custRows.length) return res.status(404).json({ error: 'Khong tim thay khach hang' });
+    if (!custRows.length) return res.status(404).json({ error: 'Không tìm thấy khách hàng' });
 
     const dateFrom = req.query.date_from || null; // 'YYYY-MM-DD'
     const dateTo   = req.query.date_to   || null;

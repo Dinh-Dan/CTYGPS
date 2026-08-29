@@ -94,7 +94,7 @@
           </div>
           <div>
             <div class="kc-stat-n ${hold ? 'hi' : 'dim'}">${hold}</div>
-            <div class="kc-stat-l">Tam giữ</div>
+            <div class="kc-stat-l">Tạm giữ</div>
           </div>
         </div>
 
@@ -927,9 +927,6 @@
     // Add staff
     if (!CAN_MANAGE && $('btnAdd')) $('btnAdd').style.display = 'none';
     if ($('btnAdd')) $('btnAdd').addEventListener('click', () => openModal(null));
-
-    // Quick action "Thêm nhân sự"
-    $('qaAddStaff').addEventListener('click', () => openModal(null));
 
     // Pending advances badge
     if (IS_ADMIN) {

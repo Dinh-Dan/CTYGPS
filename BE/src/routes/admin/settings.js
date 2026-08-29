@@ -43,7 +43,7 @@ router.put('/', adminOnly, async (req, res, next) => {
     const key = String(req.body.key || '').trim();
     const value = req.body.value == null ? '' : String(req.body.value);
     if (!isAllowedKey(key)) {
-      return res.status(400).json({ error: `Key khong hop le hoac khong duoc phep: ${key}` });
+      return res.status(400).json({ error: `Key không hợp lệ hoặc không được phép: ${key}` });
     }
     await db.query(
       `INSERT INTO app_settings (\`key\`, \`value\`, changed_by)
@@ -59,10 +59,10 @@ router.put('/bulk', adminOnly, async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const items = Array.isArray(req.body.items) ? req.body.items : [];
-    if (!items.length) return res.status(400).json({ error: 'items rong' });
+    if (!items.length) return res.status(400).json({ error: 'items rỗng' });
     for (const it of items) {
       if (!isAllowedKey(it.key)) {
-        return res.status(400).json({ error: `Key khong hop le: ${it.key}` });
+        return res.status(400).json({ error: `Key không hợp lệ: ${it.key}` });
       }
     }
     await conn.beginTransaction();

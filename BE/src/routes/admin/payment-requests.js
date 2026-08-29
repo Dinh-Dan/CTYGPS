@@ -50,7 +50,18 @@ async function appendOrderNoteForReceipt(conn, orderId, note, username) {
   const line = `[${ts} - ${actor}] ${note}`;
   try {
     await conn.query(
-      `UPDATE orders SET progress_note = CONCAT(COALESCE(progress_note, ''), ?, '\n') WHERE id = ?`,
+      `UPDATE orders
+          SET progress_note = CONCAT(
+            COALESCE(progress_note, ''),
+            CASE
+              WHEN progress_note IS NULL OR progress_note = '' OR RIGHT(progress_note, 1) = '\n'
+                THEN ''
+              ELSE '\n'
+            END,
+            ?,
+            '\n'
+          )
+        WHERE id = ?`,
       [line, orderId]
     );
   } catch (_) {}
@@ -98,7 +109,7 @@ router.get('/receipts/:id', staffAllowed, async (req, res, next) => {
         WHERE r.id = ? AND r.is_deleted = 0`,
       [id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay hoa don' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy hóa đơn' });
 
     const row = rows[0];
     const qrSlot = row.qr_slot || 1;
@@ -150,7 +161,7 @@ router.post('/', staffAllowed, async (req, res, next) => {
 
     if (!customer_id || !Array.isArray(order_ids)) {
       conn.release();
-      return res.status(400).json({ error: 'Du lieu khong hop le' });
+      return res.status(400).json({ error: 'Dữ liệu không hợp lệ' });
     }
 
     const parsedQrSlot = qr_slot ? Math.min(5, Math.max(1, Number(qr_slot))) : null;
@@ -184,7 +195,7 @@ router.post('/', staffAllowed, async (req, res, next) => {
     if (!custRows.length) {
       await conn.rollback();
       conn.release();
-      return res.status(404).json({ error: 'Khong tim thay khach hang' });
+      return res.status(404).json({ error: 'Không tìm thấy khách hàng' });
     }
     const openingBalValue = Number(custRows[0].opening_balance) || 0;
 
@@ -240,7 +251,7 @@ router.post('/', staffAllowed, async (req, res, next) => {
     if (totalAmount <= 0) {
       await conn.rollback();
       conn.release();
-      return res.status(400).json({ error: 'Tong tien yeu cau thanh toan phai > 0' });
+      return res.status(400).json({ error: 'Tổng tiền yêu cầu thanh toán phải > 0' });
     }
 
     // Sinh code YC-DDMM-NNN
@@ -261,7 +272,7 @@ router.post('/', staffAllowed, async (req, res, next) => {
         if (e.code !== 'ER_DUP_ENTRY') throw e;
       }
     }
-    if (!insRes) throw new Error('Khong sinh duoc ma phieu sau nhieu lan thu');
+    if (!insRes) throw new Error('Không sinh được mã phiếu sau nhiều lần thử');
     const requestId = insRes.insertId;
 
     // Insert items
@@ -421,7 +432,7 @@ router.get('/:id', staffAllowed, async (req, res, next) => {
         WHERE pr.id = ? AND pr.is_deleted = 0`,
       [id]
     );
-    if (!prRows.length) return res.status(404).json({ error: 'Khong tim thay phieu yeu cau' });
+    if (!prRows.length) return res.status(404).json({ error: 'Không tìm thấy phiếu yêu cầu' });
 
     const pr = prRows[0];
 
@@ -603,7 +614,7 @@ router.post('/:id/pay', adminOnly, async (req, res, next) => {
 
     if (amountPaid <= 0) {
       conn.release();
-      return res.status(400).json({ error: 'So tien thanh toan phai > 0' });
+      return res.status(400).json({ error: 'Số tiền thanh toán phải > 0' });
     }
 
     await conn.beginTransaction();
@@ -615,14 +626,14 @@ router.post('/:id/pay', adminOnly, async (req, res, next) => {
     if (!prRows.length) {
       await conn.rollback();
       conn.release();
-      return res.status(404).json({ error: 'Khong tim thay phieu yeu cau' });
+      return res.status(404).json({ error: 'Không tìm thấy phiếu yêu cầu' });
     }
 
     const pr = prRows[0];
     if (pr.status === 'paid' || pr.status === 'cancelled') {
       await conn.rollback();
       conn.release();
-      return res.status(400).json({ error: 'Phieu nay da dong, khong the them thanh toan' });
+      return res.status(400).json({ error: 'Phiếu này đã đóng, không thể thêm thanh toán' });
     }
 
     // Sinh code HD-
@@ -642,7 +653,7 @@ router.post('/:id/pay', adminOnly, async (req, res, next) => {
         if (e.code !== 'ER_DUP_ENTRY') throw e;
       }
     }
-    if (!insReceipt) throw new Error('Khong sinh duoc ma hoa don sau nhieu lan thu');
+    if (!insReceipt) throw new Error('Không sinh được mã hóa đơn sau nhiều lần thử');
     const receiptId = insReceipt.insertId;
 
     // Cap nhat paid_amount, remaining, status tren phieu
@@ -743,24 +754,24 @@ router.post('/:id/cancel', staffAllowed, async (req, res, next) => {
     if (!prRows.length) {
       await conn.rollback();
       conn.release();
-      return res.status(404).json({ error: 'Khong tim thay phieu yeu cau' });
+      return res.status(404).json({ error: 'Không tìm thấy phiếu yêu cầu' });
     }
 
     const pr = prRows[0];
     if (pr.status === 'paid') {
       await conn.rollback();
       conn.release();
-      return res.status(400).json({ error: 'Khong the huy phieu da thanh toan day du' });
+      return res.status(400).json({ error: 'Không thể huỷ phiếu đã thanh toán đầy đủ' });
     }
     if (pr.status === 'superseded') {
       await conn.rollback();
       conn.release();
-      return res.status(400).json({ error: 'Phieu nay da bi thay the boi phieu moi, khong the huy' });
+      return res.status(400).json({ error: 'Phiếu này đã bị thay thế bởi phiếu mới, không thể huỷ' });
     }
     if (Number(pr.paid_amount) > 0) {
       await conn.rollback();
       conn.release();
-      return res.status(400).json({ error: 'Khong the huy phieu da nhan tien mot phan. Lien he admin de xu ly.' });
+      return res.status(400).json({ error: 'Không thể huỷ phiếu đã nhận tiền một phần. Liên hệ admin để xử lý.' });
     }
 
     // Phieu chua nhan tien (paid_amount = 0): hoan nguyen toan bo state

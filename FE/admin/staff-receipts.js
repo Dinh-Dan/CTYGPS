@@ -5,6 +5,18 @@
   const $ = id => document.getElementById(id);
   const fmtN = new Intl.NumberFormat('vi-VN');
   const fmt = n => fmtN.format(Number(n) || 0);
+  function toInputDate(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  function getDefaultDateRange() {
+    const to = new Date();
+    const from = new Date(to);
+    from.setDate(from.getDate() - 7);
+    return { from: toInputDate(from), to: toInputDate(to) };
+  }
 
   function fmtDateTime(d) {
     if (!d) return '—';
@@ -26,7 +38,9 @@
 
   function getFilters() {
     return {
+      search:    $('filterSearch').value.trim(),
       reviewed:  $('filterReviewed').value,
+      status:    $('filterStatus').value,
       staff_id:  $('filterStaff').value,
       date_from: $('filterFrom').value,
       date_to:   $('filterTo').value,
@@ -36,7 +50,10 @@
   async function load() {
     const f = getFilters();
     const params = new URLSearchParams({ page: state.page, limit: state.limit });
-    if (f.reviewed !== '')  params.set('reviewed',  f.reviewed);
+    if (f.search)           params.set('search',    f.search);
+    // Phieu da huy luon co reviewed=0 -> bo qua loc "da soat/chua soat" cho de xem
+    if (f.reviewed !== '' && f.status !== 'cancelled') params.set('reviewed', f.reviewed);
+    if (f.status)           params.set('status',    f.status);
     if (f.staff_id)         params.set('staff_id',  f.staff_id);
     if (f.date_from)        params.set('date_from', f.date_from);
     if (f.date_to)          params.set('date_to',   f.date_to);
@@ -48,11 +65,11 @@
     state.total = data.total;
 
     renderSummary(data);
-    renderTable(data.rows);
+    renderTableV2(data.rows);
     renderPagination(data.total, data.page, data.limit);
 
     // Hien nut "Doi soat tat ca" neu co ban ghi chua kiem tra
-    $('btnReviewAll').style.display = (f.reviewed === '0' && data.rows.length > 0) ? '' : 'none';
+    $('btnReviewAll').style.display = (f.reviewed === '0' && data.rows.some(r => r.status !== 'cancelled')) ? '' : 'none';
   }
 
   function renderSummary(data) {
@@ -74,6 +91,37 @@
     `;
   }
 
+  function ensureCompactLayout() {
+    const table = document.querySelector('.sr-table');
+    const headRow = table && table.querySelector('thead tr');
+    if (headRow && !headRow.dataset.compactDone) {
+      const heads = headRow.querySelectorAll('th');
+      if (heads[0]) heads[0].textContent = 'Mã NNT';
+      if (heads[1]) heads[1].remove();
+      if (heads[5]) heads[5].textContent = 'Số tiền / HT';
+      if (heads[6]) heads[6].remove();
+      headRow.dataset.compactDone = '1';
+    }
+
+    const modalBox = $('imgModal')?.firstElementChild;
+    const oldImg = $('imgModalSrc');
+    if (modalBox && oldImg) {
+      modalBox.style.maxWidth = '90vw';
+      modalBox.style.maxHeight = '90vh';
+      modalBox.style.background = '#000';
+      modalBox.style.borderRadius = '10px';
+      modalBox.style.overflow = 'hidden';
+      oldImg.style.maxWidth = '90vw';
+      oldImg.style.maxHeight = '85vh';
+      oldImg.style.display = 'block';
+    }
+
+    const body = $('imgModalBody');
+    if (body) {
+      body.remove();
+    }
+  }
+
   function renderTable(rows) {
     if (!rows.length) {
       $('srTbody').innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;color:#94a3b8">Không có dữ liệu</td></tr>`;
@@ -87,8 +135,9 @@
           ? `<button class="ref-link" style="background:none;border:none;padding:0;cursor:pointer;font-size:inherit" data-order-id="${r.order_id}">${esc(r.order_code || 'ORD-...')}</button>`
           : '—';
 
-      const proofHtml = (r.proof_urls || []).length
-        ? r.proof_urls.map(u => `<img class="proof-thumb" src="${esc(u)}" data-full="${esc(u)}" />`).join('')
+      const proofCount = (r.proof_urls || []).length;
+      const proofHtml = proofCount
+        ? `<button type="button" class="proof-btn" data-proof="${r.id}">🖼 ${proofCount} ảnh</button>`
         : '—';
 
       const statusHtml = r.reviewed
@@ -105,16 +154,14 @@
 
       return `
         <tr>
-          <td><b>${esc(r.code)}</b></td>
-          <td style="white-space:nowrap">${fmtDateTime(r.created_at)}</td>
+          <td class="code-cell"><b>${esc(r.code)}</b><div class="code-sub">${fmtDateTime(r.created_at)}</div></td>
           <td>${esc(r.staff_name || '—')}</td>
-          <td>
-            <div style="font-weight:600">${esc(r.customer_name || '—')}</div>
-            <div style="font-size:12px;color:#64748b">${esc(r.customer_phone || '')}</div>
+          <td class="cust-cell">
+            <div class="cust-name">${esc(r.customer_name || '—')}</div>
+            <div class="cust-phone">${esc(r.customer_phone || '')}</div>
           </td>
           <td>${refHtml}</td>
-          <td class="num">${fmt(r.amount)}đ</td>
-          <td>${esc(METHOD_LABEL[r.pay_method] || r.pay_method)}</td>
+          <td class="num money-cell"><div class="money-amt">${fmt(r.amount)}đ</div><div class="money-method">${esc(METHOD_LABEL[r.pay_method] || r.pay_method)}</div></td>
           <td style="max-width:200px;word-break:break-word">${esc(r.note || '—')}</td>
           <td>${proofHtml}</td>
           <td>${statusHtml}</td>
@@ -141,9 +188,89 @@
     $('srTbody').querySelectorAll('[data-del-guard]').forEach(btn => {
       btn.addEventListener('click', () => guardDelete(Number(btn.dataset.delGuard), Number(btn.dataset.owner)));
     });
-    // Xem anh phong to
-    $('srTbody').querySelectorAll('.proof-thumb').forEach(img => {
-      img.addEventListener('click', () => openImgModal(img.dataset.full));
+    $('srTbody').querySelectorAll('[data-proof]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const row = state.rows.find(r => r.id === Number(btn.dataset.proof));
+        openImgModal(row?.proof_urls || []);
+      });
+    });
+  }
+
+  function renderTableV2(rows) {
+    if (!rows.length) {
+      $('srTbody').innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;color:#94a3b8">Không có dữ liệu</td></tr>`;
+      return;
+    }
+
+    $('srTbody').innerHTML = rows.map(r => {
+      const refHtml = r.request_id
+        ? `<a class="ref-link" href="/admin/payment-request-detail.html?id=${r.request_id}" target="_blank">${esc(r.request_code || 'YC-...')}</a>`
+        : r.order_id
+          ? `<button class="ref-link" style="background:none;border:none;padding:0;cursor:pointer;font-size:inherit" data-order-id="${r.order_id}">${esc(r.order_code || 'ORD-...')}</button>`
+          : '—';
+
+      const proofCount = (r.proof_urls || []).length;
+      const proofHtml = proofCount
+        ? `<button type="button" class="proof-btn" data-proof="${r.id}">🖼 ${proofCount} ảnh</button>`
+        : '—';
+
+      const statusHtml = r.status === 'cancelled'
+        ? `<span class="pill gray">Đã huỷ</span>` +
+          (r.cancel_reason
+            ? `<div style="font-size:11px;color:#64748b;margin-top:3px;max-width:220px;white-space:normal" title="${esc(r.cancel_reason)}">📝 ${esc(r.cancel_reason)}</div>`
+            : '') +
+          (r.cancelled_at
+            ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${esc(r.cancelled_by_name || '')} · ${fmtDateTime(r.cancelled_at)}</div>`
+            : '')
+        : r.reviewed
+          ? `<span class="pill green">Đã soát</span><div style="font-size:11px;color:#64748b;margin-top:2px">${fmtDateTime(r.reviewed_at)}</div>`
+          : `<span class="pill amber">Chờ soát</span>`;
+
+      const reviewBtn = r.status === 'cancelled'
+        ? ''
+        : r.reviewed
+          ? `<button class="btn ghost sm" data-undo="${r.id}" title="Gỡ soát">↩</button>`
+          : `<button class="btn sm" data-review="${r.id}" style="background:#16a34a;color:#fff">Đã soát</button>`;
+      const cancelBtn = canDelete && r.status !== 'cancelled'
+        ? `<button class="btn ghost sm" data-cancel="${r.id}" style="color:#dc2626" title="Huỷ">Huỷ</button>`
+        : '';
+      const actionHtml = reviewBtn + ' ' + cancelBtn;
+
+      return `
+        <tr>
+          <td class="code-cell"><b>${esc(r.code)}</b><div class="code-sub">${fmtDateTime(r.created_at)}</div></td>
+          <td>${esc(r.staff_name || '—')}</td>
+          <td class="cust-cell">
+            <div class="cust-name">${esc(r.customer_name || '—')}</div>
+            <div class="cust-phone">${esc(r.customer_phone || '')}</div>
+          </td>
+          <td>${refHtml}</td>
+          <td class="num money-cell"><div class="money-amt">${fmt(r.amount)}đ</div><div class="money-method">${esc(METHOD_LABEL[r.pay_method] || r.pay_method)}</div></td>
+          <td style="max-width:200px;word-break:break-word">${esc(r.note || '—')}</td>
+          <td>${proofHtml}</td>
+          <td>${statusHtml}</td>
+          <td>${actionHtml}</td>
+        </tr>
+      `;
+    }).join('');
+
+    $('srTbody').querySelectorAll('[data-order-id]').forEach(btn => {
+      btn.addEventListener('click', () => orderQuickView.open(Number(btn.dataset.orderId)));
+    });
+    $('srTbody').querySelectorAll('[data-review]').forEach(btn => {
+      btn.addEventListener('click', () => reviewOne(Number(btn.dataset.review)));
+    });
+    $('srTbody').querySelectorAll('[data-undo]').forEach(btn => {
+      btn.addEventListener('click', () => undoReview(Number(btn.dataset.undo)));
+    });
+    $('srTbody').querySelectorAll('[data-cancel]').forEach(btn => {
+      btn.addEventListener('click', () => cancelOne(Number(btn.dataset.cancel)));
+    });
+    $('srTbody').querySelectorAll('[data-proof]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const row = state.rows.find(r => r.id === Number(btn.dataset.proof));
+        openImgModal(row?.proof_urls || []);
+      });
     });
   }
 
@@ -170,8 +297,66 @@
     if (r) load();
   }
 
+  const MIN_CANCEL_REASON = 10;
+  let cancelTargetId = null;
+
+  function openCancelModal(id) {
+    cancelTargetId = id;
+    $('cancelReason').value = '';
+    updateCancelHint();
+    $('cancelModal').style.display = 'flex';
+    setTimeout(() => $('cancelReason').focus(), 50);
+  }
+
+  function closeCancelModal() {
+    $('cancelModal').style.display = 'none';
+    cancelTargetId = null;
+  }
+
+  function updateCancelHint() {
+    const len = $('cancelReason').value.trim().length;
+    const remain = MIN_CANCEL_REASON - len;
+    const hint = $('cancelReasonHint');
+    const btn = $('cancelModalConfirm');
+    if (remain > 0) {
+      hint.style.color = '#dc2626';
+      hint.textContent = `Cần thêm ${remain} ký tự nữa (tối thiểu ${MIN_CANCEL_REASON}).`;
+      btn.disabled = true;
+      btn.style.opacity = '.5';
+      btn.style.cursor = 'not-allowed';
+    } else {
+      hint.style.color = '#16a34a';
+      hint.textContent = `Đã đủ (${len} ký tự).`;
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+    }
+  }
+
+  async function cancelOne(id) {
+    openCancelModal(id);
+  }
+
+  async function submitCancel() {
+    if (cancelTargetId == null) return;
+    const reason = $('cancelReason').value.trim();
+    if (reason.length < MIN_CANCEL_REASON) { updateCancelHint(); return; }
+    const id = cancelTargetId;
+    ui.loading(true);
+    try {
+      const r = await api.post(`/admin/staff-receipts/${id}/cancel`, { reason }, { onError: 'toast' });
+      if (r) {
+        ui.toast('Đã huỷ phiếu và hoàn lại tiền trên đơn', 'success');
+        closeCancelModal();
+        load();
+      }
+    } finally {
+      ui.loading(false);
+    }
+  }
+
   async function reviewAll() {
-    const ids = state.rows.filter(r => !r.reviewed).map(r => r.id);
+    const ids = state.rows.filter(r => !r.reviewed && r.status !== 'cancelled').map(r => r.id);
     if (!ids.length) return;
     if (!confirm(`Đánh dấu đã đối soát ${ids.length} khoản này?`)) return;
     ui.loading(true);
@@ -191,7 +376,7 @@
   }
 
   // Canh bao khi staff/KTV co xoa: hien thong bao, chan luu
-  function guardDelete(id, ownerStaffId) {
+  function guardDelete(_id, ownerStaffId) {
     const isOwn = currentUser && currentUser.id === ownerStaffId;
     const msg = isOwn
       ? 'Lịch sử nhận tiền không thể xoá.\nNếu có sai sót, liên hệ admin để xử lý.'
@@ -200,8 +385,12 @@
     alert(msg);
   }
 
-  function openImgModal(url) {
-    $('imgModalSrc').src = url;
+  function openImgModal(urls) {
+    const img = $('imgModalSrc');
+    if (!img) return;
+    const list = Array.isArray(urls) ? urls.filter(Boolean) : (urls ? [urls] : []);
+    img.src = list[0] || '';
+    img.alt = list[0] ? 'ảnh đối soát' : '';
     $('imgModal').style.display = 'flex';
     $('imgModal').style.alignItems = 'center';
     $('imgModal').style.justifyContent = 'center';
@@ -217,7 +406,7 @@
   async function loadStaffList() {
     const data = await api.get('/admin/staff?limit=200', { onError: null });
     if (!data) return;
-    const list = data.rows || data.staff || data || [];
+    const list = data.items || data.rows || data.staff || [];
     const sel = $('filterStaff');
     list.forEach(s => {
       const opt = document.createElement('option');
@@ -231,19 +420,33 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     adminShell.init('staff-receipts');
+    ensureCompactLayout();
   });
 
   $('filterReviewed').addEventListener('change', () => { state.page = 1; load(); });
+  $('filterStatus').addEventListener('change',   () => { state.page = 1; load(); });
   $('filterStaff').addEventListener('change',    () => { state.page = 1; load(); });
   $('filterFrom').addEventListener('change',     () => { state.page = 1; load(); });
   $('filterTo').addEventListener('change',       () => { state.page = 1; load(); });
+  // Search: debounce go phim + submit
+  let searchTimer = null;
+  $('filterSearch').addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { state.page = 1; load(); }, 350);
+  });
+  $('filterSearch').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { clearTimeout(searchTimer); state.page = 1; load(); }
+  });
   $('btnReload').addEventListener('click', load);
   $('btnReviewAll').addEventListener('click', reviewAll);
   $('btnClearFilter').addEventListener('click', () => {
+    const range = getDefaultDateRange();
+    $('filterSearch').value = '';
     $('filterReviewed').value = '0';
+    $('filterStatus').value = 'active';
     $('filterStaff').value = '';
-    $('filterFrom').value = '';
-    $('filterTo').value = '';
+    $('filterFrom').value = range.from;
+    $('filterTo').value = range.to;
     state.page = 1;
     load();
   });
@@ -253,10 +456,18 @@
     if (e.target === $('imgModal')) $('imgModal').style.display = 'none';
   });
 
-  // Set ngay mac dinh = hom nay
-  const today = new Date().toISOString().slice(0, 10);
-  $('filterFrom').value = today;
-  $('filterTo').value   = today;
+  // Cancel modal events
+  $('cancelReason').addEventListener('input', updateCancelHint);
+  $('cancelModalConfirm').addEventListener('click', submitCancel);
+  $('cancelModalAbort').addEventListener('click', closeCancelModal);
+  $('cancelModal').addEventListener('click', e => {
+    if (e.target === $('cancelModal')) closeCancelModal();
+  });
+
+  // Set ngay mac dinh = 7 ngay truoc -> hom nay
+  const defaultRange = getDefaultDateRange();
+  $('filterFrom').value = defaultRange.from;
+  $('filterTo').value   = defaultRange.to;
 
   loadStaffList();
   load();

@@ -147,14 +147,18 @@ router.get('/', async (req, res, next) => {
          COALESCE(d.order_debt, 0)        AS order_debt,
          COALESCE(d.order_count, 0)       AS order_count,
          d.oldest_at,
-         COALESCE(pr.total_remaining, 0)  AS pr_debt
+         d.latest_at                      AS latest_order_at,
+         COALESCE(pr.total_remaining, 0)  AS pr_debt,
+         pr.latest_at                     AS latest_pr_at,
+         rcpt.latest_at                   AS latest_receipt_at
        FROM customers c
        LEFT JOIN (
          SELECT
            o.customer_id,
            SUM(GREATEST(o.total_amount - o.paid_amount - COALESCE(cov.covered, 0), 0)) AS order_debt,
            COUNT(CASE WHEN (o.total_amount - o.paid_amount - COALESCE(cov.covered, 0)) > 0 THEN 1 END) AS order_count,
-           MIN(o.confirmed_at) AS oldest_at
+           MIN(o.confirmed_at) AS oldest_at,
+           MAX(o.confirmed_at) AS latest_at
          FROM orders o
          LEFT JOIN (
            SELECT pri.target_id AS order_id, SUM(pri.amount) AS covered
@@ -170,17 +174,29 @@ router.get('/', async (req, res, next) => {
            AND ${DEBT_WHERE}
          GROUP BY o.customer_id
        ) d ON d.customer_id = c.id
-       LEFT JOIN (
-         SELECT customer_id, SUM(remaining) AS total_remaining
+      LEFT JOIN (
+        SELECT customer_id, SUM(remaining) AS total_remaining, MAX(created_at) AS latest_at
            FROM payment_requests
           WHERE status IN ('pending','partially_paid') AND remaining > 0 AND is_deleted = 0
           GROUP BY customer_id
        ) pr ON pr.customer_id = c.id
+       LEFT JOIN (
+         SELECT pr2.customer_id, MAX(rc.created_at) AS latest_at
+            FROM payment_receipts rc
+            JOIN payment_requests pr2 ON pr2.id = rc.request_id
+           WHERE rc.is_deleted = 0
+           GROUP BY pr2.customer_id
+       ) rcpt ON rcpt.customer_id = c.id
        WHERE ${where.join(' AND ')}
          AND (c.opening_balance > 0
               OR COALESCE(d.order_debt, 0) > 0
               OR COALESCE(pr.total_remaining, 0) > 0)
-       ORDER BY (c.opening_balance + COALESCE(d.order_debt, 0) + COALESCE(pr.total_remaining, 0)) DESC
+       ORDER BY GREATEST(
+                  COALESCE(d.latest_at, '1970-01-01'),
+                  COALESCE(pr.latest_at, '1970-01-01'),
+                  COALESCE(rcpt.latest_at, '1970-01-01')
+                ) DESC,
+                (c.opening_balance + COALESCE(d.order_debt, 0) + COALESCE(pr.total_remaining, 0)) DESC
        LIMIT 500`,
       args
     );
@@ -191,6 +207,14 @@ router.get('/', async (req, res, next) => {
       const prDebt = Number(r.pr_debt) || 0;
       const total = opening + orderDebt + prDebt;
       const oldestAt = r.oldest_at || null;
+      const latestOrderAt = r.latest_order_at || null;
+      const latestPrAt = r.latest_pr_at || null;
+      // "Nợ mới nhất" = thời điểm phát sinh nợ gần nhất (đơn hàng chốt hoặc phiếu YC lập).
+      // So sánh theo giá trị thời gian (không sort chuỗi — Date object sort chuỗi sẽ sai thứ tự).
+      const debtTimeCandidates = [latestOrderAt, latestPrAt].filter(Boolean);
+      const latestDebtAt = debtTimeCandidates.length
+        ? debtTimeCandidates.reduce((a, b) => (new Date(a).getTime() >= new Date(b).getTime() ? a : b))
+        : null;
       const oldest = oldestAt ? new Date(oldestAt) : null;
       const daysOverdue = oldest ? Math.floor((Date.now() - oldest.getTime()) / 86400000) : 0;
       return {
@@ -209,6 +233,7 @@ router.get('/', async (req, res, next) => {
         order_count: Number(r.order_count) || 0,
         total_debt: total,
         oldest_unpaid_at: oldestAt,
+        latest_debt_at: latestDebtAt,
         days_overdue: daysOverdue,
         is_overdue: daysOverdue >= (Number(r.credit_term_days) || 0),
       };
@@ -292,13 +317,13 @@ router.get('/staff', async (req, res, next) => {
 router.get('/staff/:tech_id', async (req, res, next) => {
   try {
     const techId = Number(req.params.tech_id);
-    if (!techId || !Number.isInteger(techId)) return res.status(400).json({ error: 'tech_id khong hop le' });
+    if (!techId || !Number.isInteger(techId)) return res.status(400).json({ error: 'tech_id không hợp lệ' });
     const [staffRows] = await db.query(
       `SELECT id, username, full_name, phone, area, opening_balance
          FROM staff WHERE id = ? AND role = 'kithuat' AND is_deleted = 0`,
       [techId]
     );
-    if (!staffRows.length) return res.status(404).json({ error: 'Khong tim thay KTV' });
+    if (!staffRows.length) return res.status(404).json({ error: 'Không tìm thấy KTV' });
     const s = staffRows[0];
 
     const [cols] = await db.query(
@@ -404,7 +429,7 @@ router.post('/staff/:tech_id/settle', adminOnly, async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const techId = Number(req.params.tech_id);
-    if (!techId || !Number.isInteger(techId)) { conn.release(); return res.status(400).json({ error: 'tech_id khong hop le' }); }
+    if (!techId || !Number.isInteger(techId)) { conn.release(); return res.status(400).json({ error: 'tech_id không hợp lệ' }); }
     const method = (req.body.method === 'transfer') ? 'transfer' : 'cash';
     const note = String(req.body.note || '').trim() || null;
     const receiptUrl = String(req.body.receipt_url || '').trim() || null;
@@ -422,7 +447,7 @@ router.post('/staff/:tech_id/settle', adminOnly, async (req, res, next) => {
     );
     if (!staffRows.length || staffRows[0].role !== 'kithuat') {
       await conn.rollback();
-      return res.status(404).json({ error: 'Khong tim thay KTV' });
+      return res.status(404).json({ error: 'Không tìm thấy KTV' });
     }
     const opening = Number(staffRows[0].opening_balance) || 0;
 
@@ -436,7 +461,7 @@ router.post('/staff/:tech_id/settle', adminOnly, async (req, res, next) => {
 
     if (totalToCollect <= 0) {
       await conn.rollback();
-      return res.status(400).json({ error: 'KTV khong co khoan can nop' });
+      return res.status(400).json({ error: 'KTV không có khoản cần nộp' });
     }
 
     // Validate phieu ung duoc chon: phai cua dung KTV, chua ket vao payslip va chua remit
@@ -453,7 +478,7 @@ router.post('/staff/:tech_id/settle', adminOnly, async (req, res, next) => {
       );
       if (advRows.length !== advanceIds.length) {
         await conn.rollback();
-        return res.status(400).json({ error: 'Co phieu ung khong hop le, da duoc xu ly, hoac khong phai loai tru tien thu ho' });
+        return res.status(400).json({ error: 'Có phiếu ứng không hợp lệ, đã được xử lý, hoặc không phải loại trừ tiền thu hộ' });
       }
       selectedAdvances = advRows;
     }
@@ -465,7 +490,7 @@ router.post('/staff/:tech_id/settle', adminOnly, async (req, res, next) => {
     const amountPaid = hasAmount ? Math.max(0, Number(amountPaidRaw) || 0) : effectiveTotal;
     if (amountPaid <= 0 && effectiveTotal > 0) {
       await conn.rollback();
-      return res.status(400).json({ error: 'So tien nop phai > 0' });
+      return res.status(400).json({ error: 'Số tiền nộp phải > 0' });
     }
 
     const remaining = effectiveTotal - amountPaid; // < 0 neu nop du
@@ -541,7 +566,7 @@ router.get('/:customer_id/settle-preview', async (req, res, next) => {
   try {
     const customerId = Number(req.params.customer_id);
     if (!Number.isFinite(customerId) || customerId <= 0) {
-      return res.status(400).json({ error: 'customer_id khong hop le' });
+      return res.status(400).json({ error: 'customer_id không hợp lệ' });
     }
 
     const [custRows] = await db.query(
@@ -550,7 +575,7 @@ router.get('/:customer_id/settle-preview', async (req, res, next) => {
          FROM customers WHERE id = ? AND is_deleted = 0`,
       [customerId]
     );
-    if (!custRows.length) return res.status(404).json({ error: 'Khong tim thay khach hang' });
+    if (!custRows.length) return res.status(404).json({ error: 'Không tìm thấy khách hàng' });
 
     const dateFrom = req.query.date_from || null; // 'YYYY-MM-DD'
     const dateTo   = req.query.date_to   || null;
@@ -706,7 +731,7 @@ router.get('/:customer_id', async (req, res, next) => {
   try {
     const customerId = Number(req.params.customer_id);
     if (!Number.isFinite(customerId) || customerId <= 0) {
-      return res.status(400).json({ error: 'customer_id khong hop le' });
+      return res.status(400).json({ error: 'customer_id không hợp lệ' });
     }
     const [custRows] = await db.query(
       `SELECT id, code, full_name, phone, address, type, company_name, tax_code,
@@ -714,7 +739,7 @@ router.get('/:customer_id', async (req, res, next) => {
          FROM customers WHERE id = ? AND is_deleted = 0`,
       [customerId]
     );
-    if (!custRows.length) return res.status(404).json({ error: 'Khong tim thay khach hang' });
+    if (!custRows.length) return res.status(404).json({ error: 'Không tìm thấy khách hàng' });
 
     const debt = await calcCustomerDebt(db, customerId);
 
@@ -761,7 +786,7 @@ router.post('/:customer_id/old-debts', requireRole('admin', 'staff'), async (req
     const customerId = Number(req.params.customer_id);
     if (!Number.isFinite(customerId) || customerId <= 0) {
       conn.release();
-      return res.status(400).json({ error: 'customer_id khong hop le' });
+      return res.status(400).json({ error: 'customer_id không hợp lệ' });
     }
     const amount = Number(req.body.amount) || 0;
     const note = String(req.body.note || '').trim() || null;
@@ -769,11 +794,11 @@ router.post('/:customer_id/old-debts', requireRole('admin', 'staff'), async (req
 
     if (amount === 0) {
       conn.release();
-      return res.status(400).json({ error: 'So tien phai khac 0' });
+      return res.status(400).json({ error: 'Số tiền phải khác 0' });
     }
     if (!debtDate) {
       conn.release();
-      return res.status(400).json({ error: 'Thieu ngay no' });
+      return res.status(400).json({ error: 'Thiếu ngày nợ' });
     }
 
     await conn.beginTransaction();
@@ -786,7 +811,7 @@ router.post('/:customer_id/old-debts', requireRole('admin', 'staff'), async (req
     );
     if (!custRows.length) {
       await conn.rollback();
-      return res.status(404).json({ error: 'Khong tim thay khach hang' });
+      return res.status(404).json({ error: 'Không tìm thấy khách hàng' });
     }
 
     // Insert to customer_old_debts
@@ -824,13 +849,13 @@ router.patch('/:customer_id/old-debts/:id', requireRole('admin', 'staff'), async
     const debtId     = Number(req.params.id);
     if (!Number.isFinite(customerId) || customerId <= 0 || !Number.isFinite(debtId) || debtId <= 0) {
       conn.release();
-      return res.status(400).json({ error: 'ID khong hop le' });
+      return res.status(400).json({ error: 'ID không hợp lệ' });
     }
     const newAmount = Number(req.body.amount) || 0;
     const note      = String(req.body.note || '').trim() || null;
     const debtDate  = req.body.debt_date || null;
-    if (newAmount === 0) { conn.release(); return res.status(400).json({ error: 'So tien phai khac 0' }); }
-    if (!debtDate)       { conn.release(); return res.status(400).json({ error: 'Thieu ngay no' }); }
+    if (newAmount === 0) { conn.release(); return res.status(400).json({ error: 'Số tiền phải khác 0' }); }
+    if (!debtDate)       { conn.release(); return res.status(400).json({ error: 'Thiếu ngày nợ' }); }
 
     await conn.beginTransaction();
 
@@ -838,7 +863,7 @@ router.patch('/:customer_id/old-debts/:id', requireRole('admin', 'staff'), async
       `SELECT id, amount FROM customer_old_debts WHERE id = ? AND customer_id = ? FOR UPDATE`,
       [debtId, customerId]
     );
-    if (!rows.length) { await conn.rollback(); conn.release(); return res.status(404).json({ error: 'Khong tim thay phieu no' }); }
+    if (!rows.length) { await conn.rollback(); conn.release(); return res.status(404).json({ error: 'Không tìm thấy phiếu nợ' }); }
 
     const oldAmount = Number(rows[0].amount);
     const diff = newAmount - oldAmount;
@@ -871,7 +896,7 @@ router.delete('/:customer_id/old-debts/:id', requireRole('admin', 'staff'), asyn
     const debtId     = Number(req.params.id);
     if (!Number.isFinite(customerId) || customerId <= 0 || !Number.isFinite(debtId) || debtId <= 0) {
       conn.release();
-      return res.status(400).json({ error: 'ID khong hop le' });
+      return res.status(400).json({ error: 'ID không hợp lệ' });
     }
 
     await conn.beginTransaction();
@@ -880,7 +905,7 @@ router.delete('/:customer_id/old-debts/:id', requireRole('admin', 'staff'), asyn
       `SELECT id, amount FROM customer_old_debts WHERE id = ? AND customer_id = ? FOR UPDATE`,
       [debtId, customerId]
     );
-    if (!rows.length) { await conn.rollback(); conn.release(); return res.status(404).json({ error: 'Khong tim thay phieu no' }); }
+    if (!rows.length) { await conn.rollback(); conn.release(); return res.status(404).json({ error: 'Không tìm thấy phiếu nợ' }); }
 
     const amount = Number(rows[0].amount);
     await conn.query(`DELETE FROM customer_old_debts WHERE id = ?`, [debtId]);

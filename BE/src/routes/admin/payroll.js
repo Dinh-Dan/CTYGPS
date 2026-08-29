@@ -863,6 +863,8 @@ router.post('/:id/payslip/finalize', canManage, async (req, res, next) => {
     const totalWage   = rows.reduce((s, r) => s + (r.wage || 0) + (r.commission || 0), 0);
     const grossAmount = baseSalary + totalWage + totalExtras - totalDeductions - totalAdvances + carriedDebt;
 
+    // Ghi rows_json = NULL truoc de cau INSERT nho (tranh ER_NET_PACKET_TOO_LARGE),
+    // sau do noi chuoi JSON theo tung manh nho ben duoi.
     const [ins] = await conn.query(
       `INSERT INTO staff_payslips
         (staff_id, from_date, to_date, base_salary,
@@ -870,16 +872,30 @@ router.post('/:id/payslip/finalize', canManage, async (req, res, next) => {
          rows_json, total_wage, total_extras, total_deductions,
          total_advances, advances_json,
          gross_amount, note, finalized_by, finalized_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
+       VALUES (?,?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?,NOW())`,
       [
         staffId, fromDate, toDate, baseSalary,
         JSON.stringify(extras), JSON.stringify(deductions), carriedDebt,
-        JSON.stringify(rows), totalWage, totalExtras, totalDeductions,
+        totalWage, totalExtras, totalDeductions,
         totalAdvances, JSON.stringify(advances),
         grossAmount, noteTxt, req.user?.sub || null,
       ]
     );
     const newId = ins.insertId;
+
+    // Ghi rows_json theo tung manh ~200KB de moi packet luon nho,
+    // du kY luong co bao nhieu don cung khong vuot max_allowed_packet.
+    const rowsJson = JSON.stringify(rows);
+    const CHUNK = 200 * 1024; // 200KB / lan
+    for (let i = 0; i < rowsJson.length; i += CHUNK) {
+      const part = rowsJson.slice(i, i + CHUNK);
+      await conn.query(
+        `UPDATE staff_payslips
+            SET rows_json = CONCAT(COALESCE(rows_json, ''), ?)
+          WHERE id = ?`,
+        [part, newId]
+      );
+    }
 
     // Danh dau don da ket so + gan payslip_id
     if (orders.length) {

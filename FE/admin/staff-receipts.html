@@ -20,16 +20,29 @@
   .sr-table tr:last-child td { border-bottom:none; }
   .sr-table tr:hover td { background:#fafafa; }
   .sr-table td.num { text-align:right;font-variant-numeric:tabular-nums;font-weight:600; }
+  .sr-table .col-code { width:110px; }
+  .sr-table .code-cell b { display:block; }
+  .sr-table .code-sub { font-size:11px;color:#64748b;margin-top:2px;white-space:nowrap; }
+  .sr-table .cust-cell { max-width:170px; }
+  .sr-table .cust-name { font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .sr-table .cust-phone { font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .sr-table .money-cell { min-width:118px; }
+  .sr-table .money-amt { font-weight:700; }
+  .sr-table .money-method { font-size:11px;color:#64748b;margin-top:2px; }
+  .sr-table .proof-btn { display:inline-flex;align-items:center;gap:6px;border:1px solid #dbeafe;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer; }
+  .sr-table .proof-btn:hover { background:#dbeafe; }
   .sr-table .ref-link { color:#2563eb;text-decoration:none;font-weight:600; }
   .sr-table .ref-link:hover { text-decoration:underline; }
-
-  .proof-thumb { width:40px;height:40px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0;cursor:pointer; }
 
   .summary-bar { display:flex;gap:20px;flex-wrap:wrap;padding:10px 14px;background:#fff;border-radius:10px;border:1px solid var(--border);margin-bottom:12px;font-size:13.5px; }
   .summary-bar .sb-item { display:flex;gap:6px;align-items:center; }
   .summary-bar .sb-val { font-weight:700;color:#0f172a; }
   .summary-bar .sb-val.red { color:#dc2626; }
   .summary-bar .sb-val.green { color:#16a34a; }
+  .proof-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px; }
+  .proof-card { background:#0f172a;border-radius:10px;overflow:hidden; }
+  .proof-card img { width:100%;display:block;max-height:70vh;object-fit:contain;background:#020617; }
+  .proof-card .proof-cap { padding:8px 10px;font-size:12px;color:#cbd5e1;text-align:center; }
 </style>
 </head>
 <body>
@@ -51,12 +64,19 @@
 
       <!-- Filter -->
       <div class="filter-bar">
-        <select id="filterReviewed" class="select" style="width:160px">
+        <input type="search" id="filterSearch" class="input" style="width:220px"
+               placeholder="Tìm mã NNT / khách / SĐT / đơn..." />
+        <select id="filterReviewed" class="select" style="width:150px">
           <option value="0">Chưa đối soát</option>
           <option value="1">Đã đối soát</option>
           <option value="">Tất cả</option>
         </select>
-        <select id="filterStaff" class="select" style="width:160px">
+        <select id="filterStatus" class="select" style="width:150px">
+          <option value="active">Còn hiệu lực</option>
+          <option value="cancelled">Đã huỷ</option>
+          <option value="all">Tất cả trạng thái</option>
+        </select>
+        <select id="filterStaff" class="select" style="width:150px">
           <option value="">Tất cả nhân viên</option>
         </select>
         <input type="date" id="filterFrom" class="input" style="width:140px" title="Từ ngày" />
@@ -96,6 +116,24 @@
 
     </div>
   </main>
+</div>
+
+<!-- Modal nhập lý do huỷ phiếu -->
+<div id="cancelModal" class="modal-bg" style="display:none;align-items:center;justify-content:center;z-index:60">
+  <div style="background:#fff;border-radius:12px;max-width:480px;width:92vw;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.25)">
+    <h3 style="margin:0 0 6px;font-size:16px;font-weight:700;color:#0f172a">Huỷ phiếu thu</h3>
+    <p style="margin:0 0 12px;font-size:13px;color:#64748b">
+      Phiếu sẽ được đánh dấu <b>đã huỷ</b> và số tiền đã ghi nhận sẽ được <b>hoàn lại</b> trên đơn.
+      Vui lòng ghi rõ lý do để còn tra cứu sau này.
+    </p>
+    <textarea id="cancelReason" rows="4" class="input" style="width:100%;resize:vertical"
+      placeholder="VD: Nhân viên nhập nhầm số tiền, khách chưa thực sự chuyển khoản, ghi nhầm sang đơn khác..."></textarea>
+    <div id="cancelReasonHint" style="font-size:12px;margin-top:6px;color:#dc2626"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn ghost" id="cancelModalAbort">Đóng</button>
+      <button class="btn" id="cancelModalConfirm" style="background:#dc2626;color:#fff">Xác nhận huỷ</button>
+    </div>
+  </div>
 </div>
 
 <!-- Modal xem ảnh phóng to -->

@@ -24,7 +24,20 @@ async function calcCustomerDebt(conn, customerId) {
                 AND p.confirmed = 0 AND p.is_deleted = 0
        ), 0) AS admin_pending,
        (SELECT s.full_name FROM staff s WHERE s.id = o.assigned_staff_id) AS assigned_staff_names,
-       (SELECT COUNT(*) FROM order_lines ol WHERE ol.order_id = o.id) AS item_count
+       (SELECT COUNT(*) FROM order_lines ol WHERE ol.order_id = o.id) AS item_count,
+       (SELECT GROUP_CONCAT(DISTINCT COALESCE(ol.custom_name, t.name)
+                            ORDER BY COALESCE(ol.custom_name, t.name) SEPARATOR ' · ')
+          FROM order_lines ol
+          LEFT JOIN order_templates t ON t.id = ol.template_id
+         WHERE ol.order_id = o.id AND ol.is_deleted = 0) AS service_summary,
+       (SELECT GROUP_CONCAT(DISTINCT oi.vehicle_plate SEPARATOR ', ')
+          FROM order_items oi
+         WHERE oi.order_id = o.id
+           AND oi.vehicle_plate IS NOT NULL AND oi.vehicle_plate <> '') AS item_vehicle_plates,
+       (SELECT GROUP_CONCAT(DISTINCT oi.subscription_account SEPARATOR ', ')
+          FROM order_items oi
+         WHERE oi.order_id = o.id
+           AND oi.subscription_account IS NOT NULL AND oi.subscription_account <> '') AS item_subscription_accounts
      FROM orders o
      WHERE o.customer_id = ?
        AND o.is_deleted = 0
@@ -39,6 +52,13 @@ async function calcCustomerDebt(conn, customerId) {
     const remaining = Number(o.total_amount) - Number(o.paid_amount);
     if (remaining > 0) {
       orderDebt += remaining;
+      // Gom bien so / tai khoan tu order_items + cot tren orders (loai trung)
+      const plateSet = new Set();
+      if (o.order_vehicle_plate) plateSet.add(String(o.order_vehicle_plate).trim());
+      if (o.item_vehicle_plates) String(o.item_vehicle_plates).split(',').forEach(s => { const v = s.trim(); if (v) plateSet.add(v); });
+      const accSet = new Set();
+      if (o.order_subscription_account) accSet.add(String(o.order_subscription_account).trim());
+      if (o.item_subscription_accounts) String(o.item_subscription_accounts).split(',').forEach(s => { const v = s.trim(); if (v) accSet.add(v); });
       pendingOrders.push({
         id: o.id, code: o.code, total_amount: Number(o.total_amount),
         paid_amount: Number(o.paid_amount), unremitted: Number(o.unremitted),
@@ -48,6 +68,9 @@ async function calcCustomerDebt(conn, customerId) {
         due_at: o.due_at, completed_at: o.completed_at, address: o.address,
         assigned_staff_names: o.assigned_staff_names || '',
         item_count: Number(o.item_count) || 0,
+        service_summary: o.service_summary || '',
+        vehicle_plates: [...plateSet],
+        subscription_accounts: [...accSet],
       });
     }
   }

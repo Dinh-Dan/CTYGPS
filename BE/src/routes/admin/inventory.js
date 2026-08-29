@@ -21,6 +21,10 @@
 
 const express = require('express');
 const db = require('../../db');
+const {
+  ensureWarrantySchema,
+  createWarrantyMove,
+} = require('../../utils/orderWarranty');
 
 const router = express.Router();
 
@@ -43,8 +47,13 @@ const REASONS = {
   damaged:                { kind: 'out', scope: 'staff_holdings' },// -staff_holdings
   send_warranty:          { kind: 'out', scope: 'product_stock' }, // gui bao hanh
   dealer_warranty_return: { kind: 'in',  scope: 'product_stock' }, // dai ly gui bao hanh
+  warranty_supplier_return: { kind: 'in', scope: 'product_stock' }, // NCC tra hang OK ve kho chinh
   staff_grant:            { kind: 'out', scope: 'product_stock' }, // admin cap hang cho KTV
   staff_revoke:           { kind: 'in',  scope: 'staff_holdings' },// admin thu hoi hang tu KTV
+  warranty_replacement_out:       { kind: 'out', scope: 'product_stock' },
+  warranty_replacement_staff_out: { kind: 'out', scope: 'staff_holdings' },
+  warranty_staff_issue:           { kind: 'out', scope: 'product_stock' },
+  warranty_customer_delivery:     { kind: 'out', scope: 'staff_holdings' },
 };
 
 const ADMIN_ALLOWED_REASONS = ['import_supplier', 'adjust_plus', 'return_supplier', 'adjust_minus', 'send_warranty', 'dealer_warranty_return'];
@@ -58,6 +67,57 @@ function httpErr(status, message) {
   const e = new Error(message);
   e.status = status;
   return e;
+}
+
+async function refreshWarrantyBatchStatuses(conn, batchIds) {
+  const ids = [...new Set((batchIds || []).map(Number).filter(Boolean))];
+  if (!ids.length) return;
+  for (const batchId of ids) {
+    const [[agg]] = await conn.query(
+      `SELECT
+          COUNT(*) AS total_count,
+          SUM(CASE WHEN wi.current_status = 'sent_to_supplier' AND wi.current_location = 'supplier' THEN 1 ELSE 0 END) AS sent_count,
+          SUM(CASE WHEN wi.current_status = 'supplier_returned' AND wi.current_location = 'company_warranty_stock' THEN 1 ELSE 0 END) AS received_count
+         FROM supplier_warranty_batch_items bi
+         JOIN order_warranty_items wi ON wi.id = bi.warranty_item_id
+        WHERE bi.batch_id = ?`,
+      [batchId]
+    );
+    const total = Number(agg.total_count || 0);
+    const sentCount = Number(agg.sent_count || 0);
+    const receivedCount = Number(agg.received_count || 0);
+    if (total > 0 && sentCount === 0 && receivedCount > 0) {
+      await conn.query(
+        `UPDATE supplier_warranty_batches
+            SET status = 'received',
+                received_at = COALESCE(received_at, NOW()),
+                updated_at = NOW()
+          WHERE id = ?`,
+        [batchId]
+      );
+    } else {
+      await conn.query(
+        `UPDATE supplier_warranty_batches
+            SET status = CASE WHEN status = 'draft' THEN status ELSE 'sent' END,
+                updated_at = NOW()
+          WHERE id = ?`,
+        [batchId]
+      );
+    }
+  }
+}
+
+async function loadWarrantyOrderRowByItem(conn, itemId) {
+  const [rows] = await conn.query(
+    `SELECT o.*
+       FROM order_warranty_items wi
+       JOIN orders o ON o.id = wi.order_id
+      WHERE wi.id = ? AND wi.is_deleted = 0 AND o.is_deleted = 0 AND o.service_kind = 'warranty'
+      LIMIT 1`,
+    [itemId]
+  );
+  if (!rows.length) throw httpErr(404, 'Không tìm thấy item bảo hành');
+  return rows[0];
 }
 
 // Sinh code phieu PN/PX-YYMMDD-NNN. Dung MAX seq de tranh trung khi co phieu xoa cung.
@@ -95,7 +155,7 @@ router.get('/stats', async (req, res, next) => {
         (SELECT COALESCE(SUM(qty), 0) FROM staff_holdings) AS held_units,
         (SELECT COUNT(*) FROM product_stock ps
             JOIN products p ON p.id = ps.product_id
-           WHERE p.is_deleted = 0 AND ps.quantity < ?) AS low_stock,
+           WHERE p.is_deleted = 0 AND ps.quantity > 0 AND ps.quantity < ?) AS low_stock,
         (SELECT COALESCE(SUM(ps.quantity * p.cost_price), 0) FROM product_stock ps
             JOIN products p ON p.id = ps.product_id
            WHERE p.is_deleted = 0) AS total_value
@@ -110,6 +170,152 @@ router.get('/stats', async (req, res, next) => {
       total_value:         r1[0].total_value,
     });
   } catch (err) { next(err); }
+});
+
+// ---- WARRANTY ITEMS IN INVENTORY -----------------------------
+// Query: ?bucket=technician|company|supplier, ?q
+router.get('/warranty-items', async (req, res, next) => {
+  try {
+    await ensureWarrantySchema(db);
+    const bucket = String(req.query.bucket || 'technician').trim();
+    const q = String(req.query.q || '').trim();
+    const where = [
+      `wi.is_deleted = 0`,
+      `o.is_deleted = 0`,
+      `o.service_kind = 'warranty'`,
+    ];
+    if (bucket === 'company') {
+      where.push(`wi.current_location = 'company_warranty_stock'`);
+      where.push(`wi.current_status IN ('company_warranty_stock', 'supplier_returned')`);
+    } else if (bucket === 'supplier') {
+      where.push(`wi.current_status = 'sent_to_supplier'`);
+      where.push(`wi.current_location = 'supplier'`);
+    } else {
+      // 'technician' bucket: hang loi dang o tui KTV + hang KTV da gui ve kho cho xac nhan.
+      where.push(`wi.current_status IN ('technician_holding', 'pending_company_receipt')`);
+      where.push(`wi.current_location = 'technician'`);
+    }
+    const args = [];
+    if (q) {
+      const like = `%${q}%`;
+      where.push(`(
+        o.code LIKE ? OR
+        c.full_name LIKE ? OR
+        p.code LIKE ? OR
+        p.name LIKE ? OR
+        wi.imei LIKE ? OR
+        wi.license_plate LIKE ? OR
+        s.full_name LIKE ?
+      )`);
+      args.push(like, like, like, like, like, like, like);
+    }
+    const [rows] = await db.query(
+      `SELECT wi.id, wi.order_id, wi.product_id, wi.qty, wi.device_name, wi.imei, wi.license_plate,
+              wi.account_name, wi.sim_number, wi.condition_note, wi.note_text, wi.handling_type,
+              wi.customer_status, wi.current_status, wi.current_location, wi.holder_staff_id,
+              wi.supplier_id, wi.last_supplier_id, wi.last_move_at, wi.created_at, wi.updated_at,
+              o.code AS order_code,
+              c.full_name AS customer_name, c.phone AS customer_phone,
+              p.code AS product_code, p.name AS product_name,
+              p.thumbnail_url AS product_thumb, p.image_url AS product_image,
+              s.full_name AS assigned_staff_name,
+              hs.full_name AS holder_staff_name,
+              sp.name AS supplier_name,
+              b.id AS batch_id, b.code AS batch_code, b.status AS batch_status,
+              TIMESTAMPDIFF(DAY, COALESCE(wi.last_move_at, wi.updated_at, wi.created_at), NOW()) AS days_in_state
+         FROM order_warranty_items wi
+         JOIN orders o ON o.id = wi.order_id
+         LEFT JOIN customers c ON c.id = o.customer_id
+         LEFT JOIN products p ON p.id = wi.product_id
+         LEFT JOIN staff s ON s.id = o.assigned_staff_id
+         LEFT JOIN staff hs ON hs.id = wi.holder_staff_id
+         LEFT JOIN suppliers sp ON sp.id = COALESCE(wi.last_supplier_id, wi.supplier_id)
+         LEFT JOIN supplier_warranty_batch_items bi ON bi.warranty_item_id = wi.id
+         LEFT JOIN supplier_warranty_batches b ON b.id = bi.batch_id
+        WHERE ${where.join(' AND ')}
+        ORDER BY COALESCE(wi.last_move_at, wi.updated_at, wi.created_at) DESC, wi.id DESC
+        LIMIT 400`,
+      args
+    );
+    res.json({ items: rows });
+  } catch (err) { next(err); }
+});
+
+router.post('/warranty-items/:id/receive-to-company-stock', async (req, res, next) => {
+  const conn = await db.getConnection();
+  try {
+    await ensureWarrantySchema(conn);
+    const itemId = Number(req.params.id);
+    if (!itemId) throw httpErr(400, 'item_id không hợp lệ');
+    await conn.beginTransaction();
+    const orderRow = await loadWarrantyOrderRowByItem(conn, itemId);
+    await createWarrantyMove(
+      conn,
+      orderRow,
+      {
+        warranty_item_id: itemId,
+        action_code: 'move_to_company_stock',
+        occurred_at: req.body && req.body.occurred_at ? req.body.occurred_at : null,
+        note_text: req.body && req.body.note_text ? req.body.note_text : null,
+      },
+      req.user && req.user.sub ? req.user.sub : null
+    );
+    await conn.commit();
+    res.json({ ok: true });
+  } catch (err) {
+    try { await conn.rollback(); } catch (_) {}
+    next(err);
+  } finally {
+    conn.release();
+  }
+});
+
+router.post('/warranty-items/receive-from-supplier', async (req, res, next) => {
+  const conn = await db.getConnection();
+  try {
+    await ensureWarrantySchema(conn);
+    const itemIds = Array.isArray(req.body.item_ids) ? req.body.item_ids.map(Number).filter(Boolean) : [];
+    if (!itemIds.length) throw httpErr(400, 'Phải chọn ít nhất 1 sản phẩm');
+    await conn.beginTransaction();
+    const [rows] = await conn.query(
+      `SELECT wi.id, wi.order_id, COALESCE(wi.last_supplier_id, wi.supplier_id) AS supplier_id, bi.batch_id
+         FROM order_warranty_items wi
+         JOIN orders o ON o.id = wi.order_id AND o.is_deleted = 0 AND o.service_kind = 'warranty'
+         LEFT JOIN supplier_warranty_batch_items bi ON bi.warranty_item_id = wi.id
+        WHERE wi.id IN (?) AND wi.is_deleted = 0
+        FOR UPDATE`,
+      [itemIds]
+    );
+    if (rows.length !== itemIds.length) throw httpErr(404, 'Có sản phẩm bảo hành không tồn tại');
+
+    const batchIds = new Set();
+    const receiptCodes = [];
+    for (const row of rows) {
+      const orderRow = await loadWarrantyOrderRowByItem(conn, row.id);
+      const result = await createWarrantyMove(
+        conn,
+        orderRow,
+        {
+          warranty_item_id: row.id,
+          action_code: 'receive_from_supplier',
+          supplier_id: row.supplier_id,
+          occurred_at: req.body && req.body.occurred_at ? req.body.occurred_at : null,
+          note_text: req.body && req.body.note_text ? req.body.note_text : null,
+        },
+        req.user && req.user.sub ? req.user.sub : null
+      );
+      if (result && result.receipt && result.receipt.code) receiptCodes.push(result.receipt.code);
+      if (row.batch_id) batchIds.add(Number(row.batch_id));
+    }
+    await refreshWarrantyBatchStatuses(conn, Array.from(batchIds));
+    await conn.commit();
+    res.json({ ok: true, received_count: rows.length, receipt_codes: receiptCodes });
+  } catch (err) {
+    try { await conn.rollback(); } catch (_) {}
+    next(err);
+  } finally {
+    conn.release();
+  }
 });
 
 // ---- GET /products/all ---------------------------------------
@@ -201,7 +407,7 @@ router.get('/stock', async (req, res, next) => {
 router.get('/products/:id/history', async (req, res, next) => {
   try {
     const productId = Number(req.params.id);
-    if (!productId) return res.status(400).json({ error: 'productId khong hop le' });
+    if (!productId) return res.status(400).json({ error: 'productId không hợp lệ' });
 
     const page  = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
@@ -348,7 +554,7 @@ router.get('/receipts/:id', async (req, res, next) => {
         WHERE r.id = ?`,
       [id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay phieu' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy phiếu' });
 
     const [items] = await db.query(
       `SELECT ri.*, p.code AS product_code, p.name AS product_name, p.thumbnail_url
@@ -370,16 +576,16 @@ router.post('/receipts', async (req, res, next) => {
   try {
     const reasonCode = req.body.reason_code;
     if (!ADMIN_ALLOWED_REASONS.includes(reasonCode)) {
-      throw httpErr(400, 'reason_code khong hop le hoac la phieu noi bo (chi he thong sinh)');
+      throw httpErr(400, 'reason_code không hợp lệ hoặc là phiếu nội bộ (chỉ hệ thống sinh)');
     }
     const cfg = REASONS[reasonCode];
     const kind = cfg.kind;
     if (req.body.kind && req.body.kind !== kind) {
-      throw httpErr(400, `reason_code "${reasonCode}" yeu cau kind="${kind}"`);
+      throw httpErr(400, `reason_code "${reasonCode}" yêu cầu kind="${kind}"`);
     }
 
     const items = Array.isArray(req.body.items) ? req.body.items : [];
-    if (!items.length) throw httpErr(400, 'Phieu phai co it nhat 1 dong');
+    if (!items.length) throw httpErr(400, 'Phiếu phải có ít nhất 1 dòng');
 
     // Validate va chuan hoa items
     const lines = [];
@@ -387,9 +593,9 @@ router.post('/receipts', async (req, res, next) => {
     for (const raw of items) {
       const productId = Number(raw.product_id);
       const qty = Number(raw.qty);
-      if (!productId) throw httpErr(400, 'Thieu product_id o 1 dong');
-      if (!qty || qty <= 0) throw httpErr(400, 'qty phai > 0');
-      if (productIds.has(productId)) throw httpErr(400, 'Moi san pham chi 1 dong / phieu');
+      if (!productId) throw httpErr(400, 'Thiếu product_id ở 1 dòng');
+      if (!qty || qty <= 0) throw httpErr(400, 'qty phải > 0');
+      if (productIds.has(productId)) throw httpErr(400, 'Mỗi sản phẩm chỉ 1 dòng / phiếu');
       productIds.add(productId);
       // B-011: Validate IMEI list neu co
       let imeiList = null;
@@ -400,14 +606,14 @@ router.post('/receipts', async (req, res, next) => {
           .filter(Boolean);
         const dedup = [...new Set(arr)];
         if (dedup.length !== arr.length) {
-          throw httpErr(400, 'IMEI bi trung trong cung phieu');
+          throw httpErr(400, 'IMEI bị trùng trong cùng phiếu');
         }
         if (dedup.length && dedup.length !== qty) {
-          throw httpErr(400, `So IMEI (${dedup.length}) phai bang qty (${qty}) hoac de trong`);
+          throw httpErr(400, `Số IMEI (${dedup.length}) phải bằng qty (${qty}) hoặc để trống`);
         }
         for (const im of dedup) {
           if (im.length > 64 || /[<>"'` ]/.test(im)) {
-            throw httpErr(400, `IMEI khong hop le: ${im}`);
+            throw httpErr(400, `IMEI không hợp lệ: ${im}`);
           }
         }
         imeiList = dedup.join(',');
@@ -424,13 +630,13 @@ router.post('/receipts', async (req, res, next) => {
 
     const supplierId = req.body.supplier_id ? Number(req.body.supplier_id) : null;
     if (['import_supplier', 'return_supplier'].includes(reasonCode) && !supplierId) {
-      throw httpErr(400, 'Phieu nhap/tra NCC bat buoc co supplier_id');
+      throw httpErr(400, 'Phiếu nhập/trả NCC bắt buộc có supplier_id');
     }
     if (supplierId) {
       const [sup] = await conn.query(
         `SELECT id FROM suppliers WHERE id = ? AND is_deleted = 0`, [supplierId]
       );
-      if (!sup.length) throw httpErr(404, 'NCC khong ton tai');
+      if (!sup.length) throw httpErr(404, 'NCC không tồn tại');
     }
 
     // Verify products ton tai
@@ -439,7 +645,7 @@ router.post('/receipts', async (req, res, next) => {
       `SELECT id FROM products WHERE id IN (${ph}) AND is_deleted = 0`,
       lines.map(l => l.product_id)
     );
-    if (prodRows.length !== lines.length) throw httpErr(404, 'Co san pham khong ton tai');
+    if (prodRows.length !== lines.length) throw httpErr(404, 'Có sản phẩm không tồn tại');
 
     const staffId = req.user && req.user.sub ? req.user.sub : null;
 
@@ -463,7 +669,7 @@ router.post('/receipts', async (req, res, next) => {
       }
       l._currentQty = currentQty;
       if (kind === 'out' && currentQty < l.qty) {
-        throw httpErr(409, `Khong du ton: SP id=${l.product_id} con ${currentQty}, can ${l.qty}`);
+        throw httpErr(409, `Không đủ tồn: SP id=${l.product_id} còn ${currentQty}, cần ${l.qty}`);
       }
     }
 
@@ -472,7 +678,7 @@ router.post('/receipts', async (req, res, next) => {
     if (Array.isArray(req.body.photo_urls) && req.body.photo_urls.length) {
       const urls = req.body.photo_urls.map(u => String(u).trim()).filter(Boolean).slice(0, 20);
       for (const u of urls) {
-        if (!/^https?:\/\/.{4,}/.test(u)) throw httpErr(400, 'photo_urls chua URL khong hop le');
+        if (!/^https?:\/\/.{4,}/.test(u)) throw httpErr(400, 'photo_urls chứa URL không hợp lệ');
       }
       photoUrls = JSON.stringify(urls);
     }
@@ -518,31 +724,31 @@ router.post('/receipts/:id/void', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const reason = req.body.reason ? String(req.body.reason).trim() : '';
-    if (!reason) throw httpErr(400, 'Phai cung cap ly do huy phieu');
+    if (!reason) throw httpErr(400, 'Phải cung cấp lý do hủy phiếu');
 
     await conn.beginTransaction();
     const [rRows] = await conn.query(
       `SELECT * FROM stock_receipts WHERE id = ? FOR UPDATE`, [id]
     );
-    if (!rRows.length) throw httpErr(404, 'Khong tim thay phieu');
+    if (!rRows.length) throw httpErr(404, 'Không tìm thấy phiếu');
     const r = rRows[0];
-    if (r.is_voided) throw httpErr(400, 'Phieu da bi huy');
+    if (r.is_voided) throw httpErr(400, 'Phiếu đã bị hủy');
 
     // Cho phep void: phieu admin tu tao + mot so phieu noi bo da khai bao tuong minh
     const allowVoid = ADMIN_ALLOWED_REASONS.includes(r.reason_code)
                    || ADMIN_VOIDABLE_INTERNAL_REASONS.includes(r.reason_code);
     if (!allowVoid) {
-      throw httpErr(400, 'Phieu noi bo khong huy truc tiep — phai thao tac qua flow tuong ung');
+      throw httpErr(400, 'Phiếu nội bộ không hủy trực tiếp — phải thao tác qua flow tương ứng');
     }
 
     // Phieu sinh tu phien kiem ke khong duoc void truc tiep
     if (r.ref_stock_take_id) {
-      throw httpErr(400, 'Phieu thuoc phien kiem ke — khong huy truc tiep duoc');
+      throw httpErr(400, 'Phiếu thuộc phiên kiểm kê — không hủy trực tiếp được');
     }
 
     const ageMs = Date.now() - new Date(r.created_at).getTime();
     if (ageMs > VOID_WINDOW_HOURS * 3600 * 1000) {
-      throw httpErr(400, `Chi duoc huy phieu trong ${VOID_WINDOW_HOURS}h dau`);
+      throw httpErr(400, `Chỉ được hủy phiếu trong ${VOID_WINDOW_HOURS}h đầu`);
     }
 
     const [items] = await conn.query(
@@ -561,7 +767,7 @@ router.post('/receipts/:id/void', async (req, res, next) => {
         );
         const cur = psRows.length ? psRows[0].quantity : 0;
         if (cur < it.qty) {
-          throw httpErr(409, `Khong du ton de huy: SP id=${it.product_id} con ${cur}, can tru ${it.qty}`);
+          throw httpErr(409, `Không đủ tồn để hủy: SP id=${it.product_id} còn ${cur}, cần trừ ${it.qty}`);
         }
       }
     }
@@ -574,7 +780,7 @@ router.post('/receipts/:id/void', async (req, res, next) => {
        VALUES (?, ?, ?, ?, ?, ?)`,
       [
         newCode, oppositeKind, `${r.reason_code}_void`,
-        `Huy phieu ${r.code}: ${reason}`, r.supplier_id, staffId,
+        `Hủy phiếu ${r.code}: ${reason}`, r.supplier_id, staffId,
       ]
     );
     const newId = vIns.insertId;
@@ -750,8 +956,8 @@ router.post('/return-requests/:id/approve', async (req, res, next) => {
     const [[rq]] = await conn.query(
       `SELECT * FROM stock_return_requests WHERE id = ? FOR UPDATE`, [id]
     );
-    if (!rq) throw httpErr(404, 'Khong tim thay yeu cau');
-    if (rq.status !== 'pending') throw httpErr(409, 'Yeu cau khong o trang thai cho duyet');
+    if (!rq) throw httpErr(404, 'Không tìm thấy yêu cầu');
+    if (rq.status !== 'pending') throw httpErr(409, 'Yêu cầu không ở trạng thái chờ duyệt');
 
     const [shRows] = await conn.query(
       `SELECT id, qty FROM staff_holdings
@@ -759,7 +965,7 @@ router.post('/return-requests/:id/approve', async (req, res, next) => {
       [rq.staff_id, rq.product_id]
     );
     if (!shRows.length || shRows[0].qty < rq.qty) {
-      throw httpErr(409, `KTV dang giu ${shRows[0]?.qty || 0}, khong du de tra ${rq.qty}`);
+      throw httpErr(409, `KTV đang giữ ${shRows[0]?.qty || 0}, không đủ để trả ${rq.qty}`);
     }
 
     if (shRows[0].qty === rq.qty) {
@@ -811,8 +1017,8 @@ router.post('/return-requests/:id/reject', async (req, res, next) => {
     const [[rq]] = await db.query(
       `SELECT id, status FROM stock_return_requests WHERE id = ?`, [id]
     );
-    if (!rq) throw httpErr(404, 'Khong tim thay yeu cau');
-    if (rq.status !== 'pending') throw httpErr(409, 'Yeu cau khong o trang thai cho duyet');
+    if (!rq) throw httpErr(404, 'Không tìm thấy yêu cầu');
+    if (rq.status !== 'pending') throw httpErr(409, 'Yêu cầu không ở trạng thái chờ duyệt');
 
     await db.query(
       `UPDATE stock_return_requests
@@ -855,7 +1061,7 @@ router.post('/stocktakes', async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const staffId = req.user && req.user.sub ? req.user.sub : null;
-    if (!staffId) throw httpErr(401, 'Khong xac dinh duoc nguoi tao');
+    if (!staffId) throw httpErr(401, 'Không xác định được người tạo');
     const note = req.body.note ? String(req.body.note).trim() : null;
 
     await conn.beginTransaction();
@@ -934,7 +1140,7 @@ router.get('/stocktakes/:id', async (req, res, next) => {
          LEFT JOIN staff s2 ON s2.id = st.finished_by_staff_id
         WHERE st.id = ? AND st.is_deleted = 0`, [id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay phien kiem ke' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy phiên kiểm kê' });
 
     // Lines + lookup current_qty (de UI canh bao neu thay doi tu luc snapshot)
     const [lines] = await db.query(
@@ -971,11 +1177,11 @@ router.put('/stocktakes/:id/lines', async (req, res, next) => {
     for (const raw of lines) {
       const productId = Number(raw.product_id);
       const counted = Number(raw.counted_qty);
-      if (!productId) throw httpErr(400, 'Line thieu product_id');
+      if (!productId) throw httpErr(400, 'Line thiếu product_id');
       if (!Number.isInteger(counted) || counted < 0) {
-        throw httpErr(400, 'counted_qty phai la so nguyen >= 0');
+        throw httpErr(400, 'counted_qty phải là số nguyên >= 0');
       }
-      if (seen.has(productId)) throw httpErr(400, `SP id=${productId} bi trung trong phien`);
+      if (seen.has(productId)) throw httpErr(400, `SP id=${productId} bị trùng trong phiên`);
       seen.add(productId);
       cleaned.push({
         product_id: productId,
@@ -988,9 +1194,9 @@ router.put('/stocktakes/:id/lines', async (req, res, next) => {
     const [stRows] = await conn.query(
       `SELECT id, status FROM stock_takes WHERE id = ? AND is_deleted = 0 FOR UPDATE`, [id]
     );
-    if (!stRows.length) throw httpErr(404, 'Khong tim thay phien');
+    if (!stRows.length) throw httpErr(404, 'Không tìm thấy phiên');
     if (stRows[0].status !== 'draft') {
-      throw httpErr(409, `Phien o trang thai ${stRows[0].status} — khong sua duoc`);
+      throw httpErr(409, `Phiên ở trạng thái ${stRows[0].status} — không sửa được`);
     }
 
     // Verify products ton tai
@@ -1000,7 +1206,7 @@ router.put('/stocktakes/:id/lines', async (req, res, next) => {
         `SELECT id FROM products WHERE id IN (${ph}) AND is_deleted = 0`,
         cleaned.map(l => l.product_id)
       );
-      if (prodRows.length !== cleaned.length) throw httpErr(404, 'Co san pham khong ton tai');
+      if (prodRows.length !== cleaned.length) throw httpErr(404, 'Có sản phẩm không tồn tại');
     }
 
     await conn.query(`DELETE FROM stock_take_lines WHERE stock_take_id = ?`, [id]);
@@ -1040,10 +1246,10 @@ router.post('/stocktakes/:id/finish', async (req, res, next) => {
     const [stRows] = await conn.query(
       `SELECT * FROM stock_takes WHERE id = ? AND is_deleted = 0 FOR UPDATE`, [id]
     );
-    if (!stRows.length) throw httpErr(404, 'Khong tim thay phien');
+    if (!stRows.length) throw httpErr(404, 'Không tìm thấy phiên');
     const st = stRows[0];
     if (st.status !== 'draft') {
-      throw httpErr(409, `Phien o trang thai ${st.status} — khong finish duoc`);
+      throw httpErr(409, `Phiên ở trạng thái ${st.status} — không finish được`);
     }
 
     const [lines] = await conn.query(
@@ -1052,7 +1258,7 @@ router.post('/stocktakes/:id/finish', async (req, res, next) => {
         WHERE stl.stock_take_id = ?
         ORDER BY stl.product_id`, [id]
     );
-    if (!lines.length) throw httpErr(400, 'Phien chua co dong nao de finish');
+    if (!lines.length) throw httpErr(400, 'Phiên chưa có dòng nào để finish');
 
     let totalVarianceAbs = 0;
     const generatedReceipts = [];
@@ -1077,7 +1283,7 @@ router.post('/stocktakes/:id/finish', async (req, res, next) => {
         `INSERT INTO stock_receipts
            (code, kind, reason_code, reason_text, ref_stock_take_id, created_by_staff_id)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [code, kind, reasonCode, `Kiem ke ${st.code}`, id, staffId]
+        [code, kind, reasonCode, `Kiểm kê ${st.code}`, id, staffId]
       );
       const receiptId = rIns.insertId;
 
@@ -1144,9 +1350,9 @@ router.post('/stocktakes/:id/cancel', async (req, res, next) => {
     const [stRows] = await conn.query(
       `SELECT id, status FROM stock_takes WHERE id = ? AND is_deleted = 0 FOR UPDATE`, [id]
     );
-    if (!stRows.length) throw httpErr(404, 'Khong tim thay phien');
+    if (!stRows.length) throw httpErr(404, 'Không tìm thấy phiên');
     if (stRows[0].status !== 'draft') {
-      throw httpErr(409, `Phien o trang thai ${stRows[0].status} — chi huy duoc khi draft`);
+      throw httpErr(409, `Phiên ở trạng thái ${stRows[0].status} — chỉ hủy được khi draft`);
     }
     await conn.query(
       `UPDATE stock_takes SET status = 'cancelled' WHERE id = ?`, [id]

@@ -458,6 +458,86 @@
   }
   .r-line-rm:hover{ background:#fef2f2;border-color:#fca5a5;color:#dc2626; }
 
+  .stat-clickable{ cursor:pointer;transition:transform .12s ease,box-shadow .12s ease,border-color .12s ease; }
+  .stat-clickable:hover{ transform:translateY(-1px);box-shadow:0 4px 12px rgba(15,23,42,.1);border-color:#cbd5e1; }
+  .stat-clickable:focus-visible{ outline:2px solid #2563eb;outline-offset:2px; }
+
+  /* ============ WARRANTY FLOW DIALOG (upgraded) ============ */
+  .wf-toolbar{ display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px; }
+  .wf-filter-group{ display:inline-flex;gap:6px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:4px; }
+  .wf-filter-btn{
+    display:inline-flex;align-items:center;gap:7px;
+    border:1px solid transparent;background:transparent;color:#475569;border-radius:9px;
+    padding:7px 13px;font-size:12.5px;font-weight:600;cursor:pointer;
+    transition:background .15s,color .15s,box-shadow .15s;
+  }
+  .wf-filter-btn:hover{ color:#1e293b; background:#e2e8f0; }
+  .wf-filter-btn.active{ background:#fff;color:#1d4ed8;box-shadow:0 1px 3px rgba(15,23,42,.12);border-color:#e2e8f0; }
+  .wf-filter-dot{ width:8px;height:8px;border-radius:50%;flex:none; }
+  .wf-filter-btn[data-wf-filter="technician"] .wf-filter-dot{ background:#3b82f6; }
+  .wf-filter-btn[data-wf-filter="company"] .wf-filter-dot{ background:#f59e0b; }
+  .wf-filter-btn[data-wf-filter="supplier"] .wf-filter-dot{ background:#94a3b8; }
+  .wf-filter-count{
+    display:none;min-width:20px;height:20px;padding:0 6px;align-items:center;justify-content:center;
+    border-radius:999px;background:#e2e8f0;color:#475569;font-size:11px;font-weight:700;line-height:1;
+  }
+  .wf-filter-count.show{ display:inline-flex; }
+  .wf-filter-btn.active .wf-filter-count{ background:#dbeafe;color:#1d4ed8; }
+  .wf-search-wrap{ position:relative;flex:1;min-width:240px; }
+  .wf-search-wrap svg{ position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#94a3b8;pointer-events:none; }
+  .wf-search-wrap .input{ padding-left:34px; }
+
+  .wf-actions{
+    display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;
+    padding:11px 14px;border-radius:12px;background:#f8fafc;border:1px solid #eef2f7;
+  }
+  .wf-actions.has-sel{ background:#eff6ff;border-color:#bfdbfe; }
+  .wf-hint{ font-size:12px;color:#64748b;line-height:1.5;max-width:560px; }
+  .wf-selected{ font-size:12.5px;color:#1d4ed8;font-weight:700; }
+  .wf-selected:empty{ display:none; }
+
+  .wf-table{ width:100%;border-collapse:separate;border-spacing:0;font-size:13px; }
+  .wf-table thead th{
+    position:sticky;top:0;z-index:2;background:#f8fafc;
+    font-size:11.5px;color:#64748b;text-align:left;text-transform:uppercase;letter-spacing:.3px;
+    padding:10px 10px;border-bottom:1px solid #e2e8f0;font-weight:700;
+  }
+  .wf-table tbody td{ padding:11px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top; }
+  .wf-table tbody tr{ transition:background .12s; }
+  .wf-table tbody tr:hover{ background:#f8fafc; }
+  .wf-table tbody tr.wf-row-checked{ background:#eff6ff; }
+  .wf-table tbody tr.wf-row-checked:hover{ background:#e0edff; }
+
+  .wf-prod{ display:flex;gap:10px;align-items:flex-start; }
+  .wf-thumb{ width:42px;height:42px;border-radius:9px;object-fit:cover;flex:none;border:1px solid #e2e8f0;background:#f1f5f9; }
+  .wf-thumb-fb{
+    width:42px;height:42px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,#e0e7ff,#dbeafe);color:#4338ca;font-weight:800;font-size:16px;border:1px solid #e2e8f0;
+  }
+  .wf-ordlink{ font-weight:700;color:#1d4ed8;text-decoration:none; }
+  .wf-ordlink:hover{ text-decoration:underline; }
+
+  .wf-badge{ display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:700;border:1px solid transparent; }
+  .wf-badge.blue{ background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe; }
+  .wf-badge.green{ background:#f0fdf4;color:#15803d;border-color:#bbf7d0; }
+  .wf-badge.amber{ background:#fffbeb;color:#b45309;border-color:#fde68a; }
+  .wf-badge.gray{ background:#f1f5f9;color:#475569;border-color:#e2e8f0; }
+  .wf-badge.red{ background:#fee2e2;color:#b91c1c;border-color:#fecaca; }
+
+  .wf-aging{ display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 7px;border-radius:6px;margin-top:4px; }
+  .wf-aging.ok{ background:#f1f5f9;color:#64748b; }
+  .wf-aging.warn{ background:#fffbeb;color:#b45309; }
+  .wf-aging.late{ background:#fee2e2;color:#b91c1c; }
+
+  .wf-empty{ text-align:center;color:#94a3b8;padding:48px 10px; }
+  .wf-empty-ic{ font-size:38px;opacity:.5;margin-bottom:8px; }
+  .wf-row-disabled{ opacity:.5; }
+  .wf-row-disabled:hover{ background:transparent; }
+
+  .wf-skel{ height:14px;border-radius:6px;background:linear-gradient(90deg,#eef2f7 25%,#e2e8f0 37%,#eef2f7 63%);background-size:400% 100%;animation:wfShimmer 1.3s ease infinite; }
+  @keyframes wfShimmer{ 0%{background-position:100% 0} 100%{background-position:-100% 0} }
+  .wf-cb{ width:16px;height:16px;cursor:pointer;accent-color:#2563eb; }
+
   /* Detail photo grid */
   .rd-photos-grid{
     display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px;margin-top:6px;
@@ -652,6 +732,7 @@
         <kbd>⌘ K</kbd>
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin-right:12px;flex-shrink:0">
+        <button class="btn ghost sm" id="btnWarrantyFlow" style="font-size:12.5px">🧰 <span class="topnav-btn-lbl">Hàng bảo hành</span></button>
         <a href="/admin/staff-stock.html" target="_blank" class="btn ghost sm" style="font-size:12.5px">🎒 <span class="topnav-btn-lbl">Kho cá nhân KTV</span></a>
         <button class="btn ghost sm" id="btnManageSuppliers" style="font-size:12.5px">🏭 <span class="topnav-btn-lbl">Quản lý NCC</span></button>
       </div>
@@ -660,26 +741,26 @@
     <div class="content flex-page">
 
       <!-- Stats row -->
-      <div id="inv-stats-row" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px;flex-shrink:0">
-        <div class="stat" style="padding:10px 14px;gap:10px">
-          <div class="icon" style="width:36px;height:36px;font-size:16px;flex-shrink:0">📦</div>
-          <div><div class="label" style="font-size:11px">SP có tồn</div><div class="value" style="font-size:22px" id="st-products">0</div><div style="font-size:11px;color:#94a3b8">mặt hàng</div></div>
+      <div id="inv-stats-row" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:8px;flex-shrink:0">
+        <div class="stat" style="padding:7px 12px;gap:9px">
+          <div class="icon" style="width:30px;height:30px;font-size:14px;flex-shrink:0">📦</div>
+          <div><div class="label" style="font-size:10.5px">SP có tồn</div><div class="value" style="font-size:18px;line-height:1.1" id="st-products">0</div><div style="font-size:10.5px;color:#94a3b8">mặt hàng</div></div>
         </div>
-        <div class="stat" style="padding:10px 14px;gap:10px">
-          <div class="icon green" style="width:36px;height:36px;font-size:16px;flex-shrink:0">✓</div>
-          <div><div class="label" style="font-size:11px">Tổng tồn kho</div><div class="value" style="font-size:22px" id="st-units">0</div><div style="font-size:11px;color:#94a3b8">thiết bị</div></div>
+        <div class="stat" style="padding:7px 12px;gap:9px">
+          <div class="icon green" style="width:30px;height:30px;font-size:14px;flex-shrink:0">✓</div>
+          <div><div class="label" style="font-size:10.5px">Tổng tồn kho</div><div class="value" style="font-size:18px;line-height:1.1" id="st-units">0</div><div style="font-size:10.5px;color:#94a3b8">thiết bị</div></div>
         </div>
-        <div class="stat" style="padding:10px 14px;gap:10px">
-          <div class="icon blue" style="width:36px;height:36px;font-size:16px;flex-shrink:0">🛠</div>
-          <div><div class="label" style="font-size:11px">KTV đang giữ</div><div class="value" style="font-size:22px" id="st-held">0</div><div style="font-size:11px;color:#94a3b8">thiết bị</div></div>
+        <div class="stat stat-clickable" id="stat-held" role="button" tabindex="0" title="Mở kho cá nhân KTV" style="padding:7px 12px;gap:9px">
+          <div class="icon blue" style="width:30px;height:30px;font-size:14px;flex-shrink:0">🛠</div>
+          <div><div class="label" style="font-size:10.5px">KTV đang giữ</div><div class="value" style="font-size:18px;line-height:1.1" id="st-held">0</div><div style="font-size:10.5px;color:#94a3b8">thiết bị →</div></div>
         </div>
-        <div class="stat" style="padding:10px 14px;gap:10px">
-          <div class="icon amber" style="width:36px;height:36px;font-size:16px;flex-shrink:0">⚠</div>
-          <div><div class="label" style="font-size:11px">Sắp hết (&lt;5)</div><div class="value" style="font-size:22px" id="st-low">0</div><div style="font-size:11px;color:#94a3b8">mặt hàng</div></div>
+        <div class="stat stat-clickable" id="stat-low" role="button" tabindex="0" title="Xem danh sách sản phẩm sắp hết" style="padding:7px 12px;gap:9px">
+          <div class="icon amber" style="width:30px;height:30px;font-size:14px;flex-shrink:0">⚠</div>
+          <div><div class="label" style="font-size:10.5px">Sắp hết (&lt;5)</div><div class="value" style="font-size:18px;line-height:1.1" id="st-low">0</div><div style="font-size:10.5px;color:#94a3b8">mặt hàng →</div></div>
         </div>
-        <div class="stat" style="padding:10px 14px;gap:10px">
-          <div class="icon" style="width:36px;height:36px;font-size:16px;flex-shrink:0;background:#dcfce7;color:#166534">💰</div>
-          <div><div class="label" style="font-size:11px">Tổng giá trị tồn</div><div class="value" style="font-size:16px;color:#166534" id="st-value">0đ</div><div style="font-size:11px;color:#94a3b8">giá gốc</div></div>
+        <div class="stat" style="padding:7px 12px;gap:9px">
+          <div class="icon" style="width:30px;height:30px;font-size:14px;flex-shrink:0;background:#dcfce7;color:#166534">💰</div>
+          <div><div class="label" style="font-size:10.5px">Tổng giá trị tồn</div><div class="value" style="font-size:14px;line-height:1.1;color:#166534" id="st-value">0đ</div><div style="font-size:10.5px;color:#94a3b8">giá gốc</div></div>
         </div>
       </div>
 
@@ -1135,6 +1216,59 @@
     </div>
     <div class="modal-foot">
       <button type="button" class="btn ghost" id="hsCloseBtn">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Hàng bảo hành -->
+<div id="warrantyFlowModal" class="modal-bg">
+  <div class="modal" style="max-width:1240px">
+    <div class="modal-head">
+      <div>
+        <h3 style="margin:0">Hàng bảo hành trong kho</h3>
+        <div class="mini">Xem hàng lỗi KTV đang giữ / đã về kho / đang gửi NCC. Bấm mã đơn để mở đơn, hoặc gõ mã đơn vào ô tìm kiếm để lọc.</div>
+      </div>
+      <button type="button" class="modal-close" id="wfClose" aria-label="Đóng">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="wf-toolbar">
+        <div class="wf-filter-group">
+          <button class="wf-filter-btn active" data-wf-filter="technician"><span class="wf-filter-dot"></span>Đang ở túi KTV<span class="wf-filter-count" data-wf-count="technician"></span></button>
+          <button class="wf-filter-btn" data-wf-filter="company"><span class="wf-filter-dot"></span>Đã về kho bảo hành<span class="wf-filter-count" data-wf-count="company"></span></button>
+          <button class="wf-filter-btn" data-wf-filter="supplier"><span class="wf-filter-dot"></span>Đang gửi nhà cung cấp<span class="wf-filter-count" data-wf-count="supplier"></span></button>
+        </div>
+        <div class="wf-search-wrap">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="wfSearch" class="input" placeholder="Tìm đơn, khách, sản phẩm, IMEI, KTV..." />
+        </div>
+        <button class="btn ghost sm" id="wfRefresh">↻ Tải lại</button>
+      </div>
+      <div class="wf-actions" id="wfActions">
+        <span id="wfActionHint" class="wf-hint"></span>
+        <span id="wfSelectedInfo" class="wf-selected"></span>
+        <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select id="wfSupplierSel" class="select" style="min-width:220px;display:none"></select>
+          <button class="btn" id="wfPrimaryAction">Thao tác</button>
+        </div>
+      </div>
+      <div style="overflow:auto;max-height:65vh;border:1px solid #eef2f7;border-radius:12px">
+        <table class="wf-table">
+          <thead>
+            <tr>
+              <th style="width:38px"><input id="wfCbAll" type="checkbox" class="wf-cb"></th>
+              <th>Sản phẩm</th>
+              <th>Đơn / Khách</th>
+              <th>Trạng thái · Thời điểm</th>
+              <th>Phụ trách</th>
+              <th style="width:220px">Lô NCC</th>
+            </tr>
+          </thead>
+          <tbody id="wfBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" id="wfCloseBtn">Đóng</button>
     </div>
   </div>
 </div>

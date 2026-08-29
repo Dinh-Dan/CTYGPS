@@ -20,13 +20,13 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const name = String(req.body.name || '').trim();
-    if (!name) return res.status(400).json({ error: 'Thieu ten danh muc' });
+    if (!name) return res.status(400).json({ error: 'Thiếu tên danh mục' });
 
     const [dup] = await db.query(
       `SELECT id FROM categories WHERE name = ? AND is_deleted = 0 LIMIT 1`,
       [name]
     );
-    if (dup.length) return res.status(409).json({ error: 'Danh muc da ton tai' });
+    if (dup.length) return res.status(409).json({ error: 'Danh mục đã tồn tại' });
 
     const [r] = await db.query(`INSERT INTO categories (name) VALUES (?)`, [name]);
     res.status(201).json({ id: r.insertId, name });
@@ -36,19 +36,19 @@ router.post('/', async (req, res, next) => {
 router.put('/:id', async (req, res, next) => {
   try {
     const name = String(req.body.name || '').trim();
-    if (!name) return res.status(400).json({ error: 'Thieu ten danh muc' });
+    if (!name) return res.status(400).json({ error: 'Thiếu tên danh mục' });
 
     const [dup] = await db.query(
       `SELECT id FROM categories WHERE name = ? AND id <> ? AND is_deleted = 0 LIMIT 1`,
       [name, req.params.id]
     );
-    if (dup.length) return res.status(409).json({ error: 'Ten danh muc da ton tai' });
+    if (dup.length) return res.status(409).json({ error: 'Tên danh mục đã tồn tại' });
 
     const [r] = await db.query(
       `UPDATE categories SET name = ? WHERE id = ? AND is_deleted = 0`,
       [name, req.params.id]
     );
-    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay danh muc' });
+    if (!r.affectedRows) return res.status(404).json({ error: 'Không tìm thấy danh mục' });
     res.json({ ok: true, id: Number(req.params.id), name });
   } catch (err) { next(err); }
 });
@@ -61,14 +61,14 @@ router.delete('/:id', async (req, res, next) => {
     );
     if (linked[0].c > 0) {
       return res.status(409).json({
-        error: `Khong the xoa: ${linked[0].c} san pham dang dung danh muc nay`,
+        error: `Không thể xoá: ${linked[0].c} sản phẩm đang dùng danh mục này`,
       });
     }
     const [r] = await db.query(
       `UPDATE categories SET is_deleted = 1 WHERE id = ? AND is_deleted = 0`,
       [req.params.id]
     );
-    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay danh muc' });
+    if (!r.affectedRows) return res.status(404).json({ error: 'Không tìm thấy danh mục' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

@@ -55,6 +55,47 @@
     overflow:auto;
     -webkit-overflow-scrolling:touch;
   }
+  @media(max-width:900px){
+    /* 1. Thu nhỏ các thẻ thống kê phía trên */
+    .stat-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 8px !important; margin-bottom: 12px !important; }
+    .stat-card { padding: 10px !important; gap: 8px !important; flex-direction: row !important; }
+    .stat-icon { width: 32px !important; height: 32px !important; font-size: 16px !important; }
+    .stat-value { font-size: 16px !important; }
+    .stat-label { font-size: 10.5px !important; }
+    .stat-sub { display: none !important; }
+
+    /* 2. Fix layout tab không bị 0 height */
+    .content.flex-page { display: block !important; overflow-y: auto !important; }
+    .content.flex-page > #tab-customers,
+    .content.flex-page > #tab-requests,
+    .content.flex-page > #tab-staff {
+      display: block; /* Không dùng !important để JS có thể ẩn bằng display: none */
+      min-height: auto !important; 
+      overflow: visible !important; 
+    }
+    
+    /* 3. Khôi phục bảng ngang (ghi đè style.css card table) */
+    body.admin-shell .shell .content.flex-page .table-wrap {
+      display: block !important;
+      overflow-x: auto !important;
+      -webkit-overflow-scrolling: touch !important;
+      border: 1px solid var(--border) !important;
+      background: #fff !important;
+      border-radius: var(--radius) !important;
+      min-height: auto !important;
+      margin-bottom: 12px;
+    }
+    body.admin-shell .shell table.data { display: table !important; min-width: 800px; }
+    body.admin-shell .shell table.data thead { display: table-header-group !important; }
+    body.admin-shell .shell table.data tbody { display: table-row-group !important; }
+    body.admin-shell .shell table.data tr { display: table-row !important; box-shadow: none !important; margin: 0 !important; border: none !important; border-radius: 0 !important; }
+    body.admin-shell .shell table.data th,
+    body.admin-shell .shell table.data td { display: table-cell !important; padding: 12px 10px !important; text-align: left !important; border-bottom: 1px solid var(--border) !important; }
+    body.admin-shell .shell table.data td:before { display: none !important; }
+    body.admin-shell .shell table.data td[data-label="Hành động"] { padding-top: 12px !important; border-top: none !important; margin-top: 0 !important; }
+    body.admin-shell .shell table.data td[data-label="Hành động"] .btn { width: auto !important; display: inline-flex !important; }
+    body.admin-shell .shell table.data td[data-label="Hành động"] .row { flex-wrap: nowrap !important; }
+  }
   .pill.retail{background:#e0e7ff;color:#3730a3}
   .pill.dealer{background:#fef3c7;color:#92400e}
   .pill.tech  {background:#dcfce7;color:#166534}
@@ -121,6 +162,12 @@
   /* meta row */
   .oc-meta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:#64748b}
   .oc-meta b{color:#334155;font-weight:600}
+  /* loại đơn (tóm tắt dịch vụ) */
+  .oc-type{font-size:12.5px;font-weight:600;color:#3730a3;background:#eef2ff;border:1px solid #e0e7ff;border-radius:7px;padding:4px 9px;display:flex;align-items:center;gap:4px;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* tags biển số / tài khoản trong card đơn */
+  .oc-devices{display:flex;flex-wrap:wrap;gap:5px}
+  /* thời gian tạo & xong đặt cạnh nhau, nền nhạt cho dễ đọc */
+  .oc-time-meta{align-items:center;background:#f8fafc;border-radius:7px;padding:5px 9px;gap:5px 12px}
   /* progress */
   .oc-progress-wrap{display:flex;align-items:center;gap:10px}
   .oc-progress{flex:1;position:relative;height:7px;background:#fee2e2;border-radius:999px;overflow:hidden}
@@ -294,6 +341,10 @@
             <option value="pr">Có phiếu YC- nợ</option>
             <option value="overdue">Quá hạn (≥7 ngày)</option>
           </select>
+          <select id="fCustSort" class="select" style="max-width:180px" title="Sắp xếp">
+            <option value="latest_debt" selected>Nợ mới nhất</option>
+            <option value="total_debt">Tổng nợ giảm dần</option>
+          </select>
           <button class="btn sm" id="btnCreateOldDebt" title="Nhập số nợ cũ của khách trước khi dùng hệ thống">+ Nhập nợ đầu kỳ</button>
           <button class="btn ghost sm" id="btnFilterToggle" title="Bộ lọc nâng cao" style="margin-left:auto">≡ Bộ lọc</button>
         </div>
@@ -305,6 +356,7 @@
                 <th style="width:90px">Loại</th>
                 <th style="width:90px">Số đơn</th>
                 <th style="width:140px">Nợ từ đơn</th>
+                <th style="width:130px">Nợ mới nhất</th>
                 <th style="width:130px">Tổng nợ</th>
                 <th style="width:200px">Hành động</th>
               </tr>
@@ -652,6 +704,6 @@
 <script src="/shared/js/imgbb.js"></script>
 <script src="/shared/js/admin-shell.js"></script>
 <script src="/shared/js/order-quick-view.js"></script>
-<script src="/admin/debts.js?v=2"></script>
+<script src="/admin/debts.js?v=3"></script>
 </body>
 </html>

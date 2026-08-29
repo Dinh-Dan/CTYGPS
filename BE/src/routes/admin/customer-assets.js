@@ -22,15 +22,15 @@ function httpErr(status, message) {
 }
 
 function vKind(kind) {
-  if (!KIND_TABLE[kind]) throw httpErr(400, 'asset_kind khong hop le');
+  if (!KIND_TABLE[kind]) throw httpErr(400, 'asset_kind không hợp lệ');
   return KIND_TABLE[kind];
 }
 
 function vValue(value) {
   const v = String(value == null ? '' : value).trim();
-  if (!v) throw httpErr(400, 'Thieu gia tri');
-  if (v.length > 255) throw httpErr(400, 'Gia tri qua dai (toi da 255)');
-  if (/[<>]/.test(v)) throw httpErr(400, 'Gia tri chua ky tu khong hop le');
+  if (!v) throw httpErr(400, 'Thiếu giá trị');
+  if (v.length > 255) throw httpErr(400, 'Giá trị quá dài (tối đa 255)');
+  if (/[<>]/.test(v)) throw httpErr(400, 'Giá trị chứa ký tự không hợp lệ');
   return v;
 }
 
@@ -41,7 +41,7 @@ function vValue(value) {
 router.get('/:customerId', async (req, res, next) => {
   try {
     const cid = Number(req.params.customerId);
-    if (!cid) return res.status(400).json({ error: 'customerId khong hop le' });
+    if (!cid) return res.status(400).json({ error: 'customerId không hợp lệ' });
 
     const [accounts] = await db.query(
       `SELECT id, account_name, note FROM customer_accounts
@@ -99,7 +99,7 @@ router.put('/:customerId/:kind/:id', async (req, res, next) => {
       `UPDATE ${cfg.table} SET ${sets.join(', ')}
         WHERE id = ? AND customer_id = ? AND is_deleted = 0`, args
     );
-    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay' });
+    if (!r.affectedRows) return res.status(404).json({ error: 'Không tìm thấy' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -113,7 +113,7 @@ router.delete('/:customerId/:kind/:id', async (req, res, next) => {
       `UPDATE ${cfg.table} SET is_deleted = 1
         WHERE id = ? AND customer_id = ? AND is_deleted = 0`, [id, cid]
     );
-    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay' });
+    if (!r.affectedRows) return res.status(404).json({ error: 'Không tìm thấy' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -170,20 +170,20 @@ async function applyRequest(req) {
   const cfg = KIND_TABLE[req.asset_kind];
   if (!cfg) throw httpErr(500, 'asset_kind sai');
   if (req.action === 'add') {
-    if (!req.value) throw httpErr(400, 'value rong, khong the apply');
+    if (!req.value) throw httpErr(400, 'value rỗng, không thể apply');
     await db.query(
       `INSERT INTO ${cfg.table} (customer_id, ${cfg.valueCol}, note) VALUES (?, ?, ?)`,
       [req.customer_id, req.value, req.note || null]
     );
   } else if (req.action === 'update') {
-    if (!req.target_id || !req.value) throw httpErr(400, 'thieu target_id/value');
+    if (!req.target_id || !req.value) throw httpErr(400, 'thiếu target_id/value');
     await db.query(
       `UPDATE ${cfg.table} SET ${cfg.valueCol} = ?
         WHERE id = ? AND customer_id = ? AND is_deleted = 0`,
       [req.value, req.target_id, req.customer_id]
     );
   } else if (req.action === 'delete') {
-    if (!req.target_id) throw httpErr(400, 'thieu target_id');
+    if (!req.target_id) throw httpErr(400, 'thiếu target_id');
     await db.query(
       `UPDATE ${cfg.table} SET is_deleted = 1
         WHERE id = ? AND customer_id = ? AND is_deleted = 0`,
@@ -198,9 +198,9 @@ router.post('/requests/:id/approve', async (req, res, next) => {
     const [rows] = await db.query(
       `SELECT * FROM customer_update_requests WHERE id = ? AND is_deleted = 0`, [id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay de xuat' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy đề xuất' });
     if (rows[0].status !== 'pending') {
-      return res.status(409).json({ error: 'De xuat da duoc xu ly' });
+      return res.status(409).json({ error: 'Đề xuất đã được xử lý' });
     }
 
     await applyRequest(rows[0]);
@@ -226,7 +226,7 @@ router.post('/requests/:id/reject', async (req, res, next) => {
         WHERE id=? AND status='pending' AND is_deleted=0`,
       [req.user.sub, note, id]
     );
-    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay de xuat pending' });
+    if (!r.affectedRows) return res.status(404).json({ error: 'Không tìm thấy đề xuất pending' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

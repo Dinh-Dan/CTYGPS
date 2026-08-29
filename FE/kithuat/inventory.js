@@ -15,6 +15,9 @@
     orders: [],          // đơn assigned/warehouse_released/in_progress để chọn install
     products: [],        // product_stock có hàng (cho take-direct)
     returnRequests: [],  // yêu cầu trả kho đang pending
+    warrantyBag: [],
+    warrantyDelivery: [],
+    warrantyCompany: [],
   };
 
   function isStale(d) {
@@ -59,6 +62,14 @@
     const res = await api.get('/kithuat/inventory/available-stock?' + p.toString(), { silent: true }).catch(() => null);
     state.products = res ? res.items || [] : [];
     renderProductSelect();
+  }
+  async function loadWarrantyWorklist() {
+    const res = await api.get('/kithuat/warranty/worklist', { silent: true }).catch(() => null);
+    if (!res) return;
+    state.warrantyBag = res.technician_bag || [];
+    state.warrantyDelivery = res.waiting_delivery || [];
+    state.warrantyCompany = res.company_flow || [];
+    renderWarrantyWorklist();
   }
 
   // ==================== RENDER ====================
@@ -142,6 +153,72 @@
   function renderProductSelect() {
     $('tdProduct').innerHTML = '<option value="">— Chọn —</option>'
       + state.products.map(p => `<option value="${p.product_id}" data-stock="${p.quantity}">${escape(p.code)} — ${escape(p.name)} (còn ${p.quantity})</option>`).join('');
+  }
+
+  function renderWarrantyCards(blockId, listId, rows, emptyText, badgeText, badgeStyle) {
+    const block = $(blockId);
+    const list = $(listId);
+    if (!block || !list) return;
+    if (!rows.length) {
+      block.style.display = 'none';
+      list.innerHTML = '';
+      return;
+    }
+    block.style.display = '';
+    list.innerHTML = rows.map((row) => `
+      <div class="pool-card" style="border-left:3px solid ${badgeStyle.border}">
+        <div class="meta">
+          <div><b>${escape(row.product_code || '')}</b>${row.product_code ? ' - ' : ''}${escape(row.product_name || row.device_name || ('Item #' + row.id))}</div>
+          <div class="text-muted" style="font-size:13px;margin-top:3px">
+            Đơn <b>${escape(row.order_code || '')}</b>
+            ${row.customer_name ? ' - ' + escape(row.customer_name) : ''}
+            ${row.customer_phone ? ' - ' + escape(row.customer_phone) : ''}
+          </div>
+          <div class="text-muted" style="font-size:12.5px;margin-top:2px">
+            ${row.imei ? `IMEI ${escape(row.imei)}` : ''}
+            ${row.license_plate ? `${row.imei ? ' - ' : ''}BS ${escape(row.license_plate)}` : ''}
+          </div>
+          ${(() => {
+            const HL = { tech_fix: 'KTV sửa nội bộ', exchange: 'Đổi thiết bị', supplier_return: 'Gửi NCC' };
+            return row.handling_type && HL[row.handling_type]
+              ? `<div style="font-size:12.5px;margin-top:3px;color:#1d4ed8;font-weight:600">Hướng xử lý: ${escape(HL[row.handling_type])}</div>`
+              : `<div style="font-size:12.5px;margin-top:3px;color:#92400e">Chưa chọn hướng xử lý</div>`;
+          })()}
+          <div class="text-muted" style="font-size:12.5px;margin-top:2px">
+            ${row.replacement_product_name ? `Hàng giao khách: <b>${escape(row.replacement_product_name)}</b>` : emptyText}
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+          <span class="pill" style="background:${badgeStyle.bg};color:${badgeStyle.fg};flex-shrink:0">${escape(badgeText)}</span>
+          <a class="btn ghost sm" href="/kithuat/tasks.html#order-${row.order_id}">Mở đơn</a>
+          ${row.current_status === 'technician_holding' ? `<button class="btn sm btnWReturn" data-order="${row.order_id}" data-item="${row.id}" style="background:#7c3aed">Trả về kho</button>` : ''}
+          ${row.current_status === 'pending_company_receipt' ? `<span class="pill" style="background:#fef9c3;color:#854d0e;flex-shrink:0">Đã gửi · chờ kho xác nhận</span>` : ''}
+        </div>
+      </div>
+    `).join('');
+    list.querySelectorAll('.btnWReturn').forEach((btn) => {
+      btn.addEventListener('click', () => returnWarrantyToStock(Number(btn.dataset.order), Number(btn.dataset.item)));
+    });
+  }
+
+  async function returnWarrantyToStock(orderId, itemId) {
+    if (!orderId || !itemId) return;
+    const ok = await ui.confirm({ title: 'Gửi hàng lỗi về kho', message: 'Xác nhận đã giao sản phẩm lỗi này về kho bảo hành công ty? Kho/admin sẽ xác nhận đã nhận.' });
+    if (!ok) return;
+    const r = await api.post(`/kithuat/orders/${orderId}/warranty/moves`, {
+      warranty_item_id: itemId,
+      action_code: 'handover_to_company',
+    }, { onError: 'toast' });
+    if (r) {
+      ui.toast('Đã gửi về kho — chờ kho/admin xác nhận nhận hàng', 'success');
+      loadWarrantyWorklist();
+    }
+  }
+
+  function renderWarrantyWorklist() {
+    renderWarrantyCards('warrantyBagBlock', 'warrantyBagList', state.warrantyBag, 'Đồ lỗi đang ở túi KTV', 'Đang giữ', { bg: '#dbeafe', fg: '#1d4ed8', border: '#3b82f6' });
+    renderWarrantyCards('warrantyDeliveryBlock', 'warrantyDeliveryList', state.warrantyDelivery, 'Đang chờ bạn mang đi giao khách', 'Cần giao', { bg: '#dcfce7', fg: '#166534', border: '#22c55e' });
+    renderWarrantyCards('warrantyCompanyBlock', 'warrantyCompanyList', state.warrantyCompany, 'Đang ở kho công ty hoặc đang chờ NCC', 'Chờ xử lý', { bg: '#fef3c7', fg: '#92400e', border: '#f59e0b' });
   }
 
   // ==================== ACTIONS ====================
@@ -375,7 +452,7 @@
   async function init() {
     techShell.init('inventory');
     await loadTasks();
-    await Promise.all([loadHoldings(), loadPool(), loadIssues(), loadReturnRequests()]);
+    await Promise.all([loadHoldings(), loadPool(), loadIssues(), loadReturnRequests(), loadWarrantyWorklist()]);
 
     // Toolbar
     $('btnTakeDirect').addEventListener('click', openTakeDirect);

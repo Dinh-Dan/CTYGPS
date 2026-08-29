@@ -89,18 +89,18 @@ router.post('/grant', async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const staffId = Number(req.body.staff_id);
-    if (!staffId) throw httpErr(400, 'Thieu staff_id');
+    if (!staffId) throw httpErr(400, 'Thiếu staff_id');
     const items = Array.isArray(req.body.items) ? req.body.items : [];
-    if (!items.length) throw httpErr(400, 'Phai co it nhat 1 san pham');
+    if (!items.length) throw httpErr(400, 'Phải có ít nhất 1 sản phẩm');
 
     const lines = [];
     const seen = new Set();
     for (const raw of items) {
       const productId = Number(raw.product_id);
       const qty = Number(raw.qty);
-      if (!productId) throw httpErr(400, 'Thieu product_id');
-      if (!qty || qty <= 0) throw httpErr(400, 'qty phai > 0');
-      if (seen.has(productId)) throw httpErr(400, 'Moi SP chi 1 dong');
+      if (!productId) throw httpErr(400, 'Thiếu product_id');
+      if (!qty || qty <= 0) throw httpErr(400, 'qty phải > 0');
+      if (seen.has(productId)) throw httpErr(400, 'Mỗi SP chỉ 1 dòng');
       seen.add(productId);
       lines.push({
         product_id: productId, qty,
@@ -112,7 +112,7 @@ router.post('/grant', async (req, res, next) => {
       `SELECT id FROM staff WHERE id = ? AND is_deleted = 0 AND role = 'kithuat'`,
       [staffId]
     );
-    if (!staffRow.length) throw httpErr(400, 'KTV khong hop le');
+    if (!staffRow.length) throw httpErr(400, 'KTV không hợp lệ');
 
     await conn.beginTransaction();
     lines.sort((a, b) => a.product_id - b.product_id);
@@ -121,7 +121,7 @@ router.post('/grant', async (req, res, next) => {
         `SELECT quantity FROM product_stock WHERE product_id = ? FOR UPDATE`, [l.product_id]
       );
       const cur = psRows.length ? Number(psRows[0].quantity) : 0;
-      if (cur < l.qty) throw httpErr(409, `Kho khong du SP id=${l.product_id} (con ${cur}, can ${l.qty})`);
+      if (cur < l.qty) throw httpErr(409, `Kho không đủ SP id=${l.product_id} (còn ${cur}, cần ${l.qty})`);
     }
 
     const code = await genReceiptCode(conn, 'out');
@@ -165,15 +165,15 @@ router.post('/revoke', async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const staffId = Number(req.body.staff_id);
-    if (!staffId) throw httpErr(400, 'Thieu staff_id');
+    if (!staffId) throw httpErr(400, 'Thiếu staff_id');
     const items = Array.isArray(req.body.items) ? req.body.items : [];
-    if (!items.length) throw httpErr(400, 'Phai co it nhat 1 san pham');
+    if (!items.length) throw httpErr(400, 'Phải có ít nhất 1 sản phẩm');
 
     const lines = [];
     for (const raw of items) {
       const pid = Number(raw.product_id);
       const qty = Number(raw.qty);
-      if (!pid || !qty || qty <= 0) throw httpErr(400, 'Item khong hop le');
+      if (!pid || !qty || qty <= 0) throw httpErr(400, 'Item không hợp lệ');
       lines.push({ product_id: pid, qty });
     }
 
@@ -195,7 +195,7 @@ router.post('/revoke', async (req, res, next) => {
         [staffId, l.product_id]
       );
       if (!shRows.length || Number(shRows[0].qty) < l.qty) {
-        throw httpErr(409, `KTV khong du SP id=${l.product_id} de tra (dang co ${shRows[0]?.qty || 0})`);
+        throw httpErr(409, `KTV không đủ SP id=${l.product_id} để trả (đang có ${shRows[0]?.qty || 0})`);
       }
       if (Number(shRows[0].qty) === l.qty) {
         await conn.query(`DELETE FROM staff_holdings WHERE id = ?`, [shRows[0].id]);

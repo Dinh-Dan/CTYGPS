@@ -2,6 +2,7 @@
 // Goi cron.start() 1 lan o server.js sau khi listen.
 
 const db = require('./db');
+const backup = require('./backup');
 
 async function cleanupOldNotifications() {
   try {
@@ -20,6 +21,9 @@ function start() {
   // Chay ngay 1 lan luc khoi dong, sau do moi 6 gio mot lan.
   cleanupOldNotifications();
   setInterval(cleanupOldNotifications, 6 * 60 * 60 * 1000);
+
+  // Backup database tu dong (chi chay khi BACKUP_ENABLED=true trong .env)
+  backup.start();
 }
 
 module.exports = { start };

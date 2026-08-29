@@ -49,21 +49,40 @@
   }
 
   function commPill(o) {
-    const amt = Number(o.tech_commission_amount) || 0;
-    if (!amt && !o.tech_commission_requested_at) return '<span style="color:#94a3b8">—</span>';
-    if (o.payslip_id) return `<span class="pill comm-payslip">Đã tính lương: ${fmt(amt)}</span>`;
-    if (o.tech_commission_approved_at) return `<span class="pill comm-approved">Đã duyệt: ${fmt(amt)}</span>`;
-    if (o.tech_commission_requested_at) return `<span class="pill comm-pending">Chờ duyệt: ${fmt(amt)}</span>`;
-    return '<span style="color:#94a3b8">—</span>';
+    const techAmt = Number(o.tech_commission_amount) || 0;
+    const staffAmt = Number(o.assigned_staff_commission_amount) || 0;
+    const totalAmt = techAmt + staffAmt;
+
+    const hasPayslip = !!o.payslip_id || !!o.assigned_staff_commission_payslip_id;
+    const hasApproved = !!o.tech_commission_approved_at || !!o.assigned_staff_commission_approved_at;
+    const hasRequested = !!o.tech_commission_requested_at || !!o.assigned_staff_commission_requested_at;
+
+    if (!totalAmt && !hasRequested) return '<span style="color:#94a3b8">—</span>';
+    if (hasPayslip) {
+      return `<span style="display:inline-flex;align-items:center;gap:6px;color:#166534;font-weight:700" title="Đã tính lương">
+        <span>${fmt(totalAmt)}</span>
+        <span class="pill comm-payslip" aria-label="Đã tính lương" style="padding:1px 6px;line-height:1">✓</span>
+      </span>`;
+    }
+    if (hasApproved) {
+      return `<span style="display:inline-flex;align-items:center;gap:6px;color:#7c3aed;font-weight:700" title="Đã duyệt">
+        <span>${fmt(totalAmt)}</span>
+        <span class="pill comm-approved" aria-label="Đã duyệt" style="padding:1px 6px;line-height:1">✓</span>
+      </span>`;
+    }
+    if (hasRequested) return `<span style="color:#7c3aed;font-weight:700" title="Chờ duyệt">${fmt(totalAmt)}</span>`;
+    return `<span style="color:#7c3aed;font-weight:700">${fmt(totalAmt)}</span>`;
   }
 
   function filterByComm(items) {
     const v = $('fComm').value;
     if (!v) return items;
     return items.filter(o => {
-      if (v === 'approved') return !!o.tech_commission_approved_at;
-      if (v === 'requested') return !!o.tech_commission_requested_at && !o.tech_commission_approved_at;
-      if (v === 'none') return !o.tech_commission_requested_at;
+      const hasApproved = !!o.tech_commission_approved_at || !!o.assigned_staff_commission_approved_at;
+      const hasRequested = !!o.tech_commission_requested_at || !!o.assigned_staff_commission_requested_at;
+      if (v === 'approved') return hasApproved;
+      if (v === 'requested') return hasRequested && !hasApproved;
+      if (v === 'none') return !hasRequested;
       return true;
     });
   }

@@ -43,7 +43,7 @@ router.patch('/:id/approve', adminOnly, async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const id = Number(req.params.id);
-    if (!id) { conn.release(); return res.status(400).json({ error: 'id khong hop le' }); }
+    if (!id) { conn.release(); return res.status(400).json({ error: 'id không hợp lệ' }); }
 
     await conn.beginTransaction();
 
@@ -53,11 +53,11 @@ router.patch('/:id/approve', adminOnly, async (req, res, next) => {
     );
     if (!rows.length) {
       await conn.rollback();
-      return res.status(404).json({ error: 'Khong tim thay lo nop' });
+      return res.status(404).json({ error: 'Không tìm thấy lô nộp' });
     }
     if (rows[0].status !== 'pending') {
       await conn.rollback();
-      return res.status(400).json({ error: `Lo da o trang thai "${rows[0].status}", khong the duyet lai` });
+      return res.status(400).json({ error: `Lô đã ở trạng thái "${rows[0].status}", không thể duyệt lại` });
     }
 
     await conn.query(
@@ -80,7 +80,7 @@ router.patch('/:id/reject', adminOnly, async (req, res, next) => {
   try {
     const id     = Number(req.params.id);
     const reason = String(req.body.reason || '').trim() || null;
-    if (!id) { conn.release(); return res.status(400).json({ error: 'id khong hop le' }); }
+    if (!id) { conn.release(); return res.status(400).json({ error: 'id không hợp lệ' }); }
 
     await conn.beginTransaction();
 
@@ -90,11 +90,11 @@ router.patch('/:id/reject', adminOnly, async (req, res, next) => {
     );
     if (!rows.length) {
       await conn.rollback();
-      return res.status(404).json({ error: 'Khong tim thay lo nop' });
+      return res.status(404).json({ error: 'Không tìm thấy lô nộp' });
     }
     if (rows[0].status !== 'pending') {
       await conn.rollback();
-      return res.status(400).json({ error: `Lo da o trang thai "${rows[0].status}", khong the tu choi` });
+      return res.status(400).json({ error: `Lô đã ở trạng thái "${rows[0].status}", không thể từ chối` });
     }
 
     // Hoan lai collections -> hien thi lai trong tab KTV giu tien

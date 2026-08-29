@@ -24,7 +24,16 @@ app.use(express.urlencoded({ extended: true }));
 
 // Serve toan bo FE static (admin, customer, kithuat, shared)
 const FE_DIR = path.resolve(__dirname, '..', 'FE');
-app.use(express.static(FE_DIR));
+app.use(express.static(FE_DIR, {
+  etag: false,
+  lastModified: false,
+  setHeaders: (res, path, stat) => {
+    // Prevent aggressive caching to fix ERR_CACHE_READ_FAILURE on clients
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  }
+}));
 
 // Serve file da upload (avatar, anh san pham...)
 const UPLOADS_DIR = path.resolve(__dirname, 'uploads');

@@ -6,6 +6,12 @@
   const fmtN = new Intl.NumberFormat('vi-VN');
   const fmt = (n) => fmtN.format(Number(n) || 0);
   const IS_ADMIN = (window.auth && auth.isAdmin && auth.isAdmin()) || false;
+  const PAGE_QS = new URLSearchParams(location.search);
+  const IS_WARRANTY_VIEW = PAGE_QS.get('service_kind') === 'warranty';
+  if (IS_WARRANTY_VIEW) {
+    location.replace('/admin/inventory.html');
+    return;
+  }
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -20,12 +26,116 @@
     return `${hm}<br><small style="color:#94a3b8">${day}</small>`;
   }
 
+  function initPageMode() {}
+
+  const WARRANTY_ROLE_LABELS = {
+    faulty: 'Hàng lỗi',
+    replacement: 'Hàng thay thế',
+    supplier_return: 'Hàng NCC trả',
+  };
+  const WARRANTY_STATUS_LABELS = {
+    intake: 'Mới tiếp nhận',
+    technician_holding: 'KTV đang giữ',
+    company_warranty_stock: 'Kho bảo hành công ty',
+    sent_to_supplier: 'Đã gửi NCC',
+    supplier_returned: 'NCC trả về',
+    delivered: 'Đã giao khách',
+    cancelled: 'Đã hủy',
+  };
+  const WARRANTY_LOCATION_LABELS = {
+    customer: 'Khách hàng',
+    technician: 'Kho KTV',
+    technician_stock: 'Kho KTV',
+    company_warranty_stock: 'Kho bảo hành',
+    company_stock: 'Kho công ty',
+    supplier: 'Nhà cung cấp',
+    customer_returned: 'Đã giao khách',
+  };
+  const WARRANTY_ACTION_LABELS = {
+    receive_from_customer: 'KTV nhận từ khách',
+    move_to_company_stock: 'Nhập kho bảo hành',
+    send_to_supplier: 'Gửi NCC',
+    receive_from_supplier: 'Nhận từ NCC',
+    reserve_replacement_from_company: 'Xuất đổi từ kho công ty',
+    reserve_replacement_from_technician: 'Xuất đổi từ kho KTV',
+    deliver_to_customer: 'Giao lại khách',
+    cancel_item: 'Hủy item',
+    note: 'Ghi chú',
+  };
+  const WARRANTY_STATUS_TEXT = {
+    intake: 'Chưa đưa vào xử lý',
+    technician_holding: 'Đồ lỗi đang ở túi KTV',
+    company_warranty_stock: 'Đồ lỗi đang ở kho bảo hành công ty',
+    sent_to_supplier: 'Đồ lỗi đang gửi NCC',
+    supplier_returned: 'Đã nhận đồ bảo hành từ NCC',
+    delivered: 'Đã đóng item nội bộ',
+    cancelled: 'Đã huỷ',
+  };
+  const WARRANTY_LOCATION_TEXT = {
+    customer: 'Khách đang giữ',
+    technician: 'Kho KTV',
+    technician_stock: 'Kho KTV',
+    company_warranty_stock: 'Kho bảo hành công ty',
+    company_stock: 'Kho công ty',
+    supplier: 'Nhà cung cấp',
+    customer_returned: 'Khách đã nhận lại',
+  };
+  const WARRANTY_ACTION_TEXT = {
+    mark_fixed: 'KTV đã khắc phục',
+    receive_from_customer: 'Đưa sản phẩm vào túi KTV',
+    move_to_company_stock: 'Trả sản phẩm lỗi về kho công ty',
+    send_to_supplier: 'Gửi nhà cung cấp',
+    receive_from_supplier: 'Nhận hàng từ nhà cung cấp',
+    reserve_replacement_from_company: 'Cấp hàng từ kho công ty',
+    reserve_replacement_from_technician: 'Đổi ngay từ túi KTV',
+    deliver_to_customer: 'Trả bảo hành cho khách',
+    cancel_item: 'Huỷ item',
+    note: 'Ghi chú',
+  };
+  Object.assign(WARRANTY_STATUS_LABELS, WARRANTY_STATUS_TEXT);
+  Object.assign(WARRANTY_LOCATION_LABELS, WARRANTY_LOCATION_TEXT);
+  Object.assign(WARRANTY_ACTION_LABELS, WARRANTY_ACTION_TEXT);
+  const WARRANTY_HANDLING_LABELS = {
+    pending: 'Chưa chốt cách xử lý',
+    tech_fix: 'KTV đã khắc phục',
+    exchange: 'Đổi thiết bị',
+    supplier_return: 'Đổi trả NCC',
+  };
+  const WARRANTY_CUSTOMER_LABELS = {
+    pending: 'Khách chưa xong',
+    completed: 'Đã trả bảo hành cho khách',
+  };
+  function warrantyBadge(text, cls) {
+    return `<span class="pill ${cls || 'gray'}">${esc(text)}</span>`;
+  }
+  function warrantyStatusBadge(code) {
+    const label = WARRANTY_STATUS_LABELS[code] || code || '—';
+    const cls = {
+      intake: 'gray',
+      technician_holding: 'blue',
+      company_warranty_stock: 'purple',
+      sent_to_supplier: 'amber',
+      supplier_returned: 'blue',
+      delivered: 'green',
+      cancelled: 'red',
+    }[code] || 'gray';
+    return warrantyBadge(label, cls);
+  }
+  function warrantyMoveOptionsForItem(item) {
+    const actionCodes = Array.isArray(item && item.available_actions) && item.available_actions.length
+      ? item.available_actions
+      : ['note'];
+    return actionCodes.map((code) => ({ code, label: WARRANTY_ACTION_LABELS[code] || code }));
+  }
+
   let state = {
     page: 1, limit: 10, total: 0,
     filters: { bucket: 'all' },
+    serviceKind: IS_WARRANTY_VIEW ? 'warranty' : '',
     templates: [],
     items: [],
     currentDetail: null,        // detail loaded in modal
+    photosExpanded: false,
     products: null,             // lazy
     customCacheStaff: null,     // suggested staff cache
     selectedIds: new Set(),     // bulk-select order IDs
@@ -51,6 +161,7 @@
     p.set('page', state.page);
     p.set('limit', state.limit);
     const f = state.filters;
+    if (state.serviceKind) p.set('service_kind', state.serviceKind);
 
     if (f.q) p.set('q', f.q);
     if (f.customer_q) p.set('customer_q', f.customer_q);
@@ -65,7 +176,8 @@
   }
 
   async function loadStats() {
-    const res = await api.get('/admin/orders/stats').catch(() => null);
+    const suffix = state.serviceKind ? ('?service_kind=' + encodeURIComponent(state.serviceKind)) : '';
+    const res = await api.get('/admin/orders/stats' + suffix).catch(() => null);
     if (!res) return;
     $('sCntAll').textContent      = res.total;
     $('sCntPending').textContent  = res.pending;
@@ -121,6 +233,16 @@
       </div>
     </div>`;
   }
+  function renderOrderKind(o) {
+    const tpl = esc(o.template_names || o.template_name || '—');
+    if (o.service_kind === 'warranty') {
+      return `<div style="display:flex;flex-direction:column;gap:4px">
+        ${warrantyBadge('Bảo hành', 'blue')}
+        <small style="color:#64748b">${tpl}</small>
+      </div>`;
+    }
+    return tpl;
+  }
 
   function render() {
     const $tb = $('tbody');
@@ -155,7 +277,7 @@
                 </div>
               </div>
             </td>
-            <td data-label="Loại đơn">${esc(o.template_names || o.template_name || '—')}</td>
+            <td data-label="Loại đơn">${renderOrderKind(o)}</td>
             <td data-label="Thông tin">${renderDeviceInfo(o)}</td>
             <td data-label="Tổng tiền" style="text-align:right">
               <span class="amt-total">${fmt(total)}</span><br>
@@ -460,6 +582,7 @@
   async function openDetail(id) {
     $('modal').classList.add('open');
     $('odBody').innerHTML = '<p style="text-align:center;color:#94a3b8">Đang tải…</p>';
+    state.photosExpanded = false;
     const [res, pendingRes, payHistRes] = await Promise.all([
       api.get('/admin/orders/' + id).catch(() => null),
       api.get('/admin/orders/' + id + '/admin-pending').catch(() => null),
@@ -481,6 +604,7 @@
   function closeDetail() {
     $('modal').classList.remove('open');
     state.currentDetail = null;
+    state.photosExpanded = false;
     state.products = null;
     if (location.hash.startsWith('#order-')) {
       history.replaceState(null, '', location.pathname + location.search);
@@ -491,7 +615,38 @@
     const o = state.currentDetail;
     const lines = o.lines || [];
     const tplNames = lines.map(l => l.template_name).filter(Boolean).join(' + ');
-    $('modalTitle').innerHTML = `${esc(o.code)}${ui.copyCodeBtn(o.code)}<span style="font-weight:400;color:#64748b"> — ${esc(tplNames || '')}</span>`;
+
+    const isWarranty = o.service_kind === 'warranty';
+    if (isWarranty) {
+      $('modalTitle').innerHTML = `
+        <style>
+          @keyframes warrantyHelpBlink {
+            0%, 100% { background-color: #e0f2fe; box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.4); }
+            50% { background-color: #0284c7; box-shadow: 0 0 0 6px rgba(14, 165, 233, 0); color: #fff; }
+          }
+          .warranty-help-blink {
+            animation: warrantyHelpBlink 1.5s infinite ease-in-out;
+            border: none;
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700;
+            color: #0369a1;
+            cursor: pointer;
+            margin-left: 6px;
+            vertical-align: middle;
+            outline: none;
+          }
+        </style>
+        ${esc(o.code)}${ui.copyCodeBtn(o.code)} <button type="button" id="btnHelpWarranty" class="warranty-help-blink" title="Hướng dẫn quy trình bảo hành">?</button><span style="font-weight:400;color:#64748b"> — ${esc(tplNames || '')}</span>
+      `;
+    } else {
+      $('modalTitle').innerHTML = `${esc(o.code)}${ui.copyCodeBtn(o.code)}<span style="font-weight:400;color:#64748b"> — ${esc(tplNames || '')}</span>`;
+    }
 
     const lineSum = lines.reduce((s, l) => s + Number(l.subtotal || 0), 0);
     const remain = Math.max(0, Number(o.total_amount) - Number(o.paid_amount));
@@ -524,7 +679,7 @@
                 <button class="btn sm" id="btnAdminLinkEC">+ Gán / Tạo khách</button>
               `}
             </div>` : ''}
-            <div><b>Loại đơn:</b> ${esc(tplNames || '—')}</div>
+            <div><b>Loại đơn:</b> ${o.service_kind === 'warranty' ? 'Bảo hành' : esc(tplNames || '—')}${o.service_kind === 'warranty' && tplNames ? ` <small style="color:#64748b">· ${esc(tplNames)}</small>` : ''}</div>
             <div><b>Địa chỉ:</b> ${esc(o.address || '—')}</div>
             <div style="margin-top:4px">
               <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
@@ -539,31 +694,50 @@
           </div>
           <div style="flex:1;min-width:240px">
             <div>Trạng thái: <span class="pill ${sCls.cls}">${esc(sCls.label)}</span> · <span class="pill ${pCls.cls}">${esc(pCls.label)}</span>${o.collected_for_dealer ? ' · <span class="pill amber" title="Đơn thu hộ đại lí">🏪 Thu hộ ĐL</span>' : ''}</div>
-            <div><b>KTV:</b> ${esc(o.staff_name || '—')} ${o.wage_amount ? `(công: ${fmt(o.wage_amount)}đ)` : ''}</div>
+            <div><b>KTV:</b> ${esc(o.staff_name || '_ không có kỹ thuật viên ở đơn này')} ${o.wage_amount ? `(công: ${fmt(o.wage_amount)}đ)` : ''}</div>
             <div><b>Tạo:</b> ${fmtDate(o.created_at)}</div>
             <div><b>Hoàn thành:</b> ${fmtDate(o.completed_at)}</div>
           </div>
         </div>
+        ${!o.staff_name ? `
+        <div style="
+          display:flex;align-items:center;gap:10px;
+          margin-top:14px;padding:12px 16px;
+          background:linear-gradient(135deg,#fffbeb,#fef3c7);
+          border:1.5px solid #fbbf24;border-radius:10px;
+          box-shadow:0 2px 8px rgba(251,191,36,.2);
+          animation:ktvWarn .4s ease;
+        ">
+          <span style="font-size:22px;flex-shrink:0">⚠️</span>
+          <div>
+            <div style="font-weight:700;color:#92400e;font-size:13.5px">Chưa gán kỹ thuật viên!</div>
+            <div style="font-size:12.5px;color:#b45309;margin-top:2px">Đơn này chưa có KTV phụ trách — nhớ gán KTV và cập nhật <b>tiền lương</b> trước khi hoàn tất.</div>
+          </div>
+        </div>` : ''}
       </div>
 
       <div class="od-section">
         <h4>Tiến trình <button class="btn ghost sm" id="btnReloadDetail" style="margin-left:auto">⟳</button></h4>
         <div class="timeline" id="timeline"></div>
         <div style="margin-top:10px">
-          <label style="font-size:13px;color:#334155;font-weight:600;display:block;margin-bottom:4px">Thực tế hiện tại</label>
-          <textarea id="progressNote" class="input" rows="4" placeholder="Ví dụ: KTV đang trên đường, dự kiến tới 14h">${esc(o.progress_note || '')}</textarea>
+          <label style="font-size:13px;color:#334155;font-weight:600;display:block;margin-bottom:4px">Thực tế hiện tại <span style="font-weight:400;color:#94a3b8">(chỉ ghi thêm, không sửa/xoá)</span></label>
+          <div id="progressNoteLog" style="white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:13px;color:#0f172a;max-height:220px;overflow:auto;${(o.progress_note||'').trim() ? '' : 'color:#94a3b8'}">${esc((o.progress_note||'').trim() || 'Chưa có ghi chú')}</div>
+          <textarea id="progressNote" class="input" rows="2" placeholder="Nhập nội dung cần ghi thêm..." style="margin-top:8px"></textarea>
           <div style="margin-top:6px;text-align:right">
-            <button class="btn ghost sm" id="btnSaveProgressNote">💾 Lưu ghi chú</button>
+            <button class="btn ghost sm" id="btnSaveProgressNote">➕ Ghi thêm</button>
           </div>
         </div>
       </div>
 
+      ${renderWarrantySectionV2()}
+
+      ${o.service_kind === 'warranty' ? '' : `
       <div class="od-section">
         <h4>Dòng công việc
           <button class="btn ghost sm" id="btnEditLines">Sửa nội dung</button>
         </h4>
         <div id="linesList"></div>
-      </div>
+      </div>`}
 
       <div class="od-section">
         <h4>Ảnh các bước</h4>
@@ -598,15 +772,16 @@
     renderActions();
     renderAdminPending();
     renderPaymentHistory();
-
     $('btnReloadDetail').addEventListener('click', () => openDetail(o.id));
-    $('btnEditLines').addEventListener('click', editLines);
+    if ($('btnEditLines')) $('btnEditLines').addEventListener('click', editLines);
+    if ($('btnEditWarrantyV2')) $('btnEditWarrantyV2').addEventListener('click', openWarrantyEditorV2);
     if ($('btnSaveProgressNote')) {
       $('btnSaveProgressNote').addEventListener('click', async () => {
-        const v = $('progressNote').value;
+        const v = $('progressNote').value.trim();
+        if (!v) { ui.toast('Nhập nội dung cần ghi thêm', 'warning'); return; }
         const r = await api.patch(`/admin/orders/${o.id}/progress-note`,
           { progress_note: v }, { onError: 'toast' });
-        if (r) { ui.toast('Đã lưu', 'success'); state.currentDetail.progress_note = v; }
+        if (r) { ui.toast('Đã ghi thêm', 'success'); openDetail(o.id); }
       });
     }
     if ($('btnSaveOrderNote')) {
@@ -628,6 +803,70 @@
         const r = await api.patch(`/admin/orders/${o.id}/end-customer`,
           { action: 'unlink' }, { onError: 'toast' });
         if (r) { ui.toast('Đã gỡ', 'success'); openDetail(o.id); }
+      });
+    }
+
+    // Delegate: nut hanh dong admin tren tung item bao hanh
+    $('odBody').querySelectorAll('.btnAdminWarrantyItemAction, .btnAdminWarrantyDeliverNew').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const itemId = Number(btn.dataset.itemId);
+        const o = state.currentDetail;
+        if (!itemId || !o || !o.warranty) return;
+        const item = (o.warranty.items || []).find(it => it.id === itemId);
+        if (!item) return;
+        await openAdminWarrantyStatusModal(item);
+      });
+    });
+
+    const $btnHelpWarranty = $('btnHelpWarranty');
+    if ($btnHelpWarranty) {
+      $btnHelpWarranty.addEventListener('click', () => {
+        ui.confirm({
+          title: 'Hướng dẫn quy trình xử lý Bảo hành (Admin / Nhân viên)',
+          body: `
+            <div style="font-family:system-ui, -apple-system, sans-serif; font-size:13.5px; line-height:1.6; color:#334155; max-height:420px; overflow-y:auto; padding-right:8px">
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:10px 12px; color:#1e40af">
+                <span style="font-size:20px">💡</span>
+                <span><b>Hướng dẫn quy trình xử lý sản phẩm lỗi & thay thế trong Đơn bảo hành</b></span>
+              </div>
+              
+              <div style="margin-bottom:14px">
+                <h4 style="margin:0 0 6px 0; color:#1e293b; font-size:14px">📌 1. Các hành động xử lý sản phẩm lỗi của khách</h4>
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:12.5px; color:#475569">
+                  • <b>Mới tiếp nhận (Intake):</b> Nhận máy lỗi ban đầu từ khách hàng.<br>
+                  • <b>Sửa nội bộ / Khắc phục xong tại chỗ:</b> Kỹ thuật tự xử lý lỗi và bàn giao lại trực tiếp cho khách hàng.<br>
+                  • <b>Thu hồi về kho:</b> Đối với Admin/Nhân viên, khi nhấn thu hồi thì sản phẩm lỗi sẽ <b>chuyển thẳng về kho công ty</b> (không vào túi KTV).
+                </div>
+              </div>
+
+              <div style="margin-bottom:14px">
+                <h4 style="margin:0 0 6px 0; color:#1e293b; font-size:14px">🔄 2. Cấp hàng đổi mới (Đổi thiết bị)</h4>
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:12.5px; color:#475569">
+                  • <b>Chọn nguồn cấp:</b> Admin/Nhân viên có thể cấp hàng thay thế từ <b>kho công ty</b> hoặc từ <b>túi của KTV</b> được phân công.<br>
+                  • <b>Thao tác chọn:</b> Hệ thống cho phép chọn cùng lúc nhiều sản phẩm, điều chỉnh số lượng và xem trước ảnh sản phẩm trực quan.<br>
+                  • <b>Xác nhận cấp:</b> Sau khi chọn, một dialog tóm tắt danh sách sản phẩm và số lượng sẽ hiện ra để xác nhận đầy đủ trước khi thực hiện.
+                </div>
+              </div>
+
+              <div style="margin-bottom:14px">
+                <h4 style="margin:0 0 6px 0; color:#1e293b; font-size:14px">📦 3. Gửi bảo hành nhà cung cấp (NCC)</h4>
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:12.5px; color:#475569">
+                  • Chuyển tiếp sản phẩm lỗi sang NCC bảo hành.<br>
+                  • Khi NCC bảo hành xong và trả lại hàng, admin cập nhật nhận hàng từ NCC về kho, sau đó tiến hành bàn giao lại cho khách hàng.
+                </div>
+              </div>
+
+              <div>
+                <h4 style="margin:0 0 6px 0; color:#1e293b; font-size:14px">💰 4. Hoàn thành đơn hàng bảo hành</h4>
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:12.5px; color:#475569">
+                  • Với đơn bảo hành có tổng chi phí phát sinh &le; 0đ, khi bấm Hoàn thành, hệ thống sẽ tự động cập nhật trạng thái thanh toán thành <b>Đã trả (Paid)</b> thay vì để trống hoặc ghi nhận nợ.
+                </div>
+              </div>
+            </div>
+          `,
+          okText: 'Đã hiểu',
+          cancelText: 'Đóng'
+        });
       });
     }
   }
@@ -777,9 +1016,1275 @@
     }
   }
 
+  // ============================================================
+  // ADMIN: PANEL BAO HANH DAY DU (port tu KTV, co dieu chinh)
+  // ============================================================
+  const ADMIN_WARRANTY_HANDLING_LABEL = {
+    tech_fix: '🔧 Sửa nội bộ',
+    exchange: '🔄 Đổi thiết bị',
+    supplier_return: '📦 Gửi NCC',
+    pending: '❓ Chưa phân loại',
+  };
+
+  // CTA chinh cho tung item (nhu KTV nhung co them move_to_company_stock)
+  function adminGetWarrantyPrimaryActionInfo(item) {
+    const actions = new Set((item && item.available_actions) || []);
+    const hasAssignedReplacement = !!(item && item.replacement_product_id && item.replacement_staff_id);
+    if (!item || item.customer_status === 'completed' || item.current_status === 'delivered' || item.current_location === 'customer_returned') {
+      return { actionable: false, button: 'Sản phẩm đã xong', hint: 'Sản phẩm này đã hoàn tất.' };
+    }
+    const options = [];
+    if (actions.has('mark_fixed')) options.push({ actionCode: 'mark_fixed' });
+    if (actions.has('receive_from_customer')) options.push({ actionCode: 'receive_from_customer' });
+    if (actions.has('move_to_company_stock')) options.push({ actionCode: 'move_to_company_stock' });
+    if (actions.has('reserve_replacement_from_technician') && !hasAssignedReplacement) options.push({ actionCode: 'reserve_replacement_from_technician' });
+    if (actions.has('reserve_replacement_from_company') && !hasAssignedReplacement && item.current_status !== 'supplier_returned') options.push({ actionCode: 'reserve_replacement_from_company', sourceMode: null });
+    if (actions.has('deliver_to_customer') && (item.handling_type === 'tech_fix' || hasAssignedReplacement)) options.push({ actionCode: 'deliver_to_customer' });
+    const canDeliverDirect = actions.has('deliver_to_customer') && item.current_status === 'supplier_returned' && !item.replacement_product_id;
+    if (canDeliverDirect && !options.some(o => o.actionCode === 'deliver_to_customer')) options.push({ actionCode: 'deliver_to_customer' });
+
+    if (!options.length) {
+      return { actionable: false, button: 'Đang chờ xử lý', hint: 'Sản phẩm hiện chưa có thao tác phù hợp.' };
+    }
+    const top = options[0];
+    const LABELS = {
+      mark_fixed: 'Sửa xong – trả khách', receive_from_customer: 'Tiếp nhận từ khách',
+      move_to_company_stock: 'Thu hồi về kho', reserve_replacement_from_technician: 'Cấp hàng đổi (túi KTV)',
+      reserve_replacement_from_company: 'Cấp hàng đổi (kho)', deliver_to_customer: 'Giao cho khách',
+    };
+    return { actionable: true, button: LABELS[top.actionCode] || top.actionCode, hint: '', _options: options };
+  }
+
+  // Build danh sach lua chon (tuong tu KTV nhung admin co them move_to_company_stock)
+  function adminBuildWarrantyDecisionOptions(item, context) {
+    const actions = new Set((item && item.available_actions) || []);
+    const holdings = (context && context.technicianHoldings) || [];
+    const companyStock = (context && context.companyStock) || [];
+    const hasAssignedReplacement = !!(item && item.replacement_product_id && item.replacement_staff_id);
+
+    // Khach mang thang den: phase 1 (intake / chua nhan)
+    if (item.current_status === 'intake' && item.current_location === 'customer') {
+      return [
+        { actionCode: 'receive_to_stock', label: '📥 Tiếp nhận – vào kho ngay', description: 'Khách mang máy đến công ty trực tiếp. Tiếp nhận và đưa thẳng vào kho bảo hành — bỏ qua bước túi KTV.', enabled: true },
+        { actionCode: 'mark_fixed', label: '🔧 Tự xử lý xong tại chỗ', description: 'Sửa xong tại chỗ, khách nhận lại máy luôn.', enabled: actions.has('mark_fixed') },
+        { actionCode: 'note', label: '📝 Chờ xử lý – chỉ ghi chú', description: 'Chưa làm gì, chỉ ghi nhận tình trạng.', enabled: true },
+      ];
+    }
+
+    const choices = [];
+    const push = (actionCode, extra = {}) => {
+      const LABELS = {
+        mark_fixed: '🔧 Sửa xong – trả khách', move_to_company_stock: '🏢 Thu hồi về kho',
+        reserve_replacement_from_technician: '🔄 Cấp hàng đổi từ túi KTV',
+        reserve_replacement_from_company: '🏪 Cấp hàng đổi từ kho công ty',
+        deliver_to_customer: '✅ Giao hàng cho khách',
+        note: '📝 Ghi chú thêm',
+      };
+      choices.push({
+        actionCode, label: extra.label || LABELS[actionCode] || actionCode,
+        description: extra.description || '',
+        enabled: extra.enabled !== false,
+        sourceMode: extra.sourceMode || null,
+      });
+    };
+
+    if (actions.has('mark_fixed')) push('mark_fixed', { description: 'Sửa xong, khách nhận lại thiết bị đã sửa.' });
+    if (actions.has('move_to_company_stock')) push('move_to_company_stock', { description: 'Thu hồi sản phẩm từ KTV về kho bảo hành để xử lý tiếp.' });
+    if (actions.has('reserve_replacement_from_technician') && !hasAssignedReplacement) {
+      push('reserve_replacement_from_technician', { enabled: holdings.length > 0, description: holdings.length ? 'Phân hàng đổi từ túi KTV cho khách.' : 'Không có hàng trong túi KTV.' });
+    }
+    if (actions.has('reserve_replacement_from_company') && !hasAssignedReplacement && item.current_status !== 'supplier_returned') {
+      push('reserve_replacement_from_company', { enabled: companyStock.length > 0, description: companyStock.length ? 'Xuất hàng từ kho công ty để đổi cho khách.' : 'Kho công ty không có hàng phù hợp.' });
+    }
+    if (actions.has('deliver_to_customer') && (item.handling_type === 'tech_fix' || hasAssignedReplacement || item.current_status === 'supplier_returned')) {
+      push('deliver_to_customer', { description: 'Xác nhận giao hàng lại cho khách.' });
+    }
+    push('note', { description: 'Ghi nhận tiến độ hoặc thêm thông tin mà không thay đổi trạng thái.' });
+    return choices;
+  }
+
+  function adminRenderDecisionPanel(choice, context) {
+    if (!choice) return '<div style="padding:12px;border:1px dashed #cbd5e1;border-radius:10px;color:#64748b">Chọn 1 thao tác để tiếp tục.</div>';
+    const holdings = (context && context.technicianHoldings) || [];
+    const companyStock = (context && context.companyStock) || [];
+    const prefillSelectedProducts = (context && context.prefillSelectedProducts) || [];
+    const infoBox = `<div style="padding:12px;border:1px solid #dbeafe;border-radius:10px;background:#f8fbff;color:#1e3a8a;font-size:13px;line-height:1.5">${esc(choice.description || '')}</div>`;
+    if (choice.actionCode === 'mark_fixed') {
+      return `${infoBox}<div class="field" style="margin-top:12px"><label>Chi phí thêm (nếu có)</label><input id="waCost" class="input" inputmode="numeric" value="0"></div>`;
+    }
+    if (choice.actionCode === 'reserve_replacement_from_technician') {
+      let productRows = '';
+      if (!holdings.length) {
+        productRows = '<div style="padding:12px;color:#ef4444;font-size:13px;font-weight:600">Không có sản phẩm nào trong túi KTV.</div>';
+      } else {
+        productRows = holdings.map(h => {
+          const imgUrl = h.image_url || '';
+          const isPrefilled = prefillSelectedProducts.find(x => x.product_id === h.product_id);
+          const qtyVal = isPrefilled ? isPrefilled.qty : 1;
+          return `
+            <div class="product-selection-item" data-id="${h.product_id}" data-name="${esc(h.product_name || '')}" data-max="${h.qty}"
+                 style="display:flex;align-items:center;gap:12px;padding:10px;border:1.5px solid ${isPrefilled ? '#3b82f6' : '#e2e8f0'};border-radius:10px;background:${isPrefilled ? '#f0f7ff' : '#fff'};transition:all 0.15s;margin-bottom:8px;cursor:pointer">
+              <input type="checkbox" class="product-select-checkbox" data-id="${h.product_id}" ${isPrefilled ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer">
+              <img src="${imgUrl}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;background:#f1f5f9" 
+                onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%2394a3b8%22 stroke-width=%222%22><rect x=%223%22 y=%223%22 width=%2218%22 height=%2218%22 rx=%222%22/><circle cx=%228.5%22 cy=%228.5%22 r=%221.5%22/><path d=%22M21 15l-5-5L5 21%22/></svg>'">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13.5px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${h.product_code ? `[${esc(h.product_code)}] ` : ''}${esc(h.product_name || '')}</div>
+                <div style="font-size:12px;color:#64748b;margin-top:2px">Còn lại trong túi: <span style="font-weight:700;color:#2563eb">${fmt(h.qty)}</span> ${h.staff_name ? `(${esc(h.staff_name)})` : ''}</div>
+              </div>
+              <div class="qty-selector" style="display:${isPrefilled ? 'flex' : 'none'};align-items:center;gap:6px">
+                <button type="button" class="btn-qty-minus" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:1.5px solid #cbd5e1;border-radius:6px;background:#f8fafc;cursor:pointer;font-weight:700;font-size:14px;color:#475569">-</button>
+                <input type="number" class="product-qty-input" value="${qtyVal}" min="1" max="${h.qty}" style="width:48px;height:26px;text-align:center;border:1.5px solid #cbd5e1;border-radius:6px;font-size:13px;font-weight:700;color:#0f172a">
+                <button type="button" class="btn-qty-plus" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:1.5px solid #cbd5e1;border-radius:6px;background:#f8fafc;cursor:pointer;font-weight:700;font-size:14px;color:#475569">+</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+      return `
+        ${infoBox}
+        <div class="field" style="margin-top:12px">
+          <label style="font-weight:700;font-size:13.5px;color:#334155;margin-bottom:8px;display:block">Chọn sản phẩm đổi từ túi KTV</label>
+          <div class="product-selection-list" style="max-height:280px;overflow-y:auto;padding-right:4px">${productRows}</div>
+        </div>
+      `;
+    }
+    if (choice.actionCode === 'reserve_replacement_from_company' && choice.sourceMode !== 'supplier_returned_item') {
+      let productRows = '';
+      if (!companyStock.length) {
+        productRows = '<div style="padding:12px;color:#ef4444;font-size:13px;font-weight:600">Không có sản phẩm nào trong kho công ty.</div>';
+      } else {
+        productRows = companyStock.map(p => {
+          const imgUrl = p.image_url || '';
+          const isPrefilled = prefillSelectedProducts.find(x => x.product_id === p.product_id);
+          const qtyVal = isPrefilled ? isPrefilled.qty : 1;
+          return `
+            <div class="product-selection-item" data-id="${p.product_id}" data-name="${esc(p.name || '')}" data-max="${p.quantity}"
+                 style="display:flex;align-items:center;gap:12px;padding:10px;border:1.5px solid ${isPrefilled ? '#3b82f6' : '#e2e8f0'};border-radius:10px;background:${isPrefilled ? '#f0f7ff' : '#fff'};transition:all 0.15s;margin-bottom:8px;cursor:pointer">
+              <input type="checkbox" class="product-select-checkbox" data-id="${p.product_id}" ${isPrefilled ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer">
+              <img src="${imgUrl}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;background:#f1f5f9" 
+                onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%2394a3b8%22 stroke-width=%222%22><rect x=%223%22 y=%223%22 width=%2218%22 height=%2218%22 rx=%222%22/><circle cx=%228.5%22 cy=%228.5%22 r=%221.5%22/><path d=%22M21 15l-5-5L5 21%22/></svg>'">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13.5px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.code ? `[${esc(p.code)}] ` : ''}${esc(p.name || '')}</div>
+                <div style="font-size:12px;color:#64748b;margin-top:2px">Còn lại trong kho: <span style="font-weight:700;color:#0f766e">${fmt(p.quantity)}</span></div>
+              </div>
+              <div class="qty-selector" style="display:${isPrefilled ? 'flex' : 'none'};align-items:center;gap:6px">
+                <button type="button" class="btn-qty-minus" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:1.5px solid #cbd5e1;border-radius:6px;background:#f8fafc;cursor:pointer;font-weight:700;font-size:14px;color:#475569">-</button>
+                <input type="number" class="product-qty-input" value="${qtyVal}" min="1" max="${p.quantity}" style="width:48px;height:26px;text-align:center;border:1.5px solid #cbd5e1;border-radius:6px;font-size:13px;font-weight:700;color:#0f172a">
+                <button type="button" class="btn-qty-plus" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:1.5px solid #cbd5e1;border-radius:6px;background:#f8fafc;cursor:pointer;font-weight:700;font-size:14px;color:#475569">+</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+      return `
+        ${infoBox}
+        <div class="field" style="margin-top:12px">
+          <label style="font-weight:700;font-size:13.5px;color:#334155;margin-bottom:8px;display:block">Sản phẩm cấp từ kho công ty</label>
+          <div class="product-selection-list" style="max-height:280px;overflow-y:auto;padding-right:4px">${productRows}</div>
+        </div>
+      `;
+    }
+    return infoBox;
+  }
+
+  // Nut CTA chinh cho moi item tren card (nhu KTV)
+  function renderAdminWarrantyItemActions(item) {
+    const isDone = item.customer_status === 'completed' || item.current_status === 'delivered' || item.current_location === 'customer_returned';
+    const isCancelled = item.current_status === 'cancelled';
+    if (isDone || isCancelled) return '';
+    const info = adminGetWarrantyPrimaryActionInfo(item);
+    const canDeliverNew = !isDone && !isCancelled && (item.display_state && item.display_state.code === 'pending' || item.current_status === 'supplier_returned');
+    const ctaHtml = info.actionable && !canDeliverNew
+      ? `<button class="btnAdminWarrantyItemAction" data-item-id="${item.id}"
+          style="width:100%;padding:10px;border-radius:10px;border:none;background:#2563eb;color:#fff;
+                 font-size:13.5px;font-weight:700;cursor:pointer;margin-top:10px">
+          ${esc(info.button)} →
+        </button>`
+      : !info.actionable && !canDeliverNew
+      ? `<div style="margin-top:10px;padding:9px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;font-size:12.5px;color:#64748b;text-align:center">${esc(info.hint)}</div>`
+      : '';
+    const deliverBtn = canDeliverNew
+      ? `<button class="btnAdminWarrantyDeliverNew" data-item-id="${item.id}"
+          style="width:100%;padding:10px;border-radius:10px;border:none;background:#16a34a;color:#fff;
+                 font-size:13.5px;font-weight:700;cursor:pointer;margin-top:8px">
+          🔧 Lắp / giao sản phẩm bảo hành →
+        </button>`
+      : '';
+    return ctaHtml + deliverBtn;
+  }
+
+  // Modal chon trang thai (tuong tu KTV)
+  async function openAdminWarrantyStatusModal(item, prefill = {}) {
+    const o = state.currentDetail;
+    const needTechStock = Array.isArray(item.available_actions) && item.available_actions.includes('reserve_replacement_from_technician');
+    const needCompanyStock = Array.isArray(item.available_actions) && item.available_actions.includes('reserve_replacement_from_company') && !item.replacement_product_id && item.current_status !== 'supplier_returned';
+
+    const [invRes, csRes] = await Promise.all([
+      needTechStock ? api.get('/admin/staff-stock', { onError: 'toast' }).catch(() => null) : Promise.resolve(null),
+      needCompanyStock ? api.get('/admin/inventory/stock?stock_state=available&limit=200', { onError: 'toast' }).catch(() => null) : Promise.resolve(null),
+    ]);
+    // /admin/staff-stock tra ve [{staff_id, full_name, items:[{product_id,product_code,product_name,qty}]}]
+    // Gom tat ca items thanh flat list
+    const allTechHoldings = [];
+    if (invRes && Array.isArray(invRes.items)) {
+      for (const staff of invRes.items) {
+        for (const h of (staff.items || [])) {
+          allTechHoldings.push({ ...h, staff_name: staff.full_name, staff_id: staff.staff_id });
+        }
+      }
+    }
+    // /admin/inventory/stock tra ve product_id, code, name, quantity
+    const companyStockItems = (csRes && csRes.items) || [];
+    const context = {
+      technicianHoldings: allTechHoldings,
+      companyStock: companyStockItems,
+      prefillSelectedProducts: prefill.selectedProducts || [],
+    };
+
+    const choices = adminBuildWarrantyDecisionOptions(item, context);
+    if (!choices.length) { ui.toast('Không có thao tác phù hợp', 'warning'); return; }
+
+    const enabledChoices = choices.filter(c => c.enabled && c.actionCode);
+    const defaultChoice = (prefill.actionCode && enabledChoices.find(c => c.actionCode === prefill.actionCode)) || enabledChoices[0] || choices[0];
+
+    const modalHtml = `
+      <style>
+        #simpleModal .modal{max-width:820px;width:min(820px,calc(100vw - 32px))}
+        #simpleModal .wac-card{display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:11px 13px;border:1.5px solid #dbe2ea;border-radius:12px;background:#fff;cursor:pointer;transition:border-color .15s}
+        #simpleModal .wac-card:hover{border-color:#93c5fd}
+        #simpleModal .wac-card.disabled{opacity:.55;cursor:not-allowed}
+        #simpleModal .wac-card input[type=radio]{margin-top:2px}
+      </style>
+      <div style="padding:14px">
+        <div style="margin-bottom:12px">
+          <div style="font-size:14px;font-weight:700;color:#0f172a">${esc(item.product_name || item.device_name || ('Item #' + item.id))}</div>
+          <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;font-size:12px;color:#64748b">
+            <span>Trạng thái: <b>${esc(item.current_status || '')}</b></span>
+            <span>Vị trí: <b>${esc(item.current_location || '')}</b></span>
+          </div>
+        </div>
+        <div style="display:grid;gap:8px">
+          ${choices.map(ch => `
+            <label class="wac-card ${ch.enabled ? '' : 'disabled'}">
+              <div style="display:flex;gap:8px;width:100%;align-items:center;border-bottom:1px solid #f1f5f9;padding-bottom:6px">
+                <input type="radio" name="wacChoice" value="${esc(ch.actionCode)}"
+                  ${defaultChoice && defaultChoice.actionCode === ch.actionCode ? 'checked' : ''}
+                  ${ch.enabled ? '' : 'disabled'}>
+                <b style="font-size:13.5px;color:#0f172a">${esc(ch.label)}</b>
+              </div>
+              <span style="font-size:12.5px;color:#475569;line-height:1.5">${esc(ch.description || '')}</span>
+            </label>`).join('')}
+        </div>
+        <div id="wacPanel" style="margin-top:14px"></div>
+        <div class="field" style="margin-top:12px">
+          <label>Chụp ảnh (nếu có)</label>
+          <div style="margin-bottom:8px">
+            <button type="button" class="btn outline sm" id="waPhotoBtn">Chụp ảnh / Tải lên</button>
+            <input type="file" id="waPhotoInput" accept="image/*" style="display:none" multiple>
+          </div>
+          <div id="waPhotoPreview" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+        </div>
+        <div class="field" style="margin-top:12px">
+          <label>Ghi chú</label>
+          <textarea id="waNote" rows="3" class="input" placeholder="Mô tả thao tác cập nhật">${esc(prefill.noteText || '')}</textarea>
+        </div>
+      </div>`;
+
+    const okPromise = openSimpleModal('Cập nhật sản phẩm bảo hành', modalHtml, enabledChoices.length ? 'Lưu thao tác' : 'Đóng');
+    const $panel = document.getElementById('wacPanel');
+
+    let uploadedPhotoUrls = prefill.photoUrls || [];
+    const $photoPreview = document.getElementById('waPhotoPreview');
+    if ($photoPreview && uploadedPhotoUrls.length > 0) {
+      uploadedPhotoUrls.forEach(url => {
+        const img = document.createElement('img');
+        img.src = url;
+        img.style.cssText = 'width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1';
+        $photoPreview.appendChild(img);
+      });
+    }
+
+    function initProductSelector() {
+      const items = $panel.querySelectorAll('.product-selection-item');
+      items.forEach(itemEl => {
+        const checkbox = itemEl.querySelector('.product-select-checkbox');
+        const qtySelector = itemEl.querySelector('.qty-selector');
+        const qtyInput = itemEl.querySelector('.product-qty-input');
+        const btnMinus = itemEl.querySelector('.btn-qty-minus');
+        const btnPlus = itemEl.querySelector('.btn-qty-plus');
+        const maxVal = Number(itemEl.dataset.max) || 0;
+
+        if (!checkbox) return;
+
+        itemEl.addEventListener('click', (e) => {
+          if (e.target === checkbox || e.target.closest('.qty-selector')) return;
+          checkbox.checked = !checkbox.checked;
+          checkbox.dispatchEvent(new Event('change'));
+        });
+
+        checkbox.addEventListener('change', () => {
+          if (checkbox.checked) {
+            itemEl.style.borderColor = '#3b82f6';
+            itemEl.style.background = '#f0f7ff';
+            if (qtySelector) qtySelector.style.display = 'flex';
+          } else {
+            itemEl.style.borderColor = '#e2e8f0';
+            itemEl.style.background = '#fff';
+            if (qtySelector) qtySelector.style.display = 'none';
+          }
+        });
+
+        if (btnMinus && btnPlus && qtyInput) {
+          btnMinus.addEventListener('click', (e) => {
+            e.stopPropagation();
+            let val = Number(qtyInput.value) || 1;
+            if (val > 1) {
+              qtyInput.value = val - 1;
+              qtyInput.dispatchEvent(new Event('change'));
+            }
+          });
+          btnPlus.addEventListener('click', (e) => {
+            e.stopPropagation();
+            let val = Number(qtyInput.value) || 1;
+            if (val < maxVal) {
+              qtyInput.value = val + 1;
+              qtyInput.dispatchEvent(new Event('change'));
+            }
+          });
+          qtyInput.addEventListener('change', (e) => {
+            let val = Math.floor(Number(qtyInput.value)) || 1;
+            if (val < 1) val = 1;
+            if (val > maxVal) val = maxVal;
+            qtyInput.value = val;
+          });
+          qtyInput.addEventListener('click', e => e.stopPropagation());
+        }
+      });
+    }
+
+    const renderPanel = () => {
+      const code = (document.querySelector('input[name="wacChoice"]:checked') || {}).value;
+      const sel = choices.find(c => c.actionCode === code) || defaultChoice;
+      $panel.innerHTML = adminRenderDecisionPanel(sel, context);
+      const $ok = document.getElementById('smOk');
+      if ($ok && sel) $ok.textContent = sel.label;
+      initProductSelector();
+    };
+    document.querySelectorAll('input[name="wacChoice"]').forEach(inp => inp.addEventListener('change', renderPanel));
+    renderPanel();
+
+    const $photoBtn = document.getElementById('waPhotoBtn');
+    const $photoInput = document.getElementById('waPhotoInput');
+    if ($photoBtn && $photoInput) {
+      $photoBtn.addEventListener('click', () => $photoInput.click());
+      $photoInput.addEventListener('change', async () => {
+        if (!$photoInput.files.length) return;
+        $photoBtn.disabled = true; $photoBtn.textContent = 'Đang tải...';
+        try {
+          for (const file of $photoInput.files) {
+            const url = await uploadImage(file);
+            if (url) {
+              uploadedPhotoUrls.push(url);
+              const img = document.createElement('img');
+              img.src = url;
+              img.style.cssText = 'width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1';
+              $photoPreview.appendChild(img);
+            }
+          }
+        } catch (err) { ui.toast(err.message || 'Lỗi tải ảnh', 'error'); }
+        finally { $photoBtn.disabled = false; $photoBtn.textContent = 'Chụp ảnh / Tải lên'; $photoInput.value = ''; }
+      });
+    }
+
+    const ok = await okPromise;
+    if (!ok) { closeSimpleModal(); return; }
+    if (!enabledChoices.length) { closeSimpleModal(); return; }
+
+    const selCode = (document.querySelector('input[name="wacChoice"]:checked') || {}).value;
+    const selected = choices.find(c => c.actionCode === selCode);
+    if (!selected || !selected.enabled) { ui.toast('Hãy chọn thao tác hợp lệ', 'warning'); closeSimpleModal(); return; }
+
+    const noteText = ((document.getElementById('waNote') || {}).value || '').trim() || null;
+
+    const isReplacementAction = ['reserve_replacement_from_technician', 'reserve_replacement_from_company'].includes(selected.actionCode);
+    let selectedProducts = [];
+    if (isReplacementAction) {
+      $panel.querySelectorAll('.product-selection-item').forEach(itemEl => {
+        const checkbox = itemEl.querySelector('.product-select-checkbox');
+        const qtyInput = itemEl.querySelector('.product-qty-input');
+        if (checkbox && checkbox.checked) {
+          selectedProducts.push({
+            product_id: Number(itemEl.dataset.id),
+            name: itemEl.dataset.name,
+            qty: Number(qtyInput.value) || 1
+          });
+        }
+      });
+
+      if (selectedProducts.length === 0) {
+        ui.toast('Vui lòng chọn ít nhất 1 sản phẩm thay thế', 'warning');
+        setTimeout(() => {
+          openAdminWarrantyStatusModal(item, {
+            actionCode: selected.actionCode,
+            noteText,
+            photoUrls: uploadedPhotoUrls,
+            selectedProducts
+          });
+        }, 100);
+        return;
+      }
+
+      // Dialog xac nhan
+      const confirmMsg = `
+        <div style="font-size:14.5px;color:#334155;margin-bottom:12px;line-height:1.5">Bạn có chắc chắn muốn thực hiện hành động này với danh sách sản phẩm sau?</div>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:12px">
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead>
+              <tr style="border-bottom:1px solid #cbd5e1;text-align:left;color:#475569">
+                <th style="padding:6px 0">Sản phẩm</th>
+                <th style="padding:6px 0;text-align:right">Số lượng</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${selectedProducts.map(rep => `
+                <tr style="border-bottom:1px dashed #e2e8f0">
+                  <td style="padding:8px 0;font-weight:600;color:#1e293b">${esc(rep.name)}</td>
+                  <td style="padding:8px 0;text-align:right;font-weight:700;color:#2563eb">x${rep.qty}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div style="font-size:12.5px;color:#64748b;line-height:1.5">
+          <div><b>Nguồn cấp:</b> ${esc(selected.label)}</div>
+          ${noteText ? `<div style="margin-top:4px"><b>Ghi chú:</b> "${esc(noteText)}"</div>` : ''}
+        </div>
+      `;
+
+      const confirmed = await ui.confirm({
+        title: 'Xác nhận cấp hàng bảo hành',
+        body: confirmMsg,
+        okText: 'Xác nhận cấp',
+        cancelText: 'Quay lại'
+      });
+      if (!confirmed) {
+        setTimeout(() => {
+          openAdminWarrantyStatusModal(item, {
+            actionCode: selected.actionCode,
+            noteText,
+            photoUrls: uploadedPhotoUrls,
+            selectedProducts
+          });
+        }, 100);
+        return;
+      }
+    }
+
+    closeSimpleModal();
+
+    // Gọi API
+    async function postMove(actionCode, extra = {}) {
+      return api.post(`/admin/orders/${o.id}/warranty-items/${item.id}/move`,
+        { action_code: actionCode, note_text: noteText, photo_urls: uploadedPhotoUrls, ...extra },
+        { onError: 'toast' });
+    }
+
+    let r = null;
+    if (selected.actionCode === 'receive_to_stock') {
+      // Khach mang thang den cty: nhan + vao kho ngay (2 buoc)
+      const r1 = await postMove('receive_from_customer', { handling_type: 'supplier_return' });
+      if (r1 && r1.ok) r = await postMove('move_to_company_stock');
+    } else if (selected.actionCode === 'mark_fixed') {
+      const cost = Number(String((document.getElementById('waCost') || {}).value || '0').replace(/[^\d]/g, '')) || 0;
+      r = await postMove('mark_fixed', { additional_cost: cost });
+    } else if (isReplacementAction) {
+      r = await postMove(selected.actionCode, { replacements: selectedProducts, source_mode: selected.sourceMode || null });
+    } else {
+      r = await postMove(selected.actionCode);
+    }
+
+    if (r && r.ok) {
+      ui.toast('✅ Đã cập nhật bảo hành', 'success');
+      openDetail(o.id);
+    }
+  }
+
+  function renderWarrantySectionV2() {
+    const o = state.currentDetail;
+    if (!o || o.service_kind !== 'warranty' || !o.warranty) return '';
+    const meta = o.warranty.meta || {};
+    const items = o.warranty.items || [];
+
+    // 1 trang thai duy nhat (stage) -> nhan + mau + cau mo ta "dang o dau"
+    const STAGE_INFO = {
+      intake:                 { label: 'Mới tiếp nhận',  cls: 'gray',   accent: '#64748b', tint: '#f1f5f9', where: 'Khách đang giữ hàng lỗi' },
+      technician_holding:     { label: 'KTV đang giữ',   cls: 'blue',   accent: '#2563eb', tint: '#eff6ff', where: 'Hàng lỗi trong túi đồ của KTV' },
+      company_warranty_stock: { label: 'Ở kho bảo hành', cls: 'purple', accent: '#7c3aed', tint: '#f5f3ff', where: 'Hàng lỗi tại kho bảo hành công ty' },
+      sent_to_supplier:       { label: 'Đã gửi NCC',     cls: 'amber',  accent: '#d97706', tint: '#fffbeb', where: 'Hàng lỗi đang ở nhà cung cấp' },
+      supplier_returned:      { label: 'NCC đã trả về',  cls: 'blue',   accent: '#0891b2', tint: '#ecfeff', where: 'Hàng đã về kho, chờ giao khách' },
+      delivered:              { label: 'Hoàn tất',       cls: 'green',  accent: '#16a34a', tint: '#f0fdf4', where: 'Đã giao lại cho khách' },
+      cancelled:              { label: 'Đã huỷ',         cls: 'red',    accent: '#dc2626', tint: '#fef2f2', where: '' },
+    };
+    const HANDLING_INFO = {
+      pending:         'Chưa chốt hướng xử lý',
+      tech_fix:        'KTV sửa tại chỗ',
+      exchange:        'Đổi thiết bị mới cho khách',
+      supplier_return: 'Gửi nhà cung cấp bảo hành',
+    };
+    const SOURCE_LABEL = {
+      technician_stock: 'lấy từ túi KTV',
+      company_stock: 'lấy từ kho công ty',
+      supplier_returned_item: 'là hàng NCC trả về',
+    };
+
+    function infoRow(label, value, color) {
+      if (!value) return '';
+      return `<div style="display:flex;gap:6px;font-size:12px;line-height:1.5;margin-top:3px">
+        <span style="color:#94a3b8;min-width:78px;flex:0 0 78px">${label}</span>
+        <span style="color:${color || '#0f172a'};font-weight:500">${value}</span>
+      </div>`;
+    }
+
+    const itemHtml = items.length ? items.map((item) => {
+      const stage = STAGE_INFO[item.current_status] || { label: item.current_status || '—', cls: 'gray', accent: '#64748b', tint: '#f8fafc', where: '' };
+
+      const idBits = [
+        item.imei ? `IMEI ${esc(item.imei)}` : '',
+        item.license_plate ? `Biển số ${esc(item.license_plate)}` : '',
+        item.account_name ? `TK ${esc(item.account_name)}` : '',
+        item.sim_number ? `SIM ${esc(item.sim_number)}` : '',
+      ].filter(Boolean).join(' · ');
+
+      let whereText = stage.where || '';
+      if (item.current_status === 'technician_holding' && item.holder_staff_name) {
+        whereText += ` (KTV: <b>${esc(item.holder_staff_name)}</b>)`;
+      }
+      if (item.current_status === 'sent_to_supplier' && item.supplier_name) {
+        whereText += ` (<b>${esc(item.supplier_name)}</b>)`;
+      }
+
+      let replacementText = '';
+      if (item.replacement_product_name) {
+        const src = SOURCE_LABEL[item.replacement_source_scope] || '';
+        replacementText = `${esc(item.replacement_product_name)}${src ? ` · ${src}` : ''}`;
+      }
+
+      const img = item.thumbnail_url
+        ? `<img src="${esc(item.thumbnail_url)}" alt="" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex:0 0 48px;border:1px solid #e2e8f0" onerror="this.style.display='none'">`
+        : `<div style="width:48px;height:48px;border-radius:8px;flex:0 0 48px;background:${stage.tint};display:flex;align-items:center;justify-content:center;font-size:20px">📦</div>`;
+
+      return `
+        <div style="border:1px solid #e2e8f0;border-top:3px solid ${stage.accent};border-radius:10px;overflow:hidden;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04)">
+          <div style="display:flex;gap:10px;align-items:center;padding:10px 12px;background:${stage.tint}">
+            ${img}
+            <div style="min-width:0;flex:1">
+              <div style="font-weight:700;font-size:13.5px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(item.product_name || item.device_name || `Item #${item.id}`)}</div>
+              <div style="margin-top:3px">${(() => {
+                const DS_BADGE = { pending: ['Chờ xử lý', 'amber'], processing: ['Đang xử lý', 'blue'], supplier: ['Đang gửi NCC', 'amber'], delivered: ['Giao KH', 'green'] };
+                const ds = item.current_status === 'cancelled' ? ['Đã huỷ', 'red'] : (item.display_state && DS_BADGE[item.display_state.code]) || [stage.label, stage.cls];
+                return warrantyBadge(ds[0], ds[1]);
+              })()}</div>
+            </div>
+          </div>
+          <div style="padding:8px 12px 11px">
+            ${item.customer_status === 'completed' && item.current_status !== 'delivered' && item.current_status !== 'cancelled'
+              ? `<div style="margin:0 0 6px;padding:5px 9px;border-radius:6px;background:#f0fdf4;color:#15803d;font-size:12px;font-weight:600">✓ Khách đã nhận hàng đổi · đang thu máy lỗi về kho</div>`
+              : ''}
+            ${infoRow('Tình trạng', item.condition_note ? esc(item.condition_note) : '<span style="color:#94a3b8">Chưa ghi nhận</span>', '#b45309')}
+            ${item.handling_type && item.handling_type !== 'pending'
+              ? infoRow('Hướng xử lý', `<b>${HANDLING_INFO[item.handling_type]}</b>`, '#1d4ed8')
+              : infoRow('Hướng xử lý', '<span style="color:#b45309">Chưa chốt hướng xử lý</span>')}
+            ${infoRow('Hiện ở', whereText || '—')}
+            ${infoRow('Giao khách', replacementText, '#0369a1')}
+            ${Number(item.additional_cost || 0) > 0 ? infoRow('Thu thêm', `${fmt(item.additional_cost)}đ`, '#dc2626') : ''}
+            ${idBits ? infoRow('Thiết bị', `<span style="color:#64748b">${idBits}</span>`) : ''}
+            ${renderAdminWarrantyItemActions(item)}
+          </div>
+        </div>`;
+    }).join('') : '<div style="color:#94a3b8">Chưa có item bảo hành</div>';
+
+    const moves = (o.warranty && o.warranty.moves) || [];
+    const ACTION_STYLE = {
+      mark_fixed:                          { color: '#16a34a', icon: '🔧' },
+      receive_from_customer:               { color: '#2563eb', icon: '📥' },
+      move_to_company_stock:               { color: '#7c3aed', icon: '🏢' },
+      send_to_supplier:                    { color: '#d97706', icon: '📦' },
+      receive_from_supplier:               { color: '#0891b2', icon: '📬' },
+      reserve_replacement_from_technician: { color: '#2563eb', icon: '🔄' },
+      reserve_replacement_from_company:    { color: '#7c3aed', icon: '🔄' },
+      deliver_to_customer:                 { color: '#16a34a', icon: '✅' },
+      cancel_item:                         { color: '#dc2626', icon: '✖️' },
+      note:                                { color: '#64748b', icon: '📝' },
+    };
+    const moveHtml = moves.length ? `
+      <div style="position:relative">
+        ${moves.map((move, idx) => {
+          const st = ACTION_STYLE[move.action_code] || { color: '#64748b', icon: '•' };
+          const isLast = idx === moves.length - 1;
+          const dt = move.occurred_at ? new Date(move.occurred_at) : null;
+          const timeStr = dt ? dt.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : '';
+          return `
+          <div style="position:relative;display:flex;gap:12px;padding-bottom:${isLast ? '0' : '14px'}">
+            <div style="position:relative;flex:0 0 28px;display:flex;justify-content:center">
+              ${isLast ? '' : `<div style="position:absolute;top:26px;bottom:-14px;width:2px;background:#e2e8f0"></div>`}
+              <div style="width:28px;height:28px;border-radius:50%;background:${st.color}1a;border:2px solid ${st.color};display:flex;align-items:center;justify-content:center;font-size:13px;z-index:1">${st.icon}</div>
+            </div>
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+                <span style="font-size:13px;font-weight:700;color:${st.color}">${esc(WARRANTY_ACTION_LABELS[move.action_code] || move.action_code)}</span>
+                <span style="font-size:11px;color:#94a3b8;white-space:nowrap">${esc(timeStr)}</span>
+              </div>
+              <div style="font-size:12px;color:#64748b;margin-top:2px">
+                ${esc((WARRANTY_LOCATION_LABELS[move.from_location] || move.from_location || '—') + ' → ' + (WARRANTY_LOCATION_LABELS[move.to_location] || move.to_location || '—'))}
+                ${move.created_by_name ? ` · 👤 ${esc(move.created_by_name)}` : ''}
+                ${move.receipt_code ? ` · <b style="color:#0f766e">${esc(move.receipt_code)}</b>` : ''}
+              </div>
+              ${move.note_text ? `<div style="font-size:12px;color:#334155;margin-top:3px;background:#f8fafc;border-radius:6px;padding:4px 8px">${esc(move.note_text)}</div>` : ''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`
+      : '<p style="color:#94a3b8;font-size:12.5px;text-align:center;padding:8px">Chưa có diễn biến</p>';
+
+    return `
+      <div class="od-section">
+        <h4>Bảo hành
+          <button class="btn ghost sm" id="btnEditWarrantyV2" style="margin-left:auto">Sửa Thông Tin Đơn</button>
+        </h4>
+        ${meta.note_text ? `<div style="margin-bottom:12px;padding:10px 12px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;font-size:12.5px;color:#334155">${esc(meta.note_text)}</div>` : ''}
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">${itemHtml}</div>
+        ${(() => {
+          const progressLines = String(o.progress_note || '').split(/\n+/).map((s) => s.trim()).filter(Boolean);
+          const latestProgress = progressLines.length ? progressLines[progressLines.length - 1] : '';
+          const DS_CHIP = { pending: ['#fef3c7', '#92400e'], processing: ['#dbeafe', '#1e40af'], supplier: ['#fef9c3', '#854d0e'], delivered: ['#dcfce7', '#166534'] };
+          const handlingSummary = items.filter((it) => it.current_status !== 'cancelled').map((it) => {
+            const name = esc(it.product_name || it.device_name || ('#' + it.id));
+            const h = it.handling_type && it.handling_type !== 'pending' ? esc(HANDLING_INFO[it.handling_type] || it.handling_type) : 'Chưa chốt hướng xử lý';
+            const dsCode = (it.display_state && it.display_state.code) || 'processing';
+            const dsLabel = (it.display_state && it.display_state.label) || '';
+            const chip = DS_CHIP[dsCode] || DS_CHIP.processing;
+            return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fff;border:1px solid #eef2f7;border-radius:8px;margin-top:6px">
+              <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:700;color:#0f172a">${name}</div><div style="font-size:11.5px;color:#64748b;margin-top:1px">${h}</div></div>
+              ${dsLabel ? `<span style="flex-shrink:0;padding:3px 10px;border-radius:999px;background:${chip[0]};color:${chip[1]};font-size:11px;font-weight:700">${esc(dsLabel)}</span>` : ''}
+            </div>`;
+          }).join('');
+          return `
+        <div style="margin-top:14px;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.06)">
+          <div style="display:flex;align-items:center;gap:8px;padding:11px 14px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff">
+            <span style="font-size:15px">📋</span><span style="font-size:13.5px;font-weight:700;letter-spacing:.2px">Tiến trình hiện tại</span>
+          </div>
+          <div style="padding:12px 14px;background:#f8fafc">
+            ${latestProgress
+              ? `<div style="display:flex;gap:8px;padding:10px 12px;background:#fff;border-left:3px solid #2563eb;border-radius:8px;box-shadow:0 1px 2px rgba(15,23,42,.04)">
+                   <span style="font-size:14px">📍</span>
+                   <div><div style="font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Thực tế hiện tại</div>
+                   <div style="font-size:13px;color:#0f172a;margin-top:1px">${esc(latestProgress)}</div></div>
+                 </div>`
+              : ''}
+            <div style="margin-top:${latestProgress ? '10px' : '0'}">${handlingSummary}</div>
+            <details style="margin-top:12px;border-top:1px dashed #e2e8f0;padding-top:10px">
+              <summary style="cursor:pointer;font-size:12px;font-weight:700;color:#1e40af;list-style:none;display:flex;align-items:center;gap:6px">🕑 Diễn biến chi tiết <span style="color:#94a3b8;font-weight:500">(${moves.length} mục)</span></summary>
+              <div style="margin-top:12px">${moveHtml}</div>
+            </details>
+          </div>
+        </div>`;
+        })()}
+      </div>`;
+  }
+
+  async function openWarrantyEditorV2() {
+    const o = state.currentDetail;
+    const warranty = o.warranty || { meta: {}, items: [] };
+    const meta = warranty.meta || {};
+    const items = (warranty.items || []).map((item) => ({
+      id: item.id,
+      item_role: 'faulty',
+      handling_type: item.handling_type || 'pending',
+      product_id: item.product_id || 0,
+      qty: Number(item.qty) || 1,
+      imei: item.imei || '',
+      license_plate: item.license_plate || '',
+      account_name: item.account_name || '',
+      sim_number: item.sim_number || '',
+      note_text: item.note_text || '',
+      additional_cost: Number(item.additional_cost) || 0,
+    }));
+    if (!items.length) {
+      items.push({ id: null, item_role: 'faulty', handling_type: 'pending', product_id: 0, qty: 1, imei: '', license_plate: '', account_name: '', sim_number: '', note_text: '', additional_cost: 0 });
+    }
+
+    const [productsRes, suppliersRes] = await Promise.all([
+      api.get('/admin/products?limit=500').catch(() => null),
+      api.get('/admin/suppliers/all').catch(() => null),
+    ]);
+    const products = (productsRes && productsRes.items) || [];
+    const suppliers = (suppliersRes && suppliersRes.items) || [];
+    const productOptions = ['<option value="0">- Chọn sản phẩm -</option>']
+      .concat(products.map((p) => `<option value="${p.id}">${esc(p.code || '')}${p.code ? ' · ' : ''}${esc(p.name || '')}</option>`))
+      .join('');
+    const supplierOptions = ['<option value="0">- Chưa chọn NCC -</option>']
+      .concat(suppliers.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`))
+      .join('');
+
+    function renderRows() {
+      return items.map((item, idx) => `
+        <div class="w-edit-row" data-idx="${idx}" style="border:1px solid var(--border);border-radius:12px;background:#fff;margin-bottom:10px;overflow:hidden;box-shadow:0 1px 4px rgba(15,23,42,.06)">
+          <!-- Row header -->
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:linear-gradient(90deg,#eff6ff,#f8fafc);border-bottom:1px solid #e2e8f0">
+            <div style="width:26px;height:26px;border-radius:8px;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:800;flex-shrink:0">${idx + 1}</div>
+            <span style="font-weight:700;font-size:13px;color:#1e3a8a">📦 Sản phẩm bảo hành</span>
+            <button type="button" class="btn ghost sm w-del" style="margin-left:auto;color:#dc2626;border-color:#fecaca;font-size:12px">🗑 Xoá</button>
+          </div>
+          <!-- Row body -->
+          <div style="padding:14px">
+            <!-- Hàng 1: SP + SL + Chi phí -->
+            <div class="we-item-grid" style="display:grid;grid-template-columns:1fr 100px 130px;gap:10px;margin-bottom:10px">
+              <div class="field" style="margin:0">
+                <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#475569;margin-bottom:5px">🔧 Sản phẩm <span style="color:#dc2626">*</span></label>
+                <select class="select w-product" style="font-size:13px">${productOptions}</select>
+              </div>
+              <div class="field" style="margin:0">
+                <label style="font-size:12px;font-weight:600;color:#475569;margin-bottom:5px;display:block">Số lượng</label>
+                <input class="input w-qty" inputmode="numeric" value="${item.qty || 1}" style="font-size:13px;text-align:center">
+              </div>
+              <div class="field" style="margin:0">
+                <label style="font-size:12px;font-weight:600;color:#475569;margin-bottom:5px;display:block">💰 Chi phí thêm</label>
+                <input class="input w-cost" inputmode="numeric" value="${item.additional_cost || 0}" placeholder="0đ" style="font-size:13px">
+              </div>
+            </div>
+            <!-- Hàng 2: Thông tin định danh thiết bị -->
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin-bottom:10px">
+              <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">📋 Thông tin thiết bị (tuỳ chọn)</div>
+              <div class="we-id-grid" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px">
+                <div class="field" style="margin:0">
+                  <label style="font-size:11.5px;font-weight:600;color:#64748b;margin-bottom:4px;display:block">IMEI</label>
+                  <input class="input w-imei" value="${esc(item.imei || '')}" placeholder="Nhập IMEI" style="font-size:13px;padding:7px 10px">
+                </div>
+                <div class="field" style="margin:0">
+                  <label style="font-size:11.5px;font-weight:600;color:#64748b;margin-bottom:4px;display:block">Biển số xe</label>
+                  <input class="input w-plate" value="${esc(item.license_plate || '')}" placeholder="VD: 51A-123.45" style="font-size:13px;padding:7px 10px">
+                </div>
+                <div class="field" style="margin:0">
+                  <label style="font-size:11.5px;font-weight:600;color:#64748b;margin-bottom:4px;display:block">Tên tài khoản</label>
+                  <input class="input w-account" value="${esc(item.account_name || '')}" placeholder="Tên TK thiết bị" style="font-size:13px;padding:7px 10px">
+                </div>
+                <div class="field" style="margin:0">
+                  <label style="font-size:11.5px;font-weight:600;color:#64748b;margin-bottom:4px;display:block">Số SIM</label>
+                  <input class="input w-sim" value="${esc(item.sim_number || '')}" placeholder="Số SIM" style="font-size:13px;padding:7px 10px">
+                </div>
+              </div>
+            </div>
+            <!-- Hàng 3: Ghi chú -->
+            <div class="field" style="margin:0">
+              <label style="font-size:12px;font-weight:600;color:#475569;margin-bottom:5px;display:flex;align-items:center;gap:5px">📝 Ghi chú riêng cho sản phẩm này</label>
+              <textarea class="input w-note" rows="2" placeholder="Mô tả tình trạng lỗi, yêu cầu xử lý…" style="font-size:13px;resize:none">${esc(item.note_text || '')}</textarea>
+            </div>
+          </div>
+        </div>`).join('');
+    }
+
+    const html = `
+      <style>
+        #simpleModal .modal { max-width: 860px !important; width: min(860px, calc(100vw - 32px)) }
+        #simpleModal .modal-body { background: #f1f5f9; padding: 0 }
+        #simpleModal .we-wrap { padding: 16px; display: grid; gap: 14px }
+        #simpleModal .we-card { background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(15,23,42,.06) }
+        #simpleModal .we-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; background: linear-gradient(90deg,#1e40af,#2563eb); color: #fff }
+        #simpleModal .we-card-title { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 7px }
+        #simpleModal .we-card-body { padding: 16px }
+        #simpleModal .we-info-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px }
+        #simpleModal .field label { font-size: 12.5px; font-weight: 600; color: #475569; margin-bottom: 5px; display: block }
+        @media (max-width: 620px) {
+          #simpleModal .we-info-grid { grid-template-columns: 1fr }
+          #simpleModal .we-item-grid { grid-template-columns: 1fr !important }
+          #simpleModal .we-id-grid { grid-template-columns: repeat(2,1fr) !important }
+        }
+      </style>
+      <div class="we-wrap">
+
+        <!-- ── Section 1: Thông tin đơn ── -->
+        <div class="we-card">
+          <div class="we-card-head">
+            <div class="we-card-title">📄 Thông tin đơn bảo hành</div>
+          </div>
+          <div class="we-card-body">
+            <div class="field" style="margin:0 0 12px">
+              <label>📍 Địa chỉ lắp đặt / địa chỉ khách</label>
+              <input id="weAddress" class="input" value="${esc(o.address || '')}" placeholder="Nhập địa chỉ…" style="font-size:13px">
+            </div>
+            <div class="we-info-grid">
+              <div class="field" style="margin:0">
+                <label>📝 Ghi chú đơn</label>
+                <textarea id="weOrderNote" class="input" rows="3" placeholder="Ghi chú nội bộ cho đơn này…" style="font-size:13px;resize:none">${esc(o.note || '')}</textarea>
+              </div>
+              <div class="field" style="margin:0">
+                <label>🛡 Ghi chú bảo hành</label>
+                <textarea id="weMetaNote" class="input" rows="3" placeholder="Thông tin liên quan bảo hành, điều kiện…" style="font-size:13px;resize:none">${esc(meta.note_text || '')}</textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Section 2: Sản phẩm bảo hành ── -->
+        <div class="we-card">
+          <div class="we-card-head">
+            <div class="we-card-title">📦 Sản phẩm bảo hành</div>
+            <button type="button" class="btn sm" id="btnWeAdd" style="background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.35);color:#fff;font-size:12px">+ Thêm sản phẩm</button>
+          </div>
+          <div class="we-card-body" style="padding-bottom:6px">
+            <div id="weItems">${renderRows()}</div>
+          </div>
+        </div>
+
+      </div>`;
+
+    const bindRows = () => {
+      document.querySelectorAll('#weItems .w-edit-row').forEach((row) => {
+        const idx = Number(row.dataset.idx);
+        const item = items[idx];
+        const qp = row.querySelector('.w-product');
+        if (qp) qp.value = String(item.product_id || 0);
+        const bind = (selector, key, parser) => {
+          const el = row.querySelector(selector);
+          if (!el) return;
+          const save = () => { item[key] = parser ? parser(el.value) : el.value; };
+          el.addEventListener('input', save);
+          el.addEventListener('change', save);
+        };
+
+        bind('.w-product', 'product_id', (v) => Number(v) || 0);
+        bind('.w-qty', 'qty', (v) => Math.max(1, Number(String(v).replace(/[^\d]/g, '')) || 1));
+        bind('.w-cost', 'additional_cost', (v) => Math.max(0, Number(String(v).replace(/[^\d]/g, '')) || 0));
+        bind('.w-imei', 'imei');
+        bind('.w-plate', 'license_plate');
+        bind('.w-account', 'account_name');
+        bind('.w-sim', 'sim_number');
+        bind('.w-note', 'note_text');
+        const delBtn = row.querySelector('.w-del');
+        if (delBtn) {
+          delBtn.addEventListener('click', () => {
+            if (items.length <= 1) {
+              ui.toast('Cần ít nhất 1 item', 'warning');
+              return;
+            }
+            items.splice(idx, 1);
+            document.getElementById('weItems').innerHTML = renderRows();
+            bindRows();
+          });
+        }
+      });
+      const addBtn = document.getElementById('btnWeAdd');
+      if (addBtn) {
+        // xóa listener cũ bằng cách clone
+        const fresh = addBtn.cloneNode(true);
+        addBtn.parentNode.replaceChild(fresh, addBtn);
+        fresh.addEventListener('click', () => {
+          items.push({ id: null, item_role: 'faulty', handling_type: 'pending', product_id: 0, qty: 1, imei: '', license_plate: '', account_name: '', sim_number: '', note_text: '', additional_cost: 0 });
+          document.getElementById('weItems').innerHTML = renderRows();
+          bindRows();
+        });
+      }
+    };
+
+    const ok = await openSimpleModal('Sửa thông tin bảo hành', html, 'Lưu', bindRows);
+    if (!ok) return;
+    const payload = {
+      address: document.getElementById('weAddress').value.trim() || null,
+      note: document.getElementById('weOrderNote').value.trim() || null,
+      meta: {
+        warranty_mode: meta.warranty_mode || 'repair',
+        default_supplier_id: meta.default_supplier_id || null,
+        note_text: document.getElementById('weMetaNote').value.trim() || null,
+      },
+      items: items
+        .map((item) => ({
+          id: item.id || null,
+          item_role: item.item_role || 'faulty',
+          product_id: Number(item.product_id) || null,
+          supplier_id: Number(item.supplier_id) || null,
+          qty: Math.max(1, Number(item.qty) || 1),
+          imei: item.imei?.trim() || null,
+          license_plate: item.license_plate?.trim() || null,
+          account_name: item.account_name?.trim() || null,
+          sim_number: item.sim_number?.trim() || null,
+          note_text: item.note_text?.trim() || null,
+          additional_cost: Number(item.additional_cost) || 0,
+        }))
+        .filter((item) => item.product_id || item.imei || item.license_plate || item.account_name || item.sim_number),
+    };
+    closeSimpleModal();
+    const r = await api.put(`/admin/orders/${o.id}/warranty`, payload, { onError: 'toast' });
+    if (r) {
+      ui.toast('Đã lưu bảo hành', 'success');
+      openDetail(o.id);
+      loadList();
+    }
+  }
+
+  async function openWarrantyActionModal(itemId, actionCode) {
+    const o = state.currentDetail;
+    const item = ((o.warranty && o.warranty.items) || []).find((entry) => Number(entry.id) === Number(itemId));
+    if (!item) return;
+    let title = WARRANTY_ACTION_LABELS[actionCode] || actionCode;
+    let extraHtml = '';
+    if (!o.assigned_staff_id && ['reserve_replacement_from_technician', 'reserve_replacement_from_company', 'deliver_to_customer'].includes(actionCode)) {
+      ui.toast('Cần gán KTV cho đơn trước khi thao tác sản phẩm bảo hành', 'warning');
+      return;
+    }
+    if (actionCode === 'reserve_replacement_from_technician') {
+      const holdingsRes = await api.get(`/admin/staff-stock/${o.assigned_staff_id}`).catch(() => null);
+      const holdings = (holdingsRes && holdingsRes.items) || [];
+      if (!holdings.length) {
+        ui.toast('KTV hiện không có thiết bị đổi trả, hãy cấp thêm từ kho', 'warning');
+        return;
+      }
+      extraHtml = `<div class="field"><label>Sản phẩm đổi từ túi KTV</label><select id="waReplacementProduct" class="select">${holdings.map((h) => `<option value="${h.product_id}">${esc(h.code || h.product_code || '')}${(h.code || h.product_code) ? ' · ' : ''}${esc(h.name || h.product_name || '')} · Còn ${fmt(h.qty)}</option>`).join('')}</select></div>`;
+    } else if (actionCode === 'reserve_replacement_from_company') {
+      if (item.current_status === 'supplier_returned') {
+        title = 'Phân KTV đi giao';
+        extraHtml = `<div style="font-size:13px;color:#334155;padding:8px 0">Sản phẩm đã nhận từ NCC. Hệ thống sẽ gán cho KTV đang được chỉ định để đi giao khách.</div>`;
+      } else {
+        const stockRes = await api.get('/admin/inventory/stock?stock_state=available&limit=200').catch(() => null);
+        const stock = (stockRes && stockRes.items) || [];
+        if (!stock.length) {
+          ui.toast('Kho công ty hiện không có sản phẩm để cấp cho KTV', 'warning');
+          return;
+        }
+        extraHtml = `<div class="field"><label>Sản phẩm cấp từ kho công ty</label><select id="waReplacementProduct" class="select">${stock.map((p) => `<option value="${p.product_id}">${esc(p.code || '')}${p.code ? ' · ' : ''}${esc(p.name || '')} · Còn ${fmt(p.quantity)}</option>`).join('')}</select></div>`;
+      }
+    } else if (actionCode === 'mark_fixed') {
+      extraHtml = `<div class="field"><label>Chi phí thêm</label><input id="waCost" class="input" inputmode="numeric" value="${fmt(item.additional_cost || 0)}"></div>`;
+    }
+    const html = `
+      <div style="padding:14px">
+        <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px">${esc(item.product_name || item.device_name || ('Item #' + item.id))}</div>
+        <div style="font-size:12px;color:#64748b;margin-bottom:10px">${esc(WARRANTY_STATUS_LABELS[item.current_status] || item.current_status || '')}</div>
+        ${extraHtml}
+        <div class="field"><label>Thời điểm</label><input id="waOccurredAt" type="datetime-local" class="input"></div>
+        <div class="field"><label>Ghi chú</label><textarea id="waNote" rows="3" class="input" placeholder="Mô tả thao tác vừa thực hiện"></textarea></div>
+      </div>`;
+    const ok = await openSimpleModal(title, html, 'Lưu');
+    if (!ok) return;
+    const payload = {
+      warranty_item_id: Number(item.id),
+      action_code: actionCode,
+      occurred_at: (document.getElementById('waOccurredAt') || {}).value || null,
+      note_text: ((document.getElementById('waNote') || {}).value || '').trim() || null,
+      replacement_staff_id: Number(o.assigned_staff_id) || null,
+    };
+    if (actionCode === 'mark_fixed') {
+      payload.additional_cost = Number(String((document.getElementById('waCost') || {}).value || '0').replace(/[^\d]/g, '')) || 0;
+    }
+    if (actionCode === 'reserve_replacement_from_technician') {
+      payload.replacement_product_id = Number((document.getElementById('waReplacementProduct') || {}).value) || 0;
+    }
+    if (actionCode === 'reserve_replacement_from_company') {
+      if (item.current_status === 'supplier_returned') payload.source_mode = 'supplier_returned_item';
+      else payload.replacement_product_id = Number((document.getElementById('waReplacementProduct') || {}).value) || 0;
+    }
+    closeSimpleModal();
+    const r = await api.post(`/admin/orders/${o.id}/warranty/moves`, payload, { onError: 'toast' });
+    if (r) {
+      const receiptCode = r.receipt && r.receipt.code ? ` (${r.receipt.code})` : '';
+      ui.toast('Đã cập nhật bảo hành' + receiptCode, 'success');
+      openDetail(o.id);
+      loadList();
+    }
+  }
+
+  function renderWarrantySection() {
+    const o = state.currentDetail;
+    if (!o || o.service_kind !== 'warranty' || !o.warranty) return '';
+    const meta = o.warranty.meta || {};
+    const items = o.warranty.items || [];
+    const itemHtml = items.length ? items.map(item => {
+      const bits = [
+        item.device_name,
+        item.imei ? `IMEI ${item.imei}` : '',
+        item.license_plate ? `Biển số ${item.license_plate}` : '',
+        item.account_name ? `TK ${item.account_name}` : '',
+        item.sim_number ? `SIM ${item.sim_number}` : '',
+      ].filter(Boolean);
+      return `
+        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;background:#fafbfd">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <b>${esc(item.product_name || item.device_name || `Item #${item.id}`)}</b>
+            ${warrantyBadge(WARRANTY_ROLE_LABELS[item.item_role] || item.item_role, 'gray')}
+            ${warrantyStatusBadge(item.current_status)}
+            ${warrantyBadge(WARRANTY_LOCATION_LABELS[item.current_location] || item.current_location || '—', 'amber')}
+            <span style="margin-left:auto;font-weight:700">${fmt(item.qty || 0)}</span>
+          </div>
+          ${bits.length ? `<div style="margin-top:6px;font-size:12px;color:#475569">${esc(bits.join(' · '))}</div>` : ''}
+          <div style="margin-top:6px;font-size:12px;color:#64748b">
+            ${item.holder_staff_name ? `KTV giữ: <b>${esc(item.holder_staff_name)}</b>` : 'Không gắn KTV giữ riêng'}
+            ${item.supplier_name ? ` · NCC: <b>${esc(item.supplier_name)}</b>` : ''}
+            ${item.condition_note ? ` · ${esc(item.condition_note)}` : ''}
+          </div>
+        </div>`;
+    }).join('') : '<div style="color:#94a3b8">Chưa có item bảo hành</div>';
+    const moveHtml = moves.length ? moves.slice(0, 12).map(mv => `
+      <div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px dashed #e2e8f0">
+        <div style="min-width:130px;font-size:11px;color:#94a3b8">${fmtDate(mv.occurred_at)}</div>
+        <div style="flex:1">
+          <div style="font-size:12.5px;font-weight:600;color:#0f172a">${esc(WARRANTY_ACTION_LABELS[mv.action_code] || mv.action_code)}</div>
+          <div style="font-size:12px;color:#64748b">
+            ${esc((WARRANTY_LOCATION_LABELS[mv.from_location] || mv.from_location || '—') + ' → ' + (WARRANTY_LOCATION_LABELS[mv.to_location] || mv.to_location || '—'))}
+            ${mv.product_name ? ` · ${esc(mv.product_name)}` : ''}
+            ${mv.supplier_name ? ` · NCC ${esc(mv.supplier_name)}` : ''}
+            ${mv.holder_staff_name ? ` · ${esc(mv.holder_staff_name)}` : ''}
+            ${mv.receipt_code ? ` · PX/PN ${esc(mv.receipt_code)}` : ''}
+          </div>
+          ${mv.note_text ? `<div style="font-size:12px;color:#334155;margin-top:4px">${esc(mv.note_text)}</div>` : ''}
+        </div>
+      </div>`).join('') : '<div style="color:#94a3b8">Chưa có lịch sử kho bảo hành</div>';
+
+    return `
+      <div class="od-section">
+        <h4>
+          Bảo hành
+          <span style="margin-left:auto;display:flex;gap:6px">
+            <button class="btn ghost sm" id="btnEditWarranty">Sửa thông tin</button>
+            <button class="btn ghost sm" id="btnWarrantyMove">Cập nhật kho</button>
+          </span>
+        </h4>
+
+        ${meta.note_text ? `<div style="margin-bottom:12px;padding:10px 12px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;font-size:12.5px;color:#334155">${esc(meta.note_text)}</div>` : ''}
+        <div style="display:grid;gap:10px">${itemHtml}</div>
+        <div style="margin-top:14px">
+          <div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:6px">Lịch sử kho bảo hành</div>
+          <div>${moveHtml}</div>
+        </div>
+      </div>`;
+  }
+
+  async function openWarrantyEditor() {
+    const o = state.currentDetail;
+    const warranty = o.warranty || { meta: {}, items: [] };
+    const meta = warranty.meta || {};
+    const items = (warranty.items || []).map(item => ({
+      id: item.id,
+      item_role: item.item_role || 'faulty',
+      product_id: item.product_id || 0,
+      supplier_id: item.supplier_id || 0,
+      qty: Number(item.qty) || 1,
+      device_name: item.device_name || '',
+      imei: item.imei || '',
+      license_plate: item.license_plate || '',
+      account_name: item.account_name || '',
+      sim_number: item.sim_number || '',
+      condition_note: item.condition_note || '',
+      note_text: item.note_text || '',
+    }));
+    if (!items.length) {
+      items.push({ id: null, item_role: 'faulty', product_id: 0, supplier_id: 0, qty: 1, device_name: '', imei: '', license_plate: '', account_name: '', sim_number: '', condition_note: '', note_text: '' });
+    }
+
+    const [productsRes, suppliersRes] = await Promise.all([
+      api.get('/admin/products?limit=500').catch(() => null),
+      api.get('/admin/suppliers/all').catch(() => null),
+    ]);
+    const products = (productsRes && productsRes.items) || [];
+    const suppliers = (suppliersRes && suppliersRes.items) || [];
+    const productOptions = ['<option value="0">— Chọn sản phẩm —</option>']
+      .concat(products.map(p => `<option value="${p.id}">${esc(p.code || '')}${p.code ? ' · ' : ''}${esc(p.name || '')}</option>`))
+      .join('');
+    const supplierOptions = ['<option value="0">— Chưa chọn NCC —</option>']
+      .concat(suppliers.map(s => `<option value="${s.id}">${esc(s.name)}</option>`))
+      .join('');
+
+    function renderRows() {
+      return items.map((item, idx) => `
+        <div class="w-edit-row" data-idx="${idx}" style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:10px">
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+            <div><label style="font-size:12px">Vai trò</label><select class="select w-role">
+              <option value="faulty" ${item.item_role === 'faulty' ? 'selected' : ''}>Hàng lỗi</option>
+              <option value="replacement" ${item.item_role === 'replacement' ? 'selected' : ''}>Hàng thay thế</option>
+              <option value="supplier_return" ${item.item_role === 'supplier_return' ? 'selected' : ''}>Hàng NCC trả</option>
+            </select></div>
+            <div><label style="font-size:12px">Sản phẩm</label><select class="select w-product">${productOptions}</select></div>
+            <div><label style="font-size:12px">Số lượng</label><input class="input w-qty" inputmode="numeric" value="${fmt(item.qty || 1)}"></div>
+            <div><label style="font-size:12px">NCC riêng</label><select class="select w-supplier">${supplierOptions}</select></div>
+            <div><label style="font-size:12px">Tên thiết bị</label><input class="input w-device" value="${esc(item.device_name || '')}"></div>
+            <div><label style="font-size:12px">IMEI / Serial</label><input class="input w-imei" value="${esc(item.imei || '')}"></div>
+            <div><label style="font-size:12px">Biển số</label><input class="input w-plate" value="${esc(item.license_plate || '')}"></div>
+            <div><label style="font-size:12px">Tài khoản</label><input class="input w-account" value="${esc(item.account_name || '')}"></div>
+            <div><label style="font-size:12px">SIM</label><input class="input w-sim" value="${esc(item.sim_number || '')}"></div>
+            <div><label style="font-size:12px">Tình trạng</label><input class="input w-condition" value="${esc(item.condition_note || '')}"></div>
+            <div style="grid-column:1 / -1"><label style="font-size:12px">Ghi chú item</label><textarea class="input w-note" rows="2">${esc(item.note_text || '')}</textarea></div>
+          </div>
+          <div style="text-align:right;margin-top:8px"><button type="button" class="btn ghost sm w-del">Xóa item</button></div>
+        </div>
+      `).join('');
+    }
+
+    const html = `
+      <div style="padding:14px">
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px">
+          <div><label style="font-size:12px">Loại xử lý</label><select id="weMode" class="select">
+            <option value="repair" ${meta.warranty_mode === 'repair' ? 'selected' : ''}>Sửa / xử lý nội bộ</option>
+            <option value="exchange" ${meta.warranty_mode === 'exchange' ? 'selected' : ''}>Đổi thiết bị</option>
+            <option value="supplier_swap" ${meta.warranty_mode === 'supplier_swap' ? 'selected' : ''}>Đổi trả NCC</option>
+          </select></div>
+          <div><label style="font-size:12px">NCC mặc định</label><select id="weSupplier" class="select">${supplierOptions}</select></div>
+          <div style="grid-column:1 / -1"><label style="font-size:12px">Địa chỉ</label><input id="weAddress" class="input" value="${esc(o.address || '')}"></div>
+          <div style="grid-column:1 / -1"><label style="font-size:12px">Ghi chú đơn</label><textarea id="weOrderNote" class="input" rows="2">${esc(o.note || '')}</textarea></div>
+          <div style="grid-column:1 / -1"><label style="font-size:12px">Ghi chú bảo hành</label><textarea id="weMetaNote" class="input" rows="2">${esc(meta.note_text || '')}</textarea></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <b>Item bảo hành</b>
+          <button type="button" class="btn ghost sm" id="btnWeAdd">+ Thêm item</button>
+        </div>
+        <div id="weItems">${renderRows()}</div>
+      </div>`;
+
+    const ok = await openSimpleModal('Sửa thông tin bảo hành', html, 'Lưu', () => {
+      const $supplier = document.getElementById('weSupplier');
+      if ($supplier) $supplier.value = String(meta.default_supplier_id || 0);
+      const bindRows = () => {
+        document.querySelectorAll('#weItems .w-edit-row').forEach(row => {
+          const idx = Number(row.dataset.idx);
+          const item = items[idx];
+          const qp = row.querySelector('.w-product'); if (qp) qp.value = String(item.product_id || 0);
+          const sp = row.querySelector('.w-supplier'); if (sp) sp.value = String(item.supplier_id || 0);
+          const read = (selector, key, parser) => {
+            const el = row.querySelector(selector);
+            if (!el) return;
+            const save = () => { item[key] = parser ? parser(el.value) : el.value; };
+            el.addEventListener('input', save);
+            el.addEventListener('change', save);
+          };
+          read('.w-role', 'item_role');
+          read('.w-product', 'product_id', v => Number(v) || 0);
+          read('.w-qty', 'qty', v => Math.max(1, Number(String(v).replace(/[^\d]/g, '')) || 1));
+          read('.w-supplier', 'supplier_id', v => Number(v) || 0);
+          read('.w-device', 'device_name');
+          read('.w-imei', 'imei');
+          read('.w-plate', 'license_plate');
+          read('.w-account', 'account_name');
+          read('.w-sim', 'sim_number');
+          read('.w-condition', 'condition_note');
+          read('.w-note', 'note_text');
+          const delBtn = row.querySelector('.w-del');
+          if (delBtn) {
+            delBtn.addEventListener('click', () => {
+              if (items.length <= 1) return ui.toast('Cần ít nhất 1 item', 'warning');
+              items.splice(idx, 1);
+              document.getElementById('weItems').innerHTML = renderRows();
+              bindRows();
+            });
+          }
+        });
+      };
+      bindRows();
+      const addBtn = document.getElementById('btnWeAdd');
+      if (addBtn) {
+        addBtn.addEventListener('click', () => {
+          items.push({ id: null, item_role: 'faulty', product_id: 0, supplier_id: 0, qty: 1, device_name: '', imei: '', license_plate: '', account_name: '', sim_number: '', condition_note: '', note_text: '' });
+          document.getElementById('weItems').innerHTML = renderRows();
+          bindRows();
+        });
+      }
+    });
+    if (!ok) return;
+
+    const payload = {
+      address: document.getElementById('weAddress').value.trim() || null,
+      note: document.getElementById('weOrderNote').value.trim() || null,
+      meta: {
+        warranty_mode: document.getElementById('weMode').value,
+        default_supplier_id: Number(document.getElementById('weSupplier').value) || null,
+        current_stage: meta.current_stage || 'intake',
+        note_text: document.getElementById('weMetaNote').value.trim() || null,
+      },
+      items: items
+        .map(item => ({
+          id: item.id || null,
+          item_role: item.item_role,
+          product_id: Number(item.product_id) || null,
+          supplier_id: Number(item.supplier_id) || null,
+          qty: Math.max(1, Number(item.qty) || 1),
+          device_name: item.device_name?.trim() || null,
+          imei: item.imei?.trim() || null,
+          license_plate: item.license_plate?.trim() || null,
+          account_name: item.account_name?.trim() || null,
+          sim_number: item.sim_number?.trim() || null,
+          condition_note: item.condition_note?.trim() || null,
+          note_text: item.note_text?.trim() || null,
+        }))
+        .filter(item => item.product_id || item.device_name || item.imei || item.license_plate || item.account_name || item.sim_number || item.condition_note || item.note_text),
+    };
+    closeSimpleModal();
+    const r = await api.put(`/admin/orders/${o.id}/warranty`, payload, { onError: 'toast' });
+    if (r) {
+      ui.toast('Đã lưu bảo hành', 'success');
+      openDetail(o.id);
+      loadList();
+    }
+  }
+
+  async function openWarrantyMoveModal() {
+    const o = state.currentDetail;
+    const items = ((o.warranty && o.warranty.items) || []).filter(item => item.current_status !== 'cancelled');
+    if (!items.length) {
+      ui.toast('Chưa có item bảo hành để cập nhật kho', 'warning');
+      return;
+    }
+    const suppliers = await api.get('/admin/suppliers/all').catch(() => ({ items: [] }));
+    const itemOptions = items.map(item => `<option value="${item.id}">${esc(item.product_name || item.device_name || ('Item #' + item.id))}</option>`).join('');
+    const supplierOptions = ['<option value="0">— Không chọn —</option>']
+      .concat((suppliers.items || []).map(s => `<option value="${s.id}">${esc(s.name)}</option>`))
+      .join('');
+    const actionOptions = (item) => warrantyMoveOptionsForItem(item)
+      .map(action => `<option value="${action.code}">${esc(action.label)}</option>`)
+      .join('');
+
+    const html = `
+      <div style="padding:14px">
+        <div class="field"><label>Item bảo hành</label><select id="wmItem" class="select">${itemOptions}</select></div>
+        <div class="field"><label>Thao tác</label>
+          <select id="wmAction" class="select">${actionOptions(items[0])}</select>
+        </div>
+        <div class="field"><label>Nhà cung cấp</label><select id="wmSupplier" class="select">${supplierOptions}</select></div>
+        <div class="field"><label>Thời điểm</label><input id="wmOccurredAt" type="datetime-local" class="input"></div>
+        <div class="field"><label>Ghi chú</label><textarea id="wmNote" rows="3" class="input" placeholder="Ghi chú diễn biến, vị trí hàng, người giao nhận..."></textarea></div>
+      </div>`;
+
+    const okPromise = openSimpleModal('Cập nhật kho bảo hành', html, 'Lưu');
+    const $wmItem = document.getElementById('wmItem');
+    const $wmAction = document.getElementById('wmAction');
+    const syncWarrantyActions = () => {
+      const item = items.find(entry => Number(entry.id) === Number($wmItem.value)) || items[0];
+      const prev = $wmAction.value;
+      $wmAction.innerHTML = actionOptions(item);
+      if ([...$wmAction.options].some(opt => opt.value === prev)) $wmAction.value = prev;
+    };
+    if ($wmItem && $wmAction) {
+      $wmItem.addEventListener('change', syncWarrantyActions);
+      syncWarrantyActions();
+    }
+    const ok = await okPromise;
+    if (!ok) return;
+    const payload = {
+      warranty_item_id: Number(document.getElementById('wmItem').value) || 0,
+      action_code: document.getElementById('wmAction').value,
+      supplier_id: Number(document.getElementById('wmSupplier').value) || null,
+      occurred_at: document.getElementById('wmOccurredAt').value || null,
+      note_text: document.getElementById('wmNote').value.trim() || null,
+    };
+    closeSimpleModal();
+    const r = await api.post(`/admin/orders/${o.id}/warranty/moves`, payload, { onError: 'toast' });
+    if (r) {
+      const receiptCode = r.receipt && r.receipt.code ? ` (${r.receipt.code})` : '';
+      ui.toast('Đã cập nhật kho bảo hành' + receiptCode, 'success');
+      openDetail(o.id);
+      loadList();
+    }
+  }
+
   function renderLinesList() {
     const lines = state.currentDetail.lines || [];
     const $box = $('linesList');
+    if (!$box) return;
     if (!lines.length) { $box.innerHTML = '<p style="color:#94a3b8">Đơn không có dòng công việc</p>'; return; }
 
     // Flat list of all items (cross-line) for product-dialog clicking
@@ -1177,14 +2682,173 @@
     );
     const $box = $('photoList');
     if (!ps.length) { $box.innerHTML = '<p style="color:#94a3b8">Chưa có ảnh</p>'; return; }
+    if (!state.photosExpanded) {
+      $box.innerHTML = `<div style="padding:10px 12px;border:1px dashed #cbd5e1;border-radius:10px;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div style="font-size:13px;color:#475569">Có <b>${fmt(ps.length)}</b> ảnh các bước. Ảnh chưa tải để giảm dữ liệu.</div>
+        <button class="btn ghost sm" id="btnLoadOrderPhotos">Xem ảnh</button>
+      </div>`;
+      const $btn = $('btnLoadOrderPhotos');
+      if ($btn) {
+        $btn.addEventListener('click', () => {
+          state.photosExpanded = true;
+          renderPhotoList();
+        });
+      }
+      return;
+    }
     $box.innerHTML = `<div class="photo-group-grid">
-      ${ps.map(p => `
+      ${ps.map((p, idx) => `
         <div class="ph">
-          <a href="${esc(p.url)}" target="_blank"><img src="${esc(p.url)}" alt=""></a>
+          <button type="button" class="btnPhotoPreview" data-photo-idx="${idx}" style="padding:0;border:none;background:none;display:block;width:100%;cursor:zoom-in">
+            <img src="${esc(p.url)}" alt="" loading="lazy">
+          </button>
           <div class="meta">${fmtDate(p.uploaded_at)}${p.caption ? ' · ' + esc(p.caption) : ''}</div>
         </div>
       `).join('')}
     </div>`;
+    $box.querySelectorAll('.btnPhotoPreview').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.dataset.photoIdx);
+        const photo = ps[idx];
+        if (photo) openOrderPhotoPreview(ps, idx);
+      });
+    });
+  }
+
+  function openOrderPhotoPreview(photos, initialIndex = 0) {
+    const items = Array.isArray(photos) ? photos.filter(p => p && p.url) : [];
+    if (!items.length) return;
+    let currentIndex = Math.max(0, Math.min(items.length - 1, Number(initialIndex) || 0));
+    const old = document.getElementById('orderPhotoLightbox');
+    if (old) old.remove();
+    const div = document.createElement('div');
+    div.id = 'orderPhotoLightbox';
+    div.style.cssText = 'position:fixed;inset:0;z-index:320;background:radial-gradient(circle at top, rgba(30,41,59,.32), rgba(2,6,23,.96) 46%);backdrop-filter:blur(14px);display:flex;flex-direction:column';
+    div.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 24px 10px">
+        <div style="min-width:0;display:flex;align-items:center;gap:14px">
+          <div style="width:44px;height:44px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:700">IMG</div>
+          <div style="min-width:0">
+            <div style="font-size:14px;font-weight:700;color:#f8fafc">Ảnh các bước</div>
+            <div id="orderPhotoMeta" style="font-size:12.5px;color:rgba(226,232,240,.82);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52vw"></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end">
+          <div id="orderPhotoCount" style="padding:0 12px;height:40px;border-radius:999px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:#e2e8f0;font-size:13px;display:flex;align-items:center"></div>
+          <button type="button" id="btnPhotoZoomOut" style="width:40px;height:40px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.08);color:#fff;font-size:20px;cursor:pointer">−</button>
+          <button type="button" id="btnPhotoZoomIn" style="width:40px;height:40px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.08);color:#fff;font-size:20px;cursor:pointer">+</button>
+          <button type="button" id="btnPhotoOpenBrowser" style="padding:10px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.08);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Mở với trình duyệt</button>
+          <button type="button" id="btnPhotoClose" style="width:40px;height:40px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:#fff;color:#0f172a;font-size:20px;cursor:pointer">×</button>
+        </div>
+      </div>
+      <div style="flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);padding:8px 18px 18px">
+        <div style="position:relative;min-height:0;border-radius:28px;background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.08);box-shadow:0 24px 80px rgba(0,0,0,.28);overflow:hidden">
+          <button type="button" id="btnPhotoPrev" style="position:absolute;left:18px;top:50%;transform:translateY(-50%);z-index:2;width:52px;height:52px;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:rgba(15,23,42,.52);color:#fff;font-size:28px;cursor:pointer">‹</button>
+          <button type="button" id="btnPhotoNext" style="position:absolute;right:18px;top:50%;transform:translateY(-50%);z-index:2;width:52px;height:52px;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:rgba(15,23,42,.52);color:#fff;font-size:28px;cursor:pointer">›</button>
+          <div id="orderPhotoLightboxStage" style="height:100%;display:flex;align-items:center;justify-content:center;padding:28px 88px 126px;overflow:auto;cursor:zoom-in">
+            <img id="orderPhotoPreviewImg" src="" alt="" style="max-width:min(88vw,1580px);max-height:calc(100vh - 240px);object-fit:contain;border-radius:22px;box-shadow:0 30px 90px rgba(0,0,0,.34);transform:scale(1);transform-origin:center center;transition:transform .18s ease">
+          </div>
+          <div style="position:absolute;left:0;right:0;bottom:0;padding:14px 18px 18px;background:linear-gradient(180deg, rgba(2,6,23,0), rgba(2,6,23,.78) 38%, rgba(2,6,23,.95))">
+            <div id="orderPhotoCaption" style="color:#f8fafc;font-size:14px;font-weight:600;min-height:21px;margin-bottom:12px"></div>
+            <div id="orderPhotoThumbs" style="display:flex;gap:10px;overflow:auto;padding-bottom:2px"></div>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(div);
+
+    const img = document.getElementById('orderPhotoPreviewImg');
+    const stage = document.getElementById('orderPhotoLightboxStage');
+    const $meta = document.getElementById('orderPhotoMeta');
+    const $count = document.getElementById('orderPhotoCount');
+    const $caption = document.getElementById('orderPhotoCaption');
+    const $thumbs = document.getElementById('orderPhotoThumbs');
+    const $prev = document.getElementById('btnPhotoPrev');
+    const $next = document.getElementById('btnPhotoNext');
+    const $in = document.getElementById('btnPhotoZoomIn');
+    const $out = document.getElementById('btnPhotoZoomOut');
+    const $browser = document.getElementById('btnPhotoOpenBrowser');
+    const $close = document.getElementById('btnPhotoClose');
+    let zoom = 1;
+
+    const applyZoom = () => {
+      if (!img || !stage) return;
+      zoom = Math.max(0.75, Math.min(5, zoom));
+      img.style.transform = `scale(${zoom})`;
+      stage.style.cursor = zoom > 1 ? 'zoom-out' : 'zoom-in';
+    };
+    const renderThumbs = () => {
+      if (!$thumbs) return;
+      $thumbs.innerHTML = items.map((p, idx) => `
+        <button type="button" data-thumb-idx="${idx}" style="flex:0 0 auto;width:72px;height:72px;padding:0;border-radius:16px;border:${idx === currentIndex ? '2px solid #fff' : '1px solid rgba(255,255,255,.14)'};background:${idx === currentIndex ? 'rgba(255,255,255,.16)' : 'rgba(255,255,255,.06)'};overflow:hidden;cursor:pointer;opacity:${idx === currentIndex ? '1' : '.72'}">
+          <img src="${esc(p.url)}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block">
+        </button>
+      `).join('');
+      $thumbs.querySelectorAll('[data-thumb-idx]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          currentIndex = Number(btn.dataset.thumbIdx) || 0;
+          zoom = 1;
+          renderCurrent();
+        });
+      });
+    };
+    const renderCurrent = () => {
+      const photo = items[currentIndex];
+      if (!photo || !img) return;
+      const meta = [fmtDate(photo.uploaded_at), photo.step_code].filter(Boolean).join(' · ');
+      img.src = photo.url;
+      img.alt = photo.caption || photo.step_code || `Ảnh bước ${currentIndex + 1}`;
+      if ($meta) $meta.textContent = meta;
+      if ($count) $count.textContent = `${currentIndex + 1} / ${items.length}`;
+      if ($caption) $caption.textContent = photo.caption || photo.step_code || '';
+      if ($prev) $prev.style.display = items.length > 1 ? '' : 'none';
+      if ($next) $next.style.display = items.length > 1 ? '' : 'none';
+      applyZoom();
+      renderThumbs();
+    };
+    const move = (delta) => {
+      if (items.length < 2) return;
+      currentIndex = (currentIndex + delta + items.length) % items.length;
+      zoom = 1;
+      renderCurrent();
+    };
+    const close = () => {
+      document.removeEventListener('keydown', onKeydown);
+      div.remove();
+    };
+    const onKeydown = (e) => {
+      if (e.key === 'Escape') close();
+      else if (e.key === '+' || e.key === '=') { zoom += 0.25; applyZoom(); }
+      else if (e.key === '-') { zoom -= 0.25; applyZoom(); }
+      else if (e.key === 'ArrowLeft') move(-1);
+      else if (e.key === 'ArrowRight') move(1);
+    };
+
+    document.addEventListener('keydown', onKeydown);
+    if ($prev) $prev.addEventListener('click', () => move(-1));
+    if ($next) $next.addEventListener('click', () => move(1));
+    if ($in) $in.addEventListener('click', () => { zoom += 0.25; applyZoom(); });
+    if ($out) $out.addEventListener('click', () => { zoom -= 0.25; applyZoom(); });
+    if ($browser) $browser.addEventListener('click', () => {
+      const photo = items[currentIndex];
+      if (photo && photo.url) window.open(photo.url, '_blank', 'noopener,noreferrer');
+    });
+    if ($close) $close.addEventListener('click', close);
+    if (stage) {
+      stage.addEventListener('click', (e) => {
+        if (e.target === stage) {
+          close();
+          return;
+        }
+        zoom = zoom > 1 ? 1 : 1.75;
+        applyZoom();
+      });
+      stage.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        zoom += e.deltaY < 0 ? 0.2 : -0.2;
+        applyZoom();
+      }, { passive: false });
+    }
+    renderCurrent();
   }
 
   const KIND_LABEL = { account: 'Tài khoản', vehicle: 'Biển số xe', sim: 'Số SIM' };
@@ -1926,6 +3590,10 @@
       const pName = p ? p.name : '— Chọn sản phẩm —';
       const stockQty = p ? Number(p.stock_qty) : null;
       const stkCls = stockQty === null ? '' : stockQty <= 0 ? 'out' : stockQty <= 3 ? 'low' : 'ok';
+      // Đơn bảo hành: ẩn badge tồn kho
+      const stkBadge = (stockQty !== null && o.service_kind !== 'warranty')
+        ? `<span class="prod-stk-badge ${stkCls}">Kho: ${stockQty}</span>`
+        : '';
       return `<div class="prod-picker" data-pid="${it.product_id || 0}">
         <div class="prod-trigger" data-act="open-prod" tabindex="0">
           <div class="prod-thumb-wrap">
@@ -1933,7 +3601,7 @@
           </div>
           <div class="prod-trigger-info">
             <span class="prod-trigger-name">${esc(pName)}</span>
-            ${stockQty !== null ? `<span class="prod-stk-badge ${stkCls}">Kho: ${stockQty}</span>` : ''}
+            ${stkBadge}
           </div>
           <span class="prod-caret-icon">▾</span>
         </div>
@@ -2268,11 +3936,14 @@
                 <div class="prod-drop-list">${filtered.slice(0, 50).map(p => {
                   const thumb = p.thumbnail_url || p.image_url || '';
                   const stk = Number(p.stock_qty);
-                  const sc = stk <= 0 ? 'out' : stk <= 3 ? 'low' : 'ok';
+                  // Đơn bảo hành: không hiển thị tồn kho
+                  const stkHtml = o.service_kind === 'warranty'
+                    ? ''
+                    : `<span class="po-stk ${stk <= 0 ? 'out' : stk <= 3 ? 'low' : 'ok'}">Kho: ${stk}</span>`;
                   return `<div class="prod-opt" data-pid="${p.id}">
                     ${thumb ? `<img class="po-thumb" src="${esc(thumb)}" loading="lazy">` : '<div class="po-thumb-ph"></div>'}
                     <span class="po-name">${esc(p.name)}</span>
-                    <span class="po-stk ${sc}">Kho: ${stk}</span>
+                    ${stkHtml}
                   </div>`;
                 }).join('')}${filtered.length === 0 ? '<div class="prod-empty">Không tìm thấy</div>' : ''}</div>`;
               drop.querySelector('.prod-search-inp').addEventListener('input', e => renderDropList(e.target.value));
@@ -2286,7 +3957,8 @@
                   const lnIdx = Number(picker.closest('.line-card').dataset.idx);
                   wlines[lnIdx].items[ii].product_id = pid;
                   const pp = prodMap[pid];
-                  if (pp && !wlines[lnIdx].items[ii].unit_price) {
+                  // Đơn bảo hành: không gán giá tự động
+                  if (pp && !wlines[lnIdx].items[ii].unit_price && o.service_kind !== 'warranty') {
                     wlines[lnIdx].items[ii].unit_price = Number(pp.sale_price ?? pp.price) || 0;
                   }
                   drop.hidden = true;
@@ -2477,8 +4149,85 @@
 
   // ---- BOOT ---------------------------------------------------
   document.addEventListener('DOMContentLoaded', async () => {
-    adminShell.init('orders');
+    initPageMode();
+    adminShell.init(IS_WARRANTY_VIEW ? 'warranties' : 'orders');
     await loadTemplates();
+
+    const $btnHelpOrder = document.getElementById('btnHelpOrder');
+    if ($btnHelpOrder) {
+      $btnHelpOrder.addEventListener('click', () => {
+        ui.confirm({
+          title: 'Hướng dẫn thao tác đơn hàng & bảo hành',
+          body: `
+            <div style="font-family:system-ui, -apple-system, sans-serif; font-size:13.5px; line-height:1.6; color:#334155; max-height:420px; overflow-y:auto; padding-right:8px">
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:10px 12px; color:#1e40af">
+                <span style="font-size:20px">💡</span>
+                <span><b>Hướng dẫn quy trình & phân quyền xử lý Đơn hàng bảo hành VinaGPS</b></span>
+              </div>
+              
+              <div style="margin-bottom:14px">
+                <h4 style="margin:0 0 6px 0; color:#1e293b; font-size:14px; display:flex; align-items:center; gap:6px">📌 1. Quy trình trạng thái Đơn hàng</h4>
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px">
+                  <div style="font-size:12.5px; font-weight:600; color:#475569; margin-bottom:6px">
+                    Tiếp nhận ➔ Đang xử lý (Giao KTV) ➔ Hoàn thành / Đã giao khách
+                  </div>
+                  <p style="margin:0; font-size:12px; color:#64748b">
+                    • <b>Đơn bảo hành &le; 0đ:</b> Khi hoàn thành, hệ thống tự động đánh dấu đã trả tiền.<br>
+                    • <b>Hoàn thành đơn:</b> Admin/Nhân viên/KTV sử dụng thanh tiến trình (stepper) trên đầu đơn để cập nhật trạng thái chung.
+                  </p>
+                </div>
+              </div>
+
+              <div style="margin-bottom:14px">
+                <h4 style="margin:0 0 6px 0; color:#1e293b; font-size:14px; display:flex; align-items:center; gap:6px">⚙ 2. Các hành động xử lý thiết bị bảo hành</h4>
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:12.5px">
+                  <table style="width:100%; border-collapse:collapse">
+                    <thead>
+                      <tr style="border-bottom:1px solid #cbd5e1; text-align:left; color:#475569">
+                        <th style="padding:4px 0">Hành động</th>
+                        <th style="padding:4px 0">Ý nghĩa & Hướng dẫn thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr style="border-bottom:1px dashed #e2e8f0">
+                        <td style="padding:6px 0; font-weight:600; color:#2563eb">Mới tiếp nhận</td>
+                        <td style="padding:6px 0; color:#475569">Nhận sản phẩm lỗi ban đầu từ khách hàng.</td>
+                      </tr>
+                      <tr style="border-bottom:1px dashed #e2e8f0">
+                        <td style="padding:6px 0; font-weight:600; color:#2563eb">Thu hồi về kho</td>
+                        <td style="padding:6px 0; color:#475569">Đối với Admin/Nhân viên: Thu hồi thẳng về kho công ty. Đối với KTV: Thu hồi vào túi đồ kỹ thuật cá nhân.</td>
+                      </tr>
+                      <tr style="border-bottom:1px dashed #e2e8f0">
+                        <td style="padding:6px 0; font-weight:600; color:#16a34a">Cấp hàng đổi mới</td>
+                        <td style="padding:6px 0; color:#475569">Lắp/giao sản phẩm thay thế từ kho công ty hoặc túi KTV. Cho phép chọn nhiều sản phẩm, số lượng, yêu cầu tải ảnh & xác nhận qua Dialog.</td>
+                      </tr>
+                      <tr style="border-bottom:1px dashed #e2e8f0">
+                        <td style="padding:6px 0; font-weight:600; color:#b45309">Gửi NCC / Sửa chữa</td>
+                        <td style="padding:6px 0; color:#475569">Chuyển đồ bảo hành sang nhà cung cấp hoặc tiến hành khắc phục kỹ thuật trực tiếp.</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0; font-weight:600; color:#0f172a">Giao lại khách</td>
+                        <td style="padding:6px 0; color:#475569">Hoàn tất quy trình trả thiết bị bảo hành đã khắc phục hoặc đã đổi mới cho khách hàng.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div>
+                <h4 style="margin:0 0 6px 0; color:#1e293b; font-size:14px; display:flex; align-items:center; gap:6px">👥 3. Phân quyền và Vai trò (Role)</h4>
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:12.5px; color:#475569">
+                  • <b>Admin / Nhân viên:</b> Có đầy đủ tất cả các quyền của KTV. Khi thu hồi sản phẩm lỗi từ khách, sản phẩm lỗi sẽ được chuyển thẳng về kho tổng của công ty để tối ưu hóa quản lý hàng tồn.<br>
+                  • <b>Kỹ thuật viên (KTV):</b> Chỉ xử lý các thiết bị được phân công trong đơn hàng, quản lý và cấp hàng thông qua túi đồ KTV cá nhân.
+                </div>
+              </div>
+            </div>
+          `,
+          okText: 'Đã hiểu',
+          cancelText: 'Đóng'
+        });
+      });
+    }
 
     // helper tạo multi-select dropdown
     function initMultiSelect({ btnId, popId, applyId, clearId, filterKey, labels, defaults }) {
@@ -2667,6 +4416,10 @@
 
     // ---- Xuất bảng kê ---
     $('btnOpenStatement').onclick = () => {
+      if (IS_WARRANTY_VIEW) {
+        location.href = '/admin/warranty-batches.html';
+        return;
+      }
       const f = state.filters;
       const qs = new URLSearchParams();
       if (f.customer_q)     qs.set('customer_q',     f.customer_q);
@@ -2676,6 +4429,7 @@
       if (f.template_id)    qs.set('template_id',    f.template_id);
       if (f.status)         qs.set('status',         f.status);
       if (f.payment_status) qs.set('payment_status', f.payment_status);
+      if (state.serviceKind) qs.set('service_kind', state.serviceKind);
       window.open('/admin/order-statement.html?' + qs.toString(), '_blank');
     };
 

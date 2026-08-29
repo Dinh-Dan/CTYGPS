@@ -116,16 +116,20 @@
     position:absolute; left:0; right:0; top:calc(100% + 4px);
     background:#fff; border:1px solid var(--border); border-radius:8px;
     box-shadow:0 8px 24px rgba(15,23,42,.12);
-    max-height:220px; overflow-y:auto; z-index:50;
+    padding:6px; z-index:50;
+    display:grid; grid-template-columns:1fr 1fr; gap:4px;
   }
   .line-head .tpl-combo .tpl-pop[hidden] { display:none; }
   .line-head .tpl-combo .tpl-item {
-    padding:7px 12px; font-size:13px; cursor:pointer; color:#0f172a;
+    padding:6px 10px; font-size:13px; cursor:pointer; color:#0f172a;
+    border-radius:6px; text-align:center; border:1px solid #e2e8f0;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
   .line-head .tpl-combo .tpl-item:hover,
-  .line-head .tpl-combo .tpl-item.active { background:#eef2ff; color:#1e3a8a; }
+  .line-head .tpl-combo .tpl-item.active { background:#eef2ff; color:#1e3a8a; border-color:#a5b4fc; }
   .line-head .tpl-combo .tpl-empty {
     padding:8px 12px; font-size:12px; color:#94a3b8; font-style:italic;
+    grid-column:1/-1;
   }
   .line-head .sub-show { font-size:12px; color:var(--muted); font-variant-numeric: tabular-nums; }
   .line-head .x-btn {
@@ -581,8 +585,8 @@
   <aside class="sidebar" id="sidebar"></aside>
   <main class="main">
     <div class="topnav">
-      <h2 class="topnav-title">+ Tạo đơn mới</h2>
-      <a href="/admin/orders.html" class="btn ghost sm" style="margin-left:auto">← Danh sách đơn</a>
+      <h2 class="topnav-title" id="pageTitle">+ Tạo đơn mới</h2>
+      <a href="/admin/orders.html" class="btn ghost sm" id="btnBackList" style="margin-left:auto">← Danh sách đơn</a>
     </div>
     <div class="content">
       <div class="no-wrap">
@@ -597,6 +601,8 @@
               <input type="hidden" id="f_address" value="">
               <input type="hidden" id="f_note" value="">
             </div>
+
+            <div id="modeExtraBox"></div>
 
             <!-- Lines section -->
             <div id="linesBox"></div>

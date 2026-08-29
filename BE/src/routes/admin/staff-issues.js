@@ -145,7 +145,7 @@ router.get('/', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const detail = await loadIssueDetail(Number(req.params.id));
-    if (!detail) return res.status(404).json({ error: 'Khong tim thay phieu cap' });
+    if (!detail) return res.status(404).json({ error: 'Không tìm thấy phiếu cấp' });
     res.json(detail);
   } catch (err) { next(err); }
 });
@@ -157,18 +157,18 @@ router.post('/', async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const staffId = Number(req.body.staff_id);
-    if (!staffId) throw httpErr(400, 'Thieu staff_id');
+    if (!staffId) throw httpErr(400, 'Thiếu staff_id');
     const items = Array.isArray(req.body.items) ? req.body.items : [];
-    if (!items.length) throw httpErr(400, 'Phieu phai co it nhat 1 dong');
+    if (!items.length) throw httpErr(400, 'Phiếu phải có ít nhất 1 dòng');
 
     const lines = [];
     const productIds = new Set();
     for (const raw of items) {
       const productId = Number(raw.product_id);
       const qty = Number(raw.qty_requested || raw.qty);
-      if (!productId) throw httpErr(400, 'Thieu product_id');
-      if (!qty || qty <= 0) throw httpErr(400, 'qty_requested phai > 0');
-      if (productIds.has(productId)) throw httpErr(400, 'Moi san pham chi 1 dong / phieu');
+      if (!productId) throw httpErr(400, 'Thiếu product_id');
+      if (!qty || qty <= 0) throw httpErr(400, 'qty_requested phải > 0');
+      if (productIds.has(productId)) throw httpErr(400, 'Mỗi sản phẩm chỉ 1 dòng / phiếu');
       productIds.add(productId);
       lines.push({
         product_id: productId,
@@ -183,15 +183,15 @@ router.post('/', async (req, res, next) => {
     const [stf] = await conn.query(
       `SELECT id, role FROM staff WHERE id = ? AND is_deleted = 0`, [staffId]
     );
-    if (!stf.length) throw httpErr(404, 'KTV khong ton tai');
-    if (stf[0].role !== 'kithuat') throw httpErr(400, 'Chi cap cho KTV');
+    if (!stf.length) throw httpErr(404, 'KTV không tồn tại');
+    if (stf[0].role !== 'kithuat') throw httpErr(400, 'Chỉ cấp cho KTV');
 
     const ph = lines.map(() => '?').join(',');
     const [prods] = await conn.query(
       `SELECT id FROM products WHERE id IN (${ph}) AND is_deleted = 0`,
       lines.map(l => l.product_id)
     );
-    if (prods.length !== lines.length) throw httpErr(404, 'Co san pham khong ton tai');
+    if (prods.length !== lines.length) throw httpErr(404, 'Có sản phẩm không tồn tại');
 
     const code = await genIssueCode(conn);
     const adminId = req.user && req.user.sub ? req.user.sub : null;
@@ -238,8 +238,8 @@ router.patch('/:id', async (req, res, next) => {
     const [hRows] = await conn.query(
       `SELECT * FROM staff_stock_issues WHERE id = ? AND is_deleted = 0 FOR UPDATE`, [id]
     );
-    if (!hRows.length) throw httpErr(404, 'Khong tim thay phieu cap');
-    if (hRows[0].status !== 'draft') throw httpErr(400, 'Chi sua duoc phieu o trang thai draft');
+    if (!hRows.length) throw httpErr(404, 'Không tìm thấy phiếu cấp');
+    if (hRows[0].status !== 'draft') throw httpErr(400, 'Chỉ sửa được phiếu ở trạng thái draft');
 
     if (req.body.note !== undefined) {
       const note = req.body.note ? String(req.body.note).trim() : null;
@@ -248,15 +248,15 @@ router.patch('/:id', async (req, res, next) => {
 
     if (Array.isArray(req.body.items)) {
       const items = req.body.items;
-      if (!items.length) throw httpErr(400, 'Phieu phai co it nhat 1 dong');
+      if (!items.length) throw httpErr(400, 'Phiếu phải có ít nhất 1 dòng');
       const lines = [];
       const productIds = new Set();
       for (const raw of items) {
         const productId = Number(raw.product_id);
         const qty = Number(raw.qty_requested || raw.qty);
-        if (!productId) throw httpErr(400, 'Thieu product_id');
-        if (!qty || qty <= 0) throw httpErr(400, 'qty_requested phai > 0');
-        if (productIds.has(productId)) throw httpErr(400, 'Moi san pham chi 1 dong / phieu');
+        if (!productId) throw httpErr(400, 'Thiếu product_id');
+        if (!qty || qty <= 0) throw httpErr(400, 'qty_requested phải > 0');
+        if (productIds.has(productId)) throw httpErr(400, 'Mỗi sản phẩm chỉ 1 dòng / phiếu');
         productIds.add(productId);
         lines.push({
           product_id: productId,
@@ -270,7 +270,7 @@ router.patch('/:id', async (req, res, next) => {
         `SELECT id FROM products WHERE id IN (${ph}) AND is_deleted = 0`,
         lines.map(l => l.product_id)
       );
-      if (prods.length !== lines.length) throw httpErr(404, 'Co san pham khong ton tai');
+      if (prods.length !== lines.length) throw httpErr(404, 'Có sản phẩm không tồn tại');
 
       await conn.query(`DELETE FROM staff_stock_issue_items WHERE issue_id = ?`, [id]);
       for (const l of lines) {
@@ -304,8 +304,8 @@ router.delete('/:id', async (req, res, next) => {
     const [hRows] = await conn.query(
       `SELECT status FROM staff_stock_issues WHERE id = ? AND is_deleted = 0 FOR UPDATE`, [id]
     );
-    if (!hRows.length) throw httpErr(404, 'Khong tim thay phieu cap');
-    if (hRows[0].status !== 'draft') throw httpErr(400, 'Chi huy duoc phieu o trang thai draft');
+    if (!hRows.length) throw httpErr(404, 'Không tìm thấy phiếu cấp');
+    if (hRows[0].status !== 'draft') throw httpErr(400, 'Chỉ hủy được phiếu ở trạng thái draft');
     await conn.query(
       `UPDATE staff_stock_issues SET status = 'cancelled', is_deleted = 1 WHERE id = ?`, [id]
     );
@@ -333,8 +333,8 @@ router.post('/:id/approve', async (req, res, next) => {
     for (const a of approvals) {
       const itemId = Number(a.item_id);
       const qa = Number(a.qty_approved);
-      if (!itemId) throw httpErr(400, 'Thieu item_id');
-      if (!Number.isFinite(qa) || qa < 0) throw httpErr(400, 'qty_approved khong hop le');
+      if (!itemId) throw httpErr(400, 'Thiếu item_id');
+      if (!Number.isFinite(qa) || qa < 0) throw httpErr(400, 'qty_approved không hợp lệ');
       approvalsMap.set(itemId, qa);
     }
 
@@ -343,20 +343,20 @@ router.post('/:id/approve', async (req, res, next) => {
     const [hRows] = await conn.query(
       `SELECT * FROM staff_stock_issues WHERE id = ? AND is_deleted = 0 FOR UPDATE`, [id]
     );
-    if (!hRows.length) throw httpErr(404, 'Khong tim thay phieu cap');
+    if (!hRows.length) throw httpErr(404, 'Không tìm thấy phiếu cấp');
     const head = hRows[0];
-    if (head.status !== 'draft') throw httpErr(400, 'Chi duyet duoc phieu draft');
+    if (head.status !== 'draft') throw httpErr(400, 'Chỉ duyệt được phiếu draft');
 
     const [items] = await conn.query(
       `SELECT * FROM staff_stock_issue_items WHERE issue_id = ? ORDER BY id`, [id]
     );
-    if (!items.length) throw httpErr(400, 'Phieu khong co dong nao');
+    if (!items.length) throw httpErr(400, 'Phiếu không có dòng nào');
 
     // Quyet dinh qty_approved cho moi dong: neu admin co truyen -> dung, khong thi default = qty_requested.
     const decided = items.map(it => {
       const qa = approvalsMap.has(it.id) ? approvalsMap.get(it.id) : it.qty_requested;
       if (qa > it.qty_requested) {
-        throw httpErr(400, `Dong ${it.id}: qty_approved (${qa}) > qty_requested (${it.qty_requested})`);
+        throw httpErr(400, `Dòng ${it.id}: qty_approved (${qa}) > qty_requested (${it.qty_requested})`);
       }
       return { ...it, qty_approved: qa };
     });
@@ -373,7 +373,7 @@ router.post('/:id/approve', async (req, res, next) => {
 
     if (totalApproved === 0) {
       // Khong duoc gi -> chuyen reject
-      const reason = req.body.reason ? String(req.body.reason).trim() : 'Khong du ton kho';
+      const reason = req.body.reason ? String(req.body.reason).trim() : 'Không đủ tồn kho';
       await conn.query(
         `UPDATE staff_stock_issues
             SET status = 'rejected',
@@ -397,7 +397,7 @@ router.post('/:id/approve', async (req, res, next) => {
       );
       const cur = psRows.length ? psRows[0].quantity : 0;
       if (cur < l.qty_approved) {
-        throw httpErr(409, `Khong du ton: SP id=${l.product_id} con ${cur}, can ${l.qty_approved}`);
+        throw httpErr(409, `Không đủ tồn: SP id=${l.product_id} còn ${cur}, cần ${l.qty_approved}`);
       }
     }
 
@@ -408,7 +408,7 @@ router.post('/:id/approve', async (req, res, next) => {
       `INSERT INTO stock_receipts
          (code, kind, reason_code, reason_text, ref_staff_id, created_by_staff_id)
        VALUES (?, 'out', 'staff_issue', ?, ?, ?)`,
-      [receiptCode, `Cap SP cho KTV qua phieu ${head.code}`, head.staff_id, adminId]
+      [receiptCode, `Cấp SP cho KTV qua phiếu ${head.code}`, head.staff_id, adminId]
     );
     const receiptId = rIns.insertId;
 
@@ -459,13 +459,13 @@ router.post('/:id/reject', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const reason = req.body.reason ? String(req.body.reason).trim() : '';
-    if (!reason) throw httpErr(400, 'Phai cung cap ly do');
+    if (!reason) throw httpErr(400, 'Phải cung cấp lý do');
     await conn.beginTransaction();
     const [hRows] = await conn.query(
       `SELECT status FROM staff_stock_issues WHERE id = ? AND is_deleted = 0 FOR UPDATE`, [id]
     );
-    if (!hRows.length) throw httpErr(404, 'Khong tim thay phieu cap');
-    if (hRows[0].status !== 'draft') throw httpErr(400, 'Chi tu choi duoc phieu draft');
+    if (!hRows.length) throw httpErr(404, 'Không tìm thấy phiếu cấp');
+    if (hRows[0].status !== 'draft') throw httpErr(400, 'Chỉ từ chối được phiếu draft');
     await conn.query(
       `UPDATE staff_stock_issues
           SET status = 'rejected',

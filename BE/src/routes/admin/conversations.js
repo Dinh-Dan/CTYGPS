@@ -86,7 +86,7 @@ router.get('/:id', async (req, res, next) => {
         WHERE cv.id = ? AND cv.is_deleted = 0`,
       [req.params.id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy' });
     res.json(rows[0]);
   } catch (err) { next(err); }
 });
@@ -97,7 +97,7 @@ router.get('/:id/messages', async (req, res, next) => {
     const [cv] = await db.query(
       `SELECT id FROM conversations WHERE id = ? AND is_deleted = 0`, [req.params.id]
     );
-    if (!cv.length) return res.status(404).json({ error: 'Khong tim thay' });
+    if (!cv.length) return res.status(404).json({ error: 'Không tìm thấy' });
 
     const [rows] = await db.query(
       `SELECT m.id, m.conversation_id, m.order_id, m.sender_type, m.sender_id,
@@ -136,13 +136,13 @@ router.get('/:id/messages', async (req, res, next) => {
 router.post('/:id/messages', async (req, res, next) => {
   try {
     const content = String(req.body.content || '').trim();
-    if (!content) return res.status(400).json({ error: 'Tin nhan rong' });
+    if (!content) return res.status(400).json({ error: 'Tin nhắn rỗng' });
 
     const [cv] = await db.query(
       `SELECT id, customer_id FROM conversations WHERE id = ? AND is_deleted = 0`,
       [req.params.id]
     );
-    if (!cv.length) return res.status(404).json({ error: 'Khong tim thay' });
+    if (!cv.length) return res.status(404).json({ error: 'Không tìm thấy' });
 
     let orderId = null;
     if (req.body.order_id) {
@@ -151,7 +151,7 @@ router.post('/:id/messages', async (req, res, next) => {
         `SELECT id FROM orders WHERE id = ? AND customer_id = ? AND is_deleted = 0`,
         [orderId, cv[0].customer_id]
       );
-      if (!o.length) return res.status(400).json({ error: 'Don khong thuoc khach nay' });
+      if (!o.length) return res.status(400).json({ error: 'Đơn không thuộc khách này' });
     }
 
     const [result] = await db.query(
@@ -190,7 +190,7 @@ router.get('/:id/members', async (req, res, next) => {
     const [cv] = await db.query(
       `SELECT id FROM conversations WHERE id = ? AND is_deleted = 0`, [req.params.id]
     );
-    if (!cv.length) return res.status(404).json({ error: 'Khong tim thay' });
+    if (!cv.length) return res.status(404).json({ error: 'Không tìm thấy' });
 
     const [rows] = await db.query(
       `SELECT cm.id, cm.staff_id, cm.joined_at, cm.removed_at, cm.added_by,
@@ -210,19 +210,19 @@ router.get('/:id/members', async (req, res, next) => {
 router.post('/:id/members', async (req, res, next) => {
   try {
     const staffId = Number(req.body.staff_id);
-    if (!staffId) return res.status(400).json({ error: 'Thieu staff_id' });
+    if (!staffId) return res.status(400).json({ error: 'Thiếu staff_id' });
 
     const [cv] = await db.query(
       `SELECT id FROM conversations WHERE id = ? AND is_deleted = 0`, [req.params.id]
     );
-    if (!cv.length) return res.status(404).json({ error: 'Khong tim thay' });
+    if (!cv.length) return res.status(404).json({ error: 'Không tìm thấy' });
 
     const [s] = await db.query(
       `SELECT id, role FROM staff WHERE id = ? AND is_deleted = 0`, [staffId]
     );
-    if (!s.length) return res.status(400).json({ error: 'Khong tim thay nhan vien' });
+    if (!s.length) return res.status(400).json({ error: 'Không tìm thấy nhân viên' });
     if (s[0].role !== 'kithuat' && s[0].role !== 'admin') {
-      return res.status(400).json({ error: 'Chi them admin / KTV' });
+      return res.status(400).json({ error: 'Chỉ thêm admin / KTV' });
     }
 
     // Upsert: neu da co row thi reset removed_at; chua co thi insert.
@@ -257,7 +257,7 @@ router.delete('/:id/members/:staffId', async (req, res, next) => {
         WHERE conversation_id = ? AND staff_id = ? AND removed_at IS NULL`,
       [req.params.id, req.params.staffId]
     );
-    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay thanh vien' });
+    if (!r.affectedRows) return res.status(404).json({ error: 'Không tìm thấy thành viên' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

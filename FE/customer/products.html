@@ -9,7 +9,7 @@
 <body>
 <div class="topbar">
   <div class="container">
-    <div>☎ (028) 6682 5658 — DĐ: 0949.155.160</div>
+    <div>☎ 0942.155.160 - 0949.155.160</div>
     <div id="topbarRight"></div>
   </div>
 </div>
@@ -65,7 +65,7 @@
   </div>
 </div>
 
-<footer class="site"><div class="container bottom">© 2026 VinaGPS — 190 TTH 21, P. Tân Thới Hiệp, Q.12, TP.HCM</div></footer>
+<footer class="site"><div class="container bottom">© 2026 VinaGPS — 190/19/12 TTH 21, P. Tân Thới Hiệp, TP.HCM</div></footer>
 
 <script src="/shared/js/ui.js"></script>
 <script src="/shared/js/api.js"></script>
@@ -87,7 +87,10 @@
     return '📦';
   }
 
-  const state = { q:'', category_id:'', price_min:'', price_max:'', sort:'name', page:1, limit:12, total:0 };
+  // Đọc q= từ URL (từ header search trang chủ)
+  const _qs = new URLSearchParams(location.search);
+  const state = { q: _qs.get('q') || '', category_id:'', price_min:'', price_max:'', sort:'name', page:1, limit:12, total:0 };
+  if (state.q) document.getElementById('pSearch').value = state.q;
 
   async function loadCategories() {
     const res = await api.get('/public/categories', { silent: true }).catch(() => null);

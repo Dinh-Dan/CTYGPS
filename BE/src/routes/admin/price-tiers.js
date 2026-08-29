@@ -48,7 +48,7 @@ router.get('/', async (req, res, next) => {
 router.post('/', adminOnly, async (req, res, next) => {
   try {
     const name = String(req.body.name || '').trim();
-    if (!name) return res.status(400).json({ error: 'Thieu ten muc gia' });
+    if (!name) return res.status(400).json({ error: 'Thiếu tên mức giá' });
 
     let code = String(req.body.code || '').trim() || slugifyCode(name);
     if (!code) code = 'tier-' + Date.now();
@@ -97,12 +97,12 @@ router.put('/:id', adminOnly, async (req, res, next) => {
 
     if (req.body.name !== undefined) {
       const name = String(req.body.name).trim();
-      if (!name) return res.status(400).json({ error: 'Ten muc gia khong duoc rong' });
+      if (!name) return res.status(400).json({ error: 'Tên mức giá không được rỗng' });
       sets.push('name = ?'); args.push(name);
     }
     if (req.body.code !== undefined) {
       const code = String(req.body.code).trim() || slugifyCode(req.body.name || '');
-      if (!code) return res.status(400).json({ error: 'Code khong hop le' });
+      if (!code) return res.status(400).json({ error: 'Code không hợp lệ' });
       sets.push('code = ?'); args.push(code);
     }
     if (req.body.sort_order !== undefined) {
@@ -115,11 +115,11 @@ router.put('/:id', adminOnly, async (req, res, next) => {
       `UPDATE price_tiers SET ${sets.join(', ')} WHERE id = ? AND is_deleted = 0`,
       args
     );
-    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay muc gia' });
+    if (!r.affectedRows) return res.status(404).json({ error: 'Không tìm thấy mức giá' });
     res.json({ ok: true });
   } catch (err) {
     if (err && err.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({ error: 'Code hoac ten da ton tai' });
+      return res.status(409).json({ error: 'Code hoặc tên đã tồn tại' });
     }
     next(err);
   }
@@ -140,7 +140,7 @@ router.put('/:id/set-default', adminOnly, async (req, res, next) => {
     );
     if (!rows.length) {
       await conn.rollback();
-      return res.status(404).json({ error: 'Khong tim thay muc gia' });
+      return res.status(404).json({ error: 'Không tìm thấy mức giá' });
     }
 
     await conn.query(`UPDATE price_tiers SET is_default = 0 WHERE is_default = 1`);
@@ -165,7 +165,7 @@ router.delete('/:id', adminOnly, async (req, res, next) => {
       `SELECT id, name, is_default FROM price_tiers WHERE id = ? AND is_deleted = 0`,
       [req.params.id]
     );
-    if (!tierRow.length) return res.status(404).json({ error: 'Khong tim thay muc gia' });
+    if (!tierRow.length) return res.status(404).json({ error: 'Không tìm thấy mức giá' });
     if (tierRow[0].is_default) {
       return res.status(409).json({
         error: `Không thể xoá mức "${tierRow[0].name}" — đây là mức giá Mặc định. Hãy đặt mức khác làm Mặc định trước.`,
@@ -196,7 +196,7 @@ router.delete('/:id', adminOnly, async (req, res, next) => {
       `UPDATE price_tiers SET is_deleted = 1 WHERE id = ? AND is_deleted = 0`,
       [req.params.id]
     );
-    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay muc gia' });
+    if (!r.affectedRows) return res.status(404).json({ error: 'Không tìm thấy mức giá' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

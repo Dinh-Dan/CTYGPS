@@ -18,6 +18,7 @@
   const state = {
     tab: 'customers',
     type: 'all',
+    custSort: 'latest_debt',
     q: '',
     qStaff: '',
     items: [],
@@ -82,6 +83,23 @@
     if (debtFilter === 'order')   items = items.filter(it => Number(it.order_debt) > 0);
     if (debtFilter === 'pr')      items = items.filter(it => Number(it.pr_debt) > 0);
     if (debtFilter === 'overdue') items = items.filter(it => it.is_overdue);
+    items = [...items];
+    if (state.custSort === 'latest_debt') {
+      items.sort((a, b) => {
+        const at = a.latest_debt_at ? new Date(a.latest_debt_at).getTime() : 0;
+        const bt = b.latest_debt_at ? new Date(b.latest_debt_at).getTime() : 0;
+        if (bt !== at) return bt - at;
+        return (Number(b.total_debt) || 0) - (Number(a.total_debt) || 0);
+      });
+    } else {
+      items.sort((a, b) => {
+        const debtDiff = (Number(b.total_debt) || 0) - (Number(a.total_debt) || 0);
+        if (debtDiff) return debtDiff;
+        const at = a.latest_debt_at ? new Date(a.latest_debt_at).getTime() : 0;
+        const bt = b.latest_debt_at ? new Date(b.latest_debt_at).getTime() : 0;
+        return bt - at;
+      });
+    }
 
     const total = items.length;
     const perPage = state.custPerPage;
@@ -120,6 +138,18 @@
           </td>
         </tr>`;
     }).join('');
+
+    Array.from(tb.querySelectorAll('tr')).forEach((tr, idx) => {
+      const it = pageItems[idx];
+      if (!it) return;
+      const td = document.createElement('td');
+      td.setAttribute('data-label', 'Nợ mới nhất');
+      td.innerHTML = it.latest_debt_at
+        ? `<b>${fmtDate(it.latest_debt_at)}</b>`
+        : '<span class="text-muted">—</span>';
+      const totalDebtTd = tr.children[4];
+      if (totalDebtTd) tr.insertBefore(td, totalDebtTd);
+    });
 
     renderPager('custPager', total, page, perPage,
       pg => { state.custPage = pg; renderCustomers(); },
@@ -485,14 +515,35 @@
       const pctPend = total ? Math.min(100 - pctPaid - pctHold, pend / total * 100) : 0;
       const refDate = o.confirmed_at || o.created_at;
       const days    = daysBetween(refDate);
-      const dateLbl = o.confirmed_at ? 'XN' : 'Tạo';
-      const dateTxt = refDate ? `${dateLbl} ${fmtDate(refDate)}` : '—';
       const overdue = days >= 7;
       const st  = STATUS_LABEL[o.status] || { txt: o.status || '—', cls: 'st-new' };
       const ktv = o.assigned_staff_names ? escape(o.assigned_staff_names) : 'Chưa gán';
       const addr    = o.address     ? escape(o.address)              : '';
-      const doneTxt = o.completed_at? fmtDate(o.completed_at)        : '';
+      const createdTxt = o.created_at   ? fmtDate(o.created_at)   : '';
+      const doneTxt    = o.completed_at ? fmtDate(o.completed_at) : '';
       const accentCls = overdue ? 'accent-overdue' : paid > 0 ? 'accent-partial' : 'accent-new';
+
+      // Loại đơn (tóm tắt công việc / dịch vụ)
+      const typeTxt = o.service_summary ? escape(o.service_summary) : '';
+      const typeHtml = typeTxt
+        ? `<div class="oc-type" title="${typeTxt}">🏷️ ${typeTxt}</div>`
+        : '';
+
+      // Biển số xe / tài khoản GoTrack
+      const plates   = Array.isArray(o.vehicle_plates) ? o.vehicle_plates : [];
+      const accounts = Array.isArray(o.subscription_accounts) ? o.subscription_accounts : [];
+      const deviceTags = [
+        ...plates.map(p   => `<span class="device-tag"><span class="device-label">Biển số</span> ${escape(p)}</span>`),
+        ...accounts.map(a => `<span class="device-tag"><span class="device-label">TK GoTrack</span> ${escape(a)}</span>`),
+      ].join('');
+      const deviceHtml = deviceTags ? `<div class="oc-devices">${deviceTags}</div>` : '';
+
+      // Thời gian: tạo & xong đặt cạnh nhau
+      const timeMeta = [
+        createdTxt ? `<span>🗓️ Tạo: <b>${createdTxt}</b></span>` : '',
+        doneTxt    ? `<span>✅ Xong: <b>${doneTxt}</b></span>`    : '',
+        days > 0   ? `<span>⏱️ <b>${days}</b> ngày</span>`        : '',
+      ].filter(Boolean).join('');
 
       const pills = [
         paid > 0 ? `<span class="o-pill pill-paid">✓ Đã trả ${fmtVnd(paid)}</span>` : '',
@@ -511,11 +562,11 @@
             </div>
             <div class="oc-remaining">${fmtVnd(remaining)}</div>
           </div>
-          <div class="oc-meta">
-            <span>📅 ${dateTxt}${days > 0 ? ` · <b>${days} ngày</b>` : ''}</span>
+          ${typeHtml}
+          ${deviceHtml}
+          <div class="oc-meta oc-time-meta">
+            ${timeMeta}
             <span>🔧 KTV: <b>${ktv}</b></span>
-            ${o.item_count ? `<span>📦 ${o.item_count} mặt hàng</span>` : ''}
-            ${doneTxt ? `<span>✅ Xong ${doneTxt}</span>` : ''}
             ${addr ? `<span>📍 ${addr}</span>` : ''}
           </div>
           <div class="oc-progress-wrap" title="Đã trả ${fmtVnd(paid)} / Tổng ${fmtVnd(total)}">
@@ -670,7 +721,25 @@
     }
 
     $('olBody').innerHTML = html;
-    $('olSettle').disabled = r.total_debt <= 0;
+
+    // Nút dưới: nếu chỉ có nợ từ phiếu YC (không có đơn hàng) → dẫn thẳng sang phiếu nợ đó,
+    // không hiện "Sang phiếu tất toán".
+    const olBtn = $('olSettle');
+    const onlyRequests = r.pending_orders.length === 0 && pendReqsOl.length > 0;
+    if (onlyRequests) {
+      const targetPr = pendReqsOl[0];
+      olBtn.textContent = pendReqsOl.length === 1 ? 'Xem phiếu nợ →' : 'Xem phiếu nợ mới nhất →';
+      olBtn.disabled = false;
+      olBtn.onclick = () => {
+        $('ordersListModal').classList.remove('open');
+        window.open(`/admin/payment-request-detail.html?id=${targetPr.id}`, '_blank');
+      };
+    } else {
+      olBtn.textContent = 'Sang phiếu tất toán →';
+      olBtn.disabled = r.total_debt <= 0;
+      olBtn.onclick = () => { $('ordersListModal').classList.remove('open'); openSettleModal(); };
+    }
+
     $('ordersListModal').classList.add('open');
   }
 
@@ -917,6 +986,53 @@
       </div>`;
     }
 
+    // ── Lịch sử các lần đã nộp ──
+    const history = r.history || [];
+    const ssHistoryStatusLabel = s => {
+      if (s === 'approved') return '<span style="color:#16a34a;font-weight:600">✓ Đã duyệt</span>';
+      if (s === 'rejected') return '<span style="color:#dc2626;font-weight:600">✗ Từ chối</span>';
+      return '<span style="color:#b45309;font-weight:600">⏳ Chờ duyệt</span>';
+    };
+    const ssHistoryMethodLabel = m => m === 'transfer' ? 'Chuyển khoản' : 'Tiền mặt';
+    function ssHistoryRowHtml(h) {
+      const rem = Number(h.remaining);
+      const remText = rem > 0
+        ? `<span style="color:#dc2626">Còn thiếu: ${fmtVnd(rem)}</span>`
+        : rem < 0
+          ? `<span style="color:#16a34a">Dư: ${fmtVnd(Math.abs(rem))}</span>`
+          : `<span style="color:#16a34a">Nộp đủ</span>`;
+      return `
+      <div class="history-row" style="cursor:default;flex-direction:column;align-items:stretch;gap:4px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
+            ${ssHistoryStatusLabel(h.status)}
+            <span class="text-muted">${fmtDate(h.remitted_at || h.approved_at)}</span>
+            <span class="o-method-badge">${ssHistoryMethodLabel(h.method)}</span>
+            ${h.note ? `<span class="text-muted" style="font-style:italic">${escape(h.note)}</span>` : ''}
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <span style="font-weight:700;color:#1d4ed8;font-size:14px">${fmtVnd(h.amount)}</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:16px;font-size:12px;color:#64748b;flex-wrap:wrap">
+          <span>Tổng giữ lúc nộp: <b>${fmtVnd(h.total_holding)}</b></span>
+          ${remText}
+        </div>
+      </div>`;
+    }
+    let historyHtml = '';
+    if (history.length) {
+      const INIT = 10;
+      const firstBatch = history.slice(0, INIT).map(ssHistoryRowHtml).join('');
+      const hasMore = history.length > INIT;
+      historyHtml = `
+      <div class="pending-orders-block" style="margin-top:14px">
+        <h4>Lịch sử nộp tiền <small class="text-muted">(${history.length} lần gần nhất)</small></h4>
+        <div id="ssHistoryList" style="display:flex;flex-direction:column;gap:4px;max-height:232px;overflow-y:auto">${firstBatch}</div>
+        ${hasMore ? `<button type="button" id="ssHistoryMore" data-offset="${INIT}" style="margin-top:6px;width:100%;padding:7px;border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc;color:#475569;font-size:13px;cursor:pointer">Xem thêm (còn ${history.length - INIT})</button>` : ''}
+      </div>`;
+    }
+
     $('ssBody').innerHTML = `
       <p style="margin:0 0 12px;font-size:14px">KTV: <b>${escape(name)}</b></p>
       <div class="summary-box">
@@ -929,6 +1045,8 @@
         <h4>Khoản đang giữ <small class="text-muted">(sẽ đánh dấu đã nộp khi duyệt)</small></h4>
         ${colsInner}
       </div>
+
+      ${historyHtml}
 
       ${advancesHtml}
 
@@ -954,6 +1072,25 @@
     // Khởi tạo money-input sau khi đã gắn vào DOM
     const amtEl = $('ssAmount');
     if (amtEl) Money.set(amtEl, initEffective);
+
+    // Nút xem thêm lịch sử nộp
+    const moreBtn = document.getElementById('ssHistoryMore');
+    if (moreBtn) {
+      moreBtn.addEventListener('click', () => {
+        const STEP = 20;
+        const offset = Number(moreBtn.dataset.offset);
+        const batch = history.slice(offset, offset + STEP).map(ssHistoryRowHtml).join('');
+        const list = document.getElementById('ssHistoryList');
+        if (list) list.insertAdjacentHTML('beforeend', batch);
+        const newOffset = offset + STEP;
+        if (newOffset >= history.length) {
+          moreBtn.remove();
+        } else {
+          moreBtn.dataset.offset = newOffset;
+          moreBtn.textContent = `Xem thêm (còn ${history.length - newOffset})`;
+        }
+      });
+    }
 
     // Khi tick/bỏ phiếu ứng → cập nhật tổng trừ, cần nộp thực tế, và gợi ý input
     $('ssBody').addEventListener('change', e => {
@@ -1089,6 +1226,11 @@
   };
 
   if ($('fDebtType')) $('fDebtType').onchange = () => { state.custPage = 1; renderCustomers(); };
+  if ($('fCustSort')) $('fCustSort').onchange = () => {
+    state.custSort = $('fCustSort').value || 'total_debt';
+    state.custPage = 1;
+    renderCustomers();
+  };
 
   // Nút Bộ lọc: toggle hiển thị fDebtType
   if ($('btnFilterToggle') && $('fDebtType')) {

@@ -56,7 +56,7 @@ router.get('/:id', async (req, res, next) => {
       `SELECT * FROM suppliers WHERE id = ? AND is_deleted = 0`,
       [req.params.id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay NCC' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy NCC' });
     res.json(rows[0]);
   } catch (err) { next(err); }
 });
@@ -65,7 +65,7 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const name = String(req.body.name || '').trim();
-    if (!name) return res.status(400).json({ error: 'Thieu ten NCC' });
+    if (!name) return res.status(400).json({ error: 'Thiếu tên NCC' });
 
     const phone   = (req.body.phone   || '').trim() || null;
     const address = (req.body.address || '').trim() || null;
@@ -87,12 +87,12 @@ router.put('/:id', async (req, res, next) => {
     const [exist] = await db.query(
       `SELECT id FROM suppliers WHERE id = ? AND is_deleted = 0`, [id]
     );
-    if (!exist.length) return res.status(404).json({ error: 'Khong tim thay NCC' });
+    if (!exist.length) return res.status(404).json({ error: 'Không tìm thấy NCC' });
 
     const updates = {};
     if (req.body.name !== undefined) {
       const n = String(req.body.name || '').trim();
-      if (!n) return res.status(400).json({ error: 'Thieu ten NCC' });
+      if (!n) return res.status(400).json({ error: 'Thiếu tên NCC' });
       updates.name = n;
     }
     if (req.body.phone !== undefined)   updates.phone   = (req.body.phone   || '').trim() || null;
@@ -100,7 +100,7 @@ router.put('/:id', async (req, res, next) => {
     if (req.body.note !== undefined)    updates.note    = (req.body.note    || '').trim() || null;
 
     const cols = Object.keys(updates);
-    if (!cols.length) return res.status(400).json({ error: 'Khong co truong nao de cap nhat' });
+    if (!cols.length) return res.status(400).json({ error: 'Không có trường nào để cập nhật' });
 
     const setSql = cols.map(c => `${c} = ?`).join(', ');
     const values = cols.map(c => updates[c]);
@@ -122,7 +122,7 @@ router.delete('/:id', async (req, res, next) => {
     );
     if (linked[0].c > 0) {
       return res.status(409).json({
-        error: `Khong the xoa: con ${linked[0].c} phieu nhap/xuat gan voi NCC nay`,
+        error: `Không thể xoá: còn ${linked[0].c} phiếu nhập/xuất gắn với NCC này`,
       });
     }
 
@@ -130,7 +130,7 @@ router.delete('/:id', async (req, res, next) => {
       `UPDATE suppliers SET is_deleted = 1 WHERE id = ? AND is_deleted = 0`,
       [req.params.id]
     );
-    if (!result.affectedRows) return res.status(404).json({ error: 'Khong tim thay NCC' });
+    if (!result.affectedRows) return res.status(404).json({ error: 'Không tìm thấy NCC' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

@@ -20,11 +20,17 @@
     damaged:                'Hỏng',
     send_warranty:          'Gửi bảo hành',
     dealer_warranty_return: 'Đại lý gửi bảo hành',
+    warranty_supplier_return: 'NCC trả bảo hành về kho',
+    warranty_replacement_out: 'Xuất đổi bảo hành',
+    warranty_replacement_staff_out: 'KTV xuất đổi bảo hành',
     import_supplier_void:   'Hủy nhập NCC',
     return_supplier_void:   'Hủy trả NCC',
     adjust_plus_void:       'Hủy cân kho +',
     adjust_minus_void:      'Hủy cân kho −',
   };
+
+  REASON_LABELS.warranty_staff_issue = 'Cấp cho KTV đi giao bảo hành';
+  REASON_LABELS.warranty_customer_delivery = 'KTV giao bảo hành cho khách';
 
   const ADMIN_REASONS_IN  = ['import_supplier', 'adjust_plus', 'dealer_warranty_return'];
   const ADMIN_REASONS_OUT = ['return_supplier', 'adjust_minus', 'send_warranty'];
@@ -61,6 +67,12 @@
     productMap: new Map(),
     currentReceiptId: null,
     currentTake: null,
+    warrantyFlow: {
+      bucket: 'technician',
+      q: '',
+      items: [],
+      selected: new Set(),
+    },
   };
 
   function escape(s) {
@@ -111,6 +123,66 @@
     else if (code === 'install_done') cls = 'blue';
     else if (['damaged','return_supplier','adjust_minus'].includes(code)) cls = 'red';
     return `<span class="pill ${cls}" style="font-size:11px">${escape(label)}</span>`;
+  }
+
+  function warrantyStatusBadge(code) {
+    const map = {
+      technician_holding: ['Trong túi KTV', 'blue'],
+      pending_company_receipt: ['KTV đã gửi · chờ xác nhận', 'amber'],
+      company_warranty_stock: ['Ở kho bảo hành', 'amber'],
+      sent_to_supplier: ['Đang gửi NCC', 'gray'],
+      supplier_returned: ['NCC đã xong', 'green'],
+      delivered: ['Đã trả khách', 'green'],
+      cancelled: ['Đã hủy', 'red'],
+    };
+    const [label, cls] = map[code] || [code || '—', 'gray'];
+    return `<span class="wf-badge ${cls}">${escape(label)}</span>`;
+  }
+
+  // Nhan huong xu ly KTV da chon
+  const WF_HANDLING_LABEL = {
+    tech_fix: 'KTV tự sửa',
+    exchange: 'Đổi thiết bị mới',
+    supplier_return: 'Gửi NCC bảo hành',
+  };
+
+  // Anh dai dien san pham trong dialog bao hanh
+  function wfThumbCell(item) {
+    const src = item.product_thumb || item.product_image;
+    if (src) return `<img src="${escape(src)}" class="wf-thumb" alt="">`;
+    const i = (item.product_name || item.device_name || item.product_code || '?').trim().charAt(0).toUpperCase();
+    return `<div class="wf-thumb-fb">${escape(i)}</div>`;
+  }
+
+  // Badge so ngay nam trong trang thai (tu days_in_state)
+  function wfAgingBadge(days) {
+    const n = Number(days);
+    if (!Number.isFinite(n) || n < 0) return '';
+    const cls = n >= 7 ? 'late' : (n >= 3 ? 'warn' : 'ok');
+    const txt = n === 0 ? 'Hôm nay' : `${n} ngày`;
+    return `<span class="wf-aging ${cls}">⏱ ${txt}</span>`;
+  }
+
+  // Dinh dang ngay gio dd/mm/yyyy HH:MM
+  function wfFmtDate(d) {
+    if (!d) return '—';
+    const s = String(d).replace('T', ' ');
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ ]?(\d{2})?:?(\d{2})?/);
+    if (!m) return s.slice(0, 16);
+    const [, y, mo, da, hh, mi] = m;
+    return `${da}/${mo}/${y}${hh ? ` ${hh}:${mi}` : ''}`;
+  }
+
+  function batchStatusBadge(code) {
+    const map = {
+      draft: ['Nháp', 'blue'],
+      sent: ['Đã gửi', 'gray'],
+      partial_received: ['Nhận một phần', 'amber'],
+      received: ['Đã nhận đủ', 'green'],
+      cancelled: ['Đã hủy', 'red'],
+    };
+    const [label, cls] = map[code] || [code || '—', 'gray'];
+    return `<span class="wf-badge ${cls}">${escape(label)}</span>`;
   }
 
   // ==================== STATS ====================
@@ -336,6 +408,215 @@
           <td data-label="SL"><b>${h.qty}</b></td>
           <td data-label="Ngày nhận">${fmtDate(h.first_held_at)}</td>
         </tr>`).join('');
+  }
+
+  // ==================== WARRANTY FLOW DIALOG ====================
+  function openWarrantyFlow() {
+    state.warrantyFlow.selected.clear();
+    $('wfSearch').value = '';
+    state.warrantyFlow.q = '';
+    $('warrantyFlowModal').classList.add('open');
+    renderWarrantyFlowActions();
+    loadWarrantyFlow();
+    loadWarrantyFlowCounts();
+  }
+
+  function closeWarrantyFlow() {
+    $('warrantyFlowModal').classList.remove('open');
+  }
+
+  async function loadWarrantyFlowCounts() {
+    const buckets = ['technician', 'company', 'supplier'];
+    const results = await Promise.all(buckets.map((b) =>
+      api.get('/admin/inventory/warranty-items?bucket=' + b, { silent: true }).catch(() => null)
+    ));
+    buckets.forEach((b, i) => {
+      const el = document.querySelector(`[data-wf-count="${b}"]`);
+      if (!el) return;
+      const n = results[i] && results[i].items ? results[i].items.length : 0;
+      el.textContent = n;
+      el.classList.toggle('show', n > 0);
+    });
+  }
+
+  function setWarrantyBucket(bucket) {
+    state.warrantyFlow.bucket = bucket;
+    state.warrantyFlow.selected.clear();
+    $('wfCbAll').checked = false;
+    document.querySelectorAll('[data-wf-filter]').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.wfFilter === bucket);
+    });
+    renderWarrantyFlowActions();
+    loadWarrantyFlow();
+  }
+
+  function renderWarrantyFlowActions() {
+    const bucket = state.warrantyFlow.bucket;
+    const supplierSel = $('wfSupplierSel');
+    const actionBtn = $('wfPrimaryAction');
+    const hint = $('wfActionHint');
+    const selectedInfo = $('wfSelectedInfo');
+    const actionsBar = $('wfActions');
+    if (actionsBar) actionsBar.classList.toggle('has-sel', state.warrantyFlow.selected.size > 0);
+    selectedInfo.textContent = state.warrantyFlow.selected.size
+      ? `Đã chọn ${state.warrantyFlow.selected.size} sản phẩm`
+      : '';
+    const enabledIds = (state.warrantyFlow.items || []).filter(isWarrantyItemSelectable).map((item) => Number(item.id));
+    const selectedEnabled = enabledIds.filter((id) => state.warrantyFlow.selected.has(id)).length;
+    $('wfCbAll').checked = enabledIds.length > 0 && selectedEnabled === enabledIds.length;
+    $('wfCbAll').indeterminate = selectedEnabled > 0 && selectedEnabled < enabledIds.length;
+    supplierSel.style.display = bucket === 'company' ? '' : 'none';
+    supplierSel.innerHTML = '<option value="">- Chọn nhà cung cấp -</option>'
+      + state.suppliers.map((s) => `<option value="${s.id}">${escape(s.name)}</option>`).join('');
+    if (bucket === 'technician') {
+      actionBtn.textContent = 'Xác nhận thu về kho';
+      hint.textContent = 'Chọn các sản phẩm KTV đã thu của khách và đang giữ trong túi để nhập về kho bảo hành.';
+    } else if (bucket === 'company') {
+      actionBtn.textContent = 'Gom vào đơn gửi NCC';
+      hint.textContent = 'Chỉ các sản phẩm đang ở kho bảo hành và chưa nằm trong lô đang mở mới được gom gửi nhà cung cấp.';
+    } else {
+      actionBtn.textContent = 'Xác nhận NCC đã làm xong';
+      hint.textContent = 'Tick sản phẩm NCC đã xử lý xong để nhập về kho. Hệ thống sẽ tự sinh phiếu nhập và cộng tồn kho chính.';
+    }
+  }
+
+  async function loadWarrantyFlow() {
+    const body = $('wfBody');
+    body.innerHTML = Array.from({ length: 4 }).map(() => `
+      <tr>
+        <td><div class="wf-skel" style="width:16px;height:16px"></div></td>
+        <td><div class="wf-prod"><div class="wf-skel" style="width:42px;height:42px;border-radius:9px"></div><div style="flex:1"><div class="wf-skel" style="width:70%;margin-bottom:6px"></div><div class="wf-skel" style="width:45%"></div></div></div></td>
+        <td><div class="wf-skel" style="width:80%;margin-bottom:6px"></div><div class="wf-skel" style="width:55%"></div></td>
+        <td><div class="wf-skel" style="width:60%"></div></td>
+        <td><div class="wf-skel" style="width:70%"></div></td>
+        <td><div class="wf-skel" style="width:60%"></div></td>
+      </tr>`).join('');
+    const p = new URLSearchParams();
+    p.set('bucket', state.warrantyFlow.bucket);
+    if (state.warrantyFlow.q) p.set('q', state.warrantyFlow.q);
+    const res = await api.get('/admin/inventory/warranty-items?' + p.toString()).catch(() => null);
+    if (!res) { body.innerHTML = `<tr><td colspan="6" class="wf-empty">Không tải được dữ liệu</td></tr>`; return; }
+    state.warrantyFlow.items = res.items || [];
+    const validIds = new Set(state.warrantyFlow.items.map((item) => Number(item.id)));
+    state.warrantyFlow.selected.forEach((id) => {
+      if (!validIds.has(Number(id))) state.warrantyFlow.selected.delete(id);
+    });
+    renderWarrantyFlowRows();
+    renderWarrantyFlowActions();
+  }
+
+  function isWarrantyItemSelectable(item) {
+    if (state.warrantyFlow.bucket === 'company') {
+      if (item.current_status !== 'company_warranty_stock') return false;
+      if (item.batch_status === 'draft' || item.batch_status === 'sent') return false;
+    }
+    if (state.warrantyFlow.bucket === 'technician') {
+      return item.current_status === 'technician_holding' || item.current_status === 'pending_company_receipt';
+    }
+    if (state.warrantyFlow.bucket === 'supplier') {
+      return item.current_status === 'sent_to_supplier';
+    }
+    return true;
+  }
+
+  function renderWarrantyFlowRows() {
+    const body = $('wfBody');
+    const items = state.warrantyFlow.items || [];
+    if (!items.length) {
+      body.innerHTML = `<tr><td colspan="6" class="wf-empty"><div class="wf-empty-ic">📦</div>Không có sản phẩm phù hợp</td></tr>`;
+      return;
+    }
+    body.innerHTML = items.map((item) => {
+      const selectable = isWarrantyItemSelectable(item);
+      const isChecked = state.warrantyFlow.selected.has(item.id);
+      const checked = isChecked ? 'checked' : '';
+      const rowCls = [selectable ? '' : 'wf-row-disabled', isChecked ? 'wf-row-checked' : ''].filter(Boolean).join(' ');
+      return `
+        <tr class="${rowCls}" data-row-id="${item.id}">
+          <td><input type="checkbox" class="wf-cb" data-id="${item.id}" ${checked} ${selectable ? '' : 'disabled'}></td>
+          <td>
+            <div class="wf-prod">
+              ${wfThumbCell(item)}
+              <div>
+                <div><b>${escape(item.product_name || item.device_name || ('Item #' + item.id))}</b></div>
+                <div class="mini">${escape(item.product_code || '')}${item.imei ? ` · IMEI ${escape(item.imei)}` : ''}${item.license_plate ? ` · BS ${escape(item.license_plate)}` : ''}</div>
+                ${item.condition_note ? `<div class="mini">${escape(item.condition_note)}</div>` : ''}
+              </div>
+            </div>
+          </td>
+          <td>
+            <a href="/admin/orders.html#order-${item.order_id}" target="_blank" title="Mở đơn ${escape(item.order_code || '')}" class="wf-ordlink">${escape(item.order_code || ('#' + item.order_id))} ↗</a>
+            ${item.customer_name ? `<div style="margin-top:2px">${escape(item.customer_name)}</div>` : ''}
+            <div class="mini">${escape(item.customer_phone || '')}</div>
+          </td>
+          <td>
+            ${warrantyStatusBadge(item.current_status)}
+            ${item.customer_status === 'completed' ? `<div class="mini" style="margin-top:4px;color:#15803d;font-weight:600">✓ Khách đã xong · thu máy lỗi</div>` : ''}
+            ${item.handling_type && item.handling_type !== 'pending' ? `<div class="mini" style="margin-top:4px;color:#1d4ed8;font-weight:600">${escape(WF_HANDLING_LABEL[item.handling_type] || item.handling_type)}</div>` : ''}
+            <div class="mini" style="margin-top:4px">Từ ${wfFmtDate(item.last_move_at || item.updated_at || item.created_at)}</div>
+            ${wfAgingBadge(item.days_in_state)}
+          </td>
+          <td>
+            <div>${escape(item.holder_staff_name || item.assigned_staff_name || '—')}</div>
+            <div class="mini">${item.account_name ? `TK: ${escape(item.account_name)}` : ''}${item.sim_number ? `${item.account_name ? ' · ' : ''}SIM: ${escape(item.sim_number)}` : ''}</div>
+          </td>
+          <td>
+            ${item.batch_code ? `<div><b>${escape(item.batch_code)}</b></div><div style="margin-top:4px">${batchStatusBadge(item.batch_status)}</div>` : '<span class="mini">Chưa gom lô NCC</span>'}
+            <div class="mini" style="margin-top:4px">${escape(item.supplier_name || '')}</div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+    body.querySelectorAll('.wf-cb').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const id = Number(cb.dataset.id);
+        if (cb.checked) state.warrantyFlow.selected.add(id);
+        else state.warrantyFlow.selected.delete(id);
+        const row = body.querySelector(`tr[data-row-id="${id}"]`);
+        if (row) row.classList.toggle('wf-row-checked', cb.checked);
+        renderWarrantyFlowActions();
+      });
+    });
+  }
+
+  async function submitWarrantyPrimaryAction() {
+    const ids = Array.from(state.warrantyFlow.selected);
+    if (!ids.length) return ui.toast('Chọn ít nhất 1 sản phẩm', 'warning');
+    const bucket = state.warrantyFlow.bucket;
+    if (bucket === 'technician') {
+      for (const id of ids) {
+        const ok = await api.post(`/admin/inventory/warranty-items/${id}/receive-to-company-stock`, {}, { silent: true }).catch(() => null);
+        if (!ok) return;
+      }
+      ui.toast('Đã nhập các sản phẩm đã chọn về kho bảo hành', 'success');
+    } else if (bucket === 'company') {
+      const supplierId = Number($('wfSupplierSel').value) || 0;
+      if (!supplierId) return ui.toast('Chọn nhà cung cấp trước', 'warning');
+      const created = await api.post('/admin/warranty-batches', {
+        supplier_id: supplierId,
+        item_ids: ids,
+      }, { silent: true }).catch(() => null);
+      if (!created) return;
+      const sent = await api.post(`/admin/warranty-batches/${created.id}/send`, {}, { silent: true }).catch(() => null);
+      if (!sent) return;
+      ui.toast(`Đã tạo và gửi ${created.code}`, 'success');
+    } else {
+      const res = await api.post('/admin/inventory/warranty-items/receive-from-supplier', {
+        item_ids: ids,
+      }, { silent: true }).catch(() => null);
+      if (!res) return;
+      const codes = (res.receipt_codes || []).filter(Boolean);
+      ui.toast(
+        codes.length
+          ? `Đã nhập về kho · phiếu nhập ${codes.join(', ')}`
+          : 'Đã xác nhận các sản phẩm NCC xử lý xong',
+        'success'
+      );
+    }
+    state.warrantyFlow.selected.clear();
+    $('wfCbAll').checked = false;
+    await loadWarrantyFlow();
+    loadWarrantyFlowCounts();
   }
 
   // ==================== TAB SWITCH ====================
@@ -1287,6 +1568,27 @@
       loadStock();
     });
 
+    // Stat cards: click "Sắp hết" -> loc danh sach sap het; click "KTV đang giữ" -> mo kho ca nhan KTV
+    const statLow = $('stat-low');
+    if (statLow) {
+      const goLow = () => {
+        state.stock.stock_state = 'low';
+        state.stock.page = 1;
+        const sel = $('f_stock_state');
+        if (sel) sel.value = 'low';
+        if (state.activeTab !== 'stock') switchTab('stock');
+        else loadStock();
+      };
+      statLow.addEventListener('click', goLow);
+      statLow.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goLow(); } });
+    }
+    const statHeld = $('stat-held');
+    if (statHeld) {
+      const goHeld = () => window.open('/admin/staff-stock.html', '_blank');
+      statHeld.addEventListener('click', goHeld);
+      statHeld.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goHeld(); } });
+    }
+
     // Per-page
     $('stockPerPage').addEventListener('change', () => {
       state.stock.limit = Number($('stockPerPage').value);
@@ -1329,6 +1631,35 @@
       state.hold.q = $('f_hold_q').value.trim();
       loadHoldings();
     }, 300));
+
+    // Warranty flow
+    $('btnWarrantyFlow').addEventListener('click', openWarrantyFlow);
+    $('wfClose').addEventListener('click', closeWarrantyFlow);
+    $('wfCloseBtn').addEventListener('click', closeWarrantyFlow);
+    $('warrantyFlowModal').addEventListener('click', (e) => {
+      if (e.target.id === 'warrantyFlowModal') closeWarrantyFlow();
+    });
+    document.querySelectorAll('[data-wf-filter]').forEach((btn) => {
+      btn.addEventListener('click', () => setWarrantyBucket(btn.dataset.wfFilter));
+    });
+    $('wfRefresh').addEventListener('click', () => { loadWarrantyFlow(); loadWarrantyFlowCounts(); });
+    $('wfSearch').addEventListener('input', debounce(() => {
+      state.warrantyFlow.q = $('wfSearch').value.trim();
+      loadWarrantyFlow();
+    }, 300));
+    $('wfPrimaryAction').addEventListener('click', submitWarrantyPrimaryAction);
+    $('wfCbAll').addEventListener('change', () => {
+      const checked = $('wfCbAll').checked;
+      document.querySelectorAll('#wfBody .wf-cb:not(:disabled)').forEach((cb) => {
+        cb.checked = checked;
+        const id = Number(cb.dataset.id);
+        if (checked) state.warrantyFlow.selected.add(id);
+        else state.warrantyFlow.selected.delete(id);
+        const row = cb.closest('tr');
+        if (row) row.classList.toggle('wf-row-checked', checked);
+      });
+      renderWarrantyFlowActions();
+    });
 
     // Receipt modal
     $('receiptModalClose').addEventListener('click', () => $('receiptModal').classList.remove('open'));

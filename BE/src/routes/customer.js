@@ -31,19 +31,19 @@ function httpErr(status, message) {
 // ============================================================
 function vName(input) {
   const v = String(input == null ? '' : input).trim();
-  if (!v)              return { ok: false, error: 'Vui long nhap ho ten' };
-  if (v.length < 2)    return { ok: false, error: 'Ho ten qua ngan' };
-  if (v.length > 100)  return { ok: false, error: 'Ho ten qua dai (toi da 100)' };
-  if (/[<>"'`]/.test(v)) return { ok: false, error: 'Ho ten chua ky tu khong hop le' };
+  if (!v)              return { ok: false, error: 'Vui lòng nhập họ tên' };
+  if (v.length < 2)    return { ok: false, error: 'Họ tên quá ngắn' };
+  if (v.length > 100)  return { ok: false, error: 'Họ tên quá dài (tối đa 100)' };
+  if (/[<>"'`]/.test(v)) return { ok: false, error: 'Họ tên chứa ký tự không hợp lệ' };
   return { ok: true, value: v };
 }
 function vEmail(input) {
   if (input == null || input === '') return { ok: true, value: null };
   const v = String(input).trim();
   if (!v) return { ok: true, value: null };
-  if (v.length > 150) return { ok: false, error: 'Email qua dai' };
+  if (v.length > 150) return { ok: false, error: 'Email quá dài' };
   if (!/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']{2,}$/.test(v)) {
-    return { ok: false, error: 'Email khong hop le' };
+    return { ok: false, error: 'Email không hợp lệ' };
   }
   return { ok: true, value: v };
 }
@@ -51,16 +51,16 @@ function vAddress(input) {
   if (input == null || input === '') return { ok: true, value: null };
   const v = String(input).trim();
   if (!v) return { ok: true, value: null };
-  if (v.length > 300) return { ok: false, error: 'Dia chi qua dai (toi da 300)' };
-  if (/[<>]/.test(v))  return { ok: false, error: 'Dia chi chua ky tu khong hop le' };
+  if (v.length > 300) return { ok: false, error: 'Địa chỉ quá dài (tối đa 300)' };
+  if (/[<>]/.test(v))  return { ok: false, error: 'Địa chỉ chứa ký tự không hợp lệ' };
   return { ok: true, value: v };
 }
 // Note tu do (note don / note line): cho phep xuong dong, cap 1000, cam < > de chong XSS.
-function vFreeText(input, { max = 1000, label = 'Ghi chu' } = {}) {
+function vFreeText(input, { max = 1000, label = 'Ghi chú' } = {}) {
   if (input == null || input === '') return { ok: true, value: null };
   const v = String(input);
-  if (v.length > max) return { ok: false, error: `${label} qua dai (toi da ${max})` };
-  if (/[<>]/.test(v)) return { ok: false, error: `${label} chua ky tu khong hop le` };
+  if (v.length > max) return { ok: false, error: `${label} quá dài (tối đa ${max})` };
+  if (/[<>]/.test(v)) return { ok: false, error: `${label} chứa ký tự không hợp lệ` };
   return { ok: true, value: v.trim() || null };
 }
 
@@ -101,7 +101,7 @@ router.patch('/profile', async (req, res, next) => {
          FROM customers WHERE id = ? AND is_deleted = 0`,
       [req.user.sub]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay tai khoan' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy tài khoản' });
     res.json({ user: { ...rows[0], role: req.user.role } });
   } catch (err) { next(err); }
 });
@@ -115,7 +115,7 @@ router.get('/me', async (req, res, next) => {
          FROM customers WHERE id = ? AND is_deleted = 0`,
       [req.user.sub]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay tai khoan' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy tài khoản' });
     const me = { ...rows[0], role: req.user.role };
 
     if (req.user.role === 'daily') {
@@ -197,7 +197,7 @@ router.get('/products/:id', async (req, res, next) => {
         WHERE p.id = ? AND p.is_deleted = 0 AND p.code != 'REPAIR_SERVICE'`,
       [id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay san pham' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy sản phẩm' });
 
     const priceMap = await resolvePriceMap(db, [id], req.user.sub);
     const retail_price = priceMap.get(id) || null;
@@ -250,7 +250,7 @@ router.get('/order-templates/:id', async (req, res, next) => {
          FROM order_templates
         WHERE id = ? AND is_public = 1 AND is_deleted = 0`, [id]
     );
-    if (!tRows.length) return res.status(404).json({ error: 'Khong tim thay loai don' });
+    if (!tRows.length) return res.status(404).json({ error: 'Không tìm thấy loại đơn' });
     const [fields] = await db.query(
       `SELECT id, seq, label, field_type, is_required, placeholder
          FROM order_template_fields
@@ -317,12 +317,12 @@ router.post('/orders', async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     const lines = Array.isArray(req.body.lines) ? req.body.lines : [];
-    if (!lines.length) throw httpErr(400, 'Don phai co it nhat 1 dong cong viec');
+    if (!lines.length) throw httpErr(400, 'Đơn phải có ít nhất 1 dòng công việc');
 
     // Cap address + note cap don (B-DLR-4 + BX-06)
     const vAddr = vAddress(req.body.address);
     if (!vAddr.ok) throw httpErr(400, vAddr.error);
-    const vNote = vFreeText(req.body.note, { max: 1000, label: 'Ghi chu don' });
+    const vNote = vFreeText(req.body.note, { max: 1000, label: 'Ghi chú đơn' });
     if (!vNote.ok) throw httpErr(400, vNote.error);
 
     // Moi line phai co >= 1 item HOAC >= 1 field_value co label (B-005)
@@ -330,18 +330,18 @@ router.post('/orders', async (req, res, next) => {
       const hasItem = Array.isArray(ln.items) && ln.items.some(it => Number(it.product_id) > 0);
       const hasField = Array.isArray(ln.field_values) && ln.field_values.some(fv => String(fv && fv.label || '').trim());
       if (!hasItem && !hasField) {
-        throw httpErr(400, 'Moi dong phai co it nhat 1 san pham hoac 1 thong tin');
+        throw httpErr(400, 'Mỗi dòng phải có ít nhất 1 sản phẩm hoặc 1 thông tin');
       }
     }
 
     const tplIds = [...new Set(lines.map(l => Number(l.template_id)).filter(Boolean))];
     if (!tplIds.length || tplIds.length !== new Set(lines.map(l => Number(l.template_id))).size) {
-      throw httpErr(400, 'Line thieu template_id');
+      throw httpErr(400, 'Line thiếu template_id');
     }
     const [tRows] = await conn.query(
       `SELECT id FROM order_templates WHERE id IN (?) AND is_public = 1 AND is_deleted = 0`, [tplIds]
     );
-    if (tRows.length !== tplIds.length) throw httpErr(400, 'Co loai don khong hop le');
+    if (tRows.length !== tplIds.length) throw httpErr(400, 'Có loại đơn không hợp lệ');
 
     // Gop product_ids cua tat ca line de resolve gia
     const allProductIds = [];
@@ -360,7 +360,7 @@ router.post('/orders', async (req, res, next) => {
       const [products] = await conn.query(
         `SELECT id FROM products WHERE id IN (${ph}) AND is_deleted = 0 AND code != 'REPAIR_SERVICE'`, uniq
       );
-      if (products.length !== uniq.length) throw httpErr(404, 'San pham khong ton tai');
+      if (products.length !== uniq.length) throw httpErr(404, 'Sản phẩm không tồn tại');
       priceMap = await resolvePriceMap(conn, uniq, req.user.sub);
     }
 
@@ -390,7 +390,7 @@ router.post('/orders', async (req, res, next) => {
     let lineSeq = 0;
     for (const ln of lines) {
       lineSeq++;
-      const vLnNote = vFreeText(ln.note, { max: 500, label: 'Ghi chu dong' });
+      const vLnNote = vFreeText(ln.note, { max: 500, label: 'Ghi chú dòng' });
       if (!vLnNote.ok) throw httpErr(400, vLnNote.error);
       const [r] = await conn.query(
         `INSERT INTO order_lines (order_id, template_id, seq, note)
@@ -405,7 +405,7 @@ router.post('/orders', async (req, res, next) => {
           if (!pid) continue;
           const qty = Number(it.qty);
           if (!Number.isInteger(qty) || qty < 1 || qty > 9999) {
-            throw httpErr(400, 'qty phai la so nguyen 1..9999');
+            throw httpErr(400, 'qty phải là số nguyên 1..9999');
           }
           const price = priceMap.get(pid) || 0;
           await conn.query(
@@ -422,12 +422,12 @@ router.post('/orders', async (req, res, next) => {
           const label = String(fv.label || '').trim();
           if (!label) continue;
           if (label.length > 100 || /[<>"'`]/.test(label)) {
-            throw httpErr(400, 'Nhan thong tin (label) khong hop le');
+            throw httpErr(400, 'Nhãn thông tin (label) không hợp lệ');
           }
           const rawVal = fv.value == null ? null : String(fv.value);
           if (rawVal != null) {
-            if (rawVal.length > 500) throw httpErr(400, 'Gia tri thong tin qua dai (toi da 500)');
-            if (/[<>]/.test(rawVal)) throw httpErr(400, 'Gia tri thong tin chua ky tu khong hop le');
+            if (rawVal.length > 500) throw httpErr(400, 'Giá trị thông tin quá dài (tối đa 500)');
+            if (/[<>]/.test(rawVal)) throw httpErr(400, 'Giá trị thông tin chứa ký tự không hợp lệ');
           }
           seq++;
           await conn.query(
@@ -451,8 +451,8 @@ router.post('/orders', async (req, res, next) => {
       const [tn] = await db.query(`SELECT GROUP_CONCAT(name SEPARATOR ' + ') AS names FROM order_templates WHERE id IN (?)`, [tplIds]);
       await notify.create(db, {
         type: 'order_new',
-        title: `Don moi ${code}`,
-        message: `${name} vua tao don ${tn[0] && tn[0].names || ''}`.trim(),
+        title: `Đơn mới ${code}`,
+        message: `${name} vừa tạo đơn ${tn[0] && tn[0].names || ''}`.trim(),
         link_url: `/admin/orders.html#order-${orderId}`,
         ref_order_id: orderId,
         ref_customer_id: customerId,
@@ -480,7 +480,7 @@ router.get('/orders/:id', async (req, res, next) => {
         WHERE o.id = ? AND ${clause} AND o.is_deleted = 0`,
       [id, ...args]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay don' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy đơn' });
 
     const [lines] = await db.query(
       `SELECT ol.id, ol.template_id, ol.custom_name, ol.seq, ol.subtotal, ol.note,
@@ -555,9 +555,9 @@ router.post('/orders/:id/cancel', async (req, res, next) => {
       `SELECT o.id, o.status FROM orders o WHERE o.id = ? AND ${clause} AND o.is_deleted = 0`,
       [id, ...args]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay don' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy đơn' });
     if (rows[0].status !== 'pending') {
-      return res.status(409).json({ error: 'Don da duoc duyet, khong the tu huy. Vui long lien he admin.' });
+      return res.status(409).json({ error: 'Đơn đã được duyệt, không thể tự huỷ. Vui lòng liên hệ admin.' });
     }
     await db.query(`UPDATE orders SET status = 'cancelled' WHERE id = ?`, [id]);
     res.json({ ok: true });
@@ -570,20 +570,20 @@ router.post('/orders/:id/step-photos', async (req, res, next) => {
     const id = Number(req.params.id);
     const stepCode = String(req.body.step_code || '').trim();
     const url = String(req.body.url || '').trim();
-    if (!stepCode || !url) return res.status(400).json({ error: 'Thieu step_code / url' });
+    if (!stepCode || !url) return res.status(400).json({ error: 'Thiếu step_code / url' });
 
     const { clause, args } = ownerArgs(req.user);
     const [rows] = await db.query(
       `SELECT o.id FROM orders o WHERE o.id = ? AND ${clause} AND o.is_deleted = 0`,
       [id, ...args]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay don' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy đơn' });
 
     const steps = await loadTemplateSteps(db);
     const step = steps.find(s => s.code === stepCode);
-    if (!step) return res.status(400).json({ error: 'Buoc khong hop le' });
+    if (!step) return res.status(400).json({ error: 'Bước không hợp lệ' });
     if (!step.update_roles.includes('customer')) {
-      return res.status(403).json({ error: 'Khach khong duoc thao tac buoc nay' });
+      return res.status(403).json({ error: 'Khách không được thao tác bước này' });
     }
 
     const [r] = await db.query(
@@ -600,14 +600,14 @@ router.post('/orders/:id/transition', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const target = String(req.body.step_code || '').trim();
-    if (!target) return res.status(400).json({ error: 'Thieu step_code' });
+    if (!target) return res.status(400).json({ error: 'Thiếu step_code' });
 
     const { clause, args } = ownerArgs(req.user);
     const [rows] = await db.query(
       `SELECT o.id, o.status FROM orders o WHERE o.id = ? AND ${clause} AND o.is_deleted = 0`,
       [id, ...args]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Khong tim thay don' });
+    if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy đơn' });
 
     const steps = await loadTemplateSteps(db);
     const v = validateTransition(steps, rows[0].status, target, 'customer');
@@ -632,16 +632,16 @@ router.post('/orders/:id/review', async (req, res, next) => {
          FROM orders WHERE id = ? AND is_deleted = 0 FOR UPDATE`,
       [req.params.id]
     );
-    if (!t.length) { await conn.rollback(); return res.status(404).json({ error: 'Khong tim thay' }); }
-    if (t[0].customer_id !== req.user.sub) { await conn.rollback(); return res.status(403).json({ error: 'Khong phai don cua ban' }); }
-    if (!t[0].assigned_staff_id) { await conn.rollback(); return res.status(400).json({ error: 'Don chua co KTV' }); }
-    if (!t[0].completed_at) { await conn.rollback(); return res.status(400).json({ error: 'Don chua hoan thanh' }); }
+    if (!t.length) { await conn.rollback(); return res.status(404).json({ error: 'Không tìm thấy' }); }
+    if (t[0].customer_id !== req.user.sub) { await conn.rollback(); return res.status(403).json({ error: 'Không phải đơn của bạn' }); }
+    if (!t[0].assigned_staff_id) { await conn.rollback(); return res.status(400).json({ error: 'Đơn chưa có KTV' }); }
+    if (!t[0].completed_at) { await conn.rollback(); return res.status(400).json({ error: 'Đơn chưa hoàn thành' }); }
 
     const [exist] = await conn.query(
       `SELECT id FROM staff_reviews WHERE order_id = ? AND staff_id = ?`,
       [req.params.id, t[0].assigned_staff_id]
     );
-    if (exist.length) { await conn.rollback(); return res.status(409).json({ error: 'Da danh gia roi' }); }
+    if (exist.length) { await conn.rollback(); return res.status(409).json({ error: 'Đã đánh giá rồi' }); }
 
     await conn.query(
       `INSERT INTO staff_reviews (staff_id, order_id, rating, comment)
@@ -693,7 +693,7 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
         WHERE id = ? AND customer_id = ? AND is_deleted = 0`,
       [req.params.id, req.user.sub]
     );
-    if (!cv.length) return res.status(404).json({ error: 'Khong tim thay' });
+    if (!cv.length) return res.status(404).json({ error: 'Không tìm thấy' });
     const [rows] = await db.query(
       `SELECT m.id, m.conversation_id, m.order_id, m.sender_type, m.sender_id,
               m.content, m.sent_at, m.read_at,
@@ -711,13 +711,13 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
 router.post('/conversations/:id/messages/screenshot', async (req, res, next) => {
   try {
     const url = String(req.body.content || '').trim();
-    if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'URL khong hop le' });
+    if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'URL không hợp lệ' });
     const [cv] = await db.query(
       `SELECT id FROM conversations
         WHERE id = ? AND customer_id = ? AND is_deleted = 0`,
       [req.params.id, req.user.sub]
     );
-    if (!cv.length) return res.status(404).json({ error: 'Khong tim thay' });
+    if (!cv.length) return res.status(404).json({ error: 'Không tìm thấy' });
     const [result] = await db.query(
       `INSERT INTO messages (conversation_id, sender_type, sender_id, content, visibility)
        VALUES (?, 'customer', ?, ?, 'staff_only')`,
@@ -747,13 +747,13 @@ router.post('/conversations/:id/messages/screenshot', async (req, res, next) => 
 router.post('/conversations/:id/messages', async (req, res, next) => {
   try {
     const content = String(req.body.content || '').trim();
-    if (!content) return res.status(400).json({ error: 'Tin nhan rong' });
+    if (!content) return res.status(400).json({ error: 'Tin nhắn rỗng' });
     const [cv] = await db.query(
       `SELECT id FROM conversations
         WHERE id = ? AND customer_id = ? AND is_deleted = 0`,
       [req.params.id, req.user.sub]
     );
-    if (!cv.length) return res.status(404).json({ error: 'Khong tim thay' });
+    if (!cv.length) return res.status(404).json({ error: 'Không tìm thấy' });
 
     let orderId = null;
     if (req.body.order_id) {
@@ -762,7 +762,7 @@ router.post('/conversations/:id/messages', async (req, res, next) => {
         `SELECT id FROM orders WHERE id = ? AND customer_id = ? AND is_deleted = 0`,
         [orderId, req.user.sub]
       );
-      if (!o.length) return res.status(400).json({ error: 'Don khong hop le' });
+      if (!o.length) return res.status(400).json({ error: 'Đơn không hợp lệ' });
     }
 
     const [result] = await db.query(
@@ -798,9 +798,9 @@ const ASSET_KIND_CFG = {
 };
 function vAssetValue(input) {
   const v = String(input == null ? '' : input).trim();
-  if (!v) return { ok: false, error: 'Thieu gia tri' };
-  if (v.length > 255) return { ok: false, error: 'Gia tri qua dai' };
-  if (/[<>]/.test(v)) return { ok: false, error: 'Gia tri chua ky tu khong hop le' };
+  if (!v) return { ok: false, error: 'Thiếu giá trị' };
+  if (v.length > 255) return { ok: false, error: 'Giá trị quá dài' };
+  if (/[<>]/.test(v)) return { ok: false, error: 'Giá trị chứa ký tự không hợp lệ' };
   return { ok: true, value: v };
 }
 
@@ -828,7 +828,7 @@ router.get('/assets', async (req, res, next) => {
 router.post('/assets/:kind', async (req, res, next) => {
   try {
     const cfg = ASSET_KIND_CFG[req.params.kind];
-    if (!cfg) return res.status(400).json({ error: 'asset_kind khong hop le' });
+    if (!cfg) return res.status(400).json({ error: 'asset_kind không hợp lệ' });
     const v = vAssetValue(req.body && req.body.value);
     if (!v.ok) return res.status(400).json({ error: v.error });
     const note = req.body && req.body.note ? String(req.body.note).slice(0, 500) : null;
@@ -844,7 +844,7 @@ router.post('/assets/:kind', async (req, res, next) => {
 router.put('/assets/:kind/:id', async (req, res, next) => {
   try {
     const cfg = ASSET_KIND_CFG[req.params.kind];
-    if (!cfg) return res.status(400).json({ error: 'asset_kind khong hop le' });
+    if (!cfg) return res.status(400).json({ error: 'asset_kind không hợp lệ' });
     const v = vAssetValue(req.body && req.body.value);
     if (!v.ok) return res.status(400).json({ error: v.error });
     const note = req.body && req.body.note !== undefined
@@ -858,7 +858,7 @@ router.put('/assets/:kind/:id', async (req, res, next) => {
       `UPDATE ${cfg.table} SET ${sets.join(', ')}
         WHERE id = ? AND customer_id = ? AND is_deleted = 0`, args
     );
-    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay' });
+    if (!r.affectedRows) return res.status(404).json({ error: 'Không tìm thấy' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -867,13 +867,13 @@ router.put('/assets/:kind/:id', async (req, res, next) => {
 router.delete('/assets/:kind/:id', async (req, res, next) => {
   try {
     const cfg = ASSET_KIND_CFG[req.params.kind];
-    if (!cfg) return res.status(400).json({ error: 'asset_kind khong hop le' });
+    if (!cfg) return res.status(400).json({ error: 'asset_kind không hợp lệ' });
     const [r] = await db.query(
       `UPDATE ${cfg.table} SET is_deleted = 1
         WHERE id = ? AND customer_id = ? AND is_deleted = 0`,
       [Number(req.params.id), req.user.sub]
     );
-    if (!r.affectedRows) return res.status(404).json({ error: 'Khong tim thay' });
+    if (!r.affectedRows) return res.status(404).json({ error: 'Không tìm thấy' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

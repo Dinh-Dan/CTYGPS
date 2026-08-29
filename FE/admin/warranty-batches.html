@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Gửi NCC - Admin VinaGPS</title>
+<link rel="stylesheet" href="/shared/css/style.css" />
+<style>
+  .page-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
+  @media(max-width:980px){.page-grid{grid-template-columns:1fr}}
+  .card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px}
+  .card h3{margin:0 0 10px}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .toolbar .input,.toolbar .select{min-width:180px}
+  .table{width:100%;border-collapse:collapse}
+  .table th,.table td{padding:10px 8px;border-bottom:1px solid #eef2f7;vertical-align:top;font-size:13px}
+  .table th{font-size:12px;color:#64748b;text-align:left}
+  .pill{display:inline-flex;align-items:center;justify-content:center;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid transparent}
+  .pill.gray{background:#f1f5f9;color:#475569;border-color:#e2e8f0}
+  .pill.blue{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
+  .pill.amber{background:#fffbeb;color:#b45309;border-color:#fde68a}
+  .pill.green{background:#f0fdf4;color:#15803d;border-color:#bbf7d0}
+  .muted{color:#94a3b8}
+  .stack{display:grid;gap:8px}
+  .mini{font-size:12px;color:#64748b}
+  .actions{display:flex;gap:6px;flex-wrap:wrap}
+  .queue-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px}
+  @media(max-width:980px){.queue-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body class="shell">
+  <aside id="sidebar" class="sidebar"></aside>
+  <div class="main">
+    <div class="topnav"></div>
+    <div class="content">
+      <div class="page-head">
+        <div>
+          <h1 id="pageTitle">Gửi NCC</h1>
+          <div id="pageSubtitle" class="muted">Gom các sản phẩm bảo hành đang ở kho công ty thành đơn gửi nhà cung cấp.</div>
+        </div>
+      </div>
+
+      <div class="page-grid">
+        <section class="card">
+          <h3>Tạo Đơn Gửi NCC</h3>
+          <div class="toolbar">
+            <select id="supplierSel" class="select"></select>
+            <input id="eligibleQ" class="input" placeholder="Tìm đơn / khách / sản phẩm" />
+            <button id="btnRefreshEligible" class="btn ghost">Tải lại</button>
+          </div>
+          <textarea id="batchNote" class="input" rows="2" placeholder="Ghi chú chung cho đơn gửi NCC"></textarea>
+          <div style="margin:10px 0" class="actions">
+            <button id="btnCreateBatch" class="btn">Tạo đơn gửi NCC</button>
+            <span id="eligibleCount" class="mini"></span>
+          </div>
+          <div style="overflow:auto;max-height:62vh">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th style="width:34px"><input id="cbEligibleAll" type="checkbox"></th>
+                  <th>Sản phẩm</th>
+                  <th>Đơn / Khách</th>
+                  <th>Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody id="eligibleBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card">
+          <h3>Danh Sách Đơn NCC</h3>
+          <div class="actions" style="margin-bottom:10px">
+            <button id="btnRefreshBatches" class="btn ghost">Tải lại</button>
+          </div>
+          <div id="batchList" class="stack"></div>
+        </section>
+      </div>
+      <div class="queue-grid">
+        <section class="card">
+          <h3>HÃ ng NCC ÄÃ£ Tráº£ Vá»</h3>
+          <div class="mini" style="margin-bottom:10px">CÃ¡c sáº£n pháº©m Ä‘Ã£ nháº­n tá»« nhÃ  cung cáº¥p, Ä‘ang á»Ÿ kho báº£o hÃ nh cÃ´ng ty.</div>
+          <div id="returnedQueue" class="stack"></div>
+        </section>
+
+        <section class="card">
+          <h3>Chá» PhÃ¢n / Giao Cho KTV</h3>
+          <div class="mini" style="margin-bottom:10px">CÃ¡c sáº£n pháº©m Ä‘Ã£ cÃ³ hÃ ng giao khÃ¡ch, cáº§n phÃ¢n hoáº·c xÃ¡c nháº­n KTV Ä‘i giao.</div>
+          <div id="deliveryQueue" class="stack"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="/shared/js/auth.js"></script>
+  <script src="/shared/js/api.js"></script>
+  <script src="/shared/js/ui.js"></script>
+  <script src="/shared/js/admin-shell.js"></script>
+  <script src="/admin/warranty-batches.js"></script>
+</body>
+</html>

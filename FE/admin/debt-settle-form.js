@@ -475,7 +475,7 @@
           <img src="/uploads/LOGO TRANG.jpg" alt="logo" style="width:56px;height:56px;object-fit:contain;border-radius:4px;background:#f8fafc">
           <div>
             <div class="brand-name">CÔNG TY TNHH VIỄN THÔNG VINAGPS</div>
-            <div class="brand-sub">190 TTH 21, P. Tân Thới Hiệp, Q.12, TP.HCM<br>ĐT: (028) 6682 5658 — DĐ: 0949.155.160</div>
+            <div class="brand-sub">190/19/12 TTH 21, P. Tân Thới Hiệp, TP.HCM<br>ĐT: 0942.155.160 - 0949.155.160</div>
           </div>
         </div>
         <div class="quote-meta">
