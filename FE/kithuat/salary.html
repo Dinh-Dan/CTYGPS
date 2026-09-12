@@ -136,9 +136,55 @@
 
 .empty-msg{text-align:center;color:#94a3b8;padding:30px;font-size:13px}
 
+/* ---- Toggle nut an/hien stats-bar ---- */
+#btnToggleStats{display:none;white-space:nowrap}
+.stats-bar.collapsed{display:none}
+
+/* ---- Draft: card list cho mobile (an mac dinh, chi bat o media query) ---- */
+.draft-cards{display:none}
+.draft-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.draft-card.row-adv{background:#fffbeb;border-color:#fde68a}
+.draft-card .dc-top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}
+.draft-card .dc-code{font-weight:700;color:#1e40af;font-size:13.5px}
+.draft-card .dc-date{font-size:11.5px;color:#94a3b8;white-space:nowrap}
+.draft-card .dc-service{font-size:12.5px;color:#334155;margin-bottom:4px}
+.draft-card .dc-info{font-size:12px;color:#475569;line-height:1.5;margin-bottom:6px}
+.draft-card .dc-amounts{display:flex;gap:14px;border-top:1px dashed #e2e8f0;padding-top:6px;font-size:12.5px}
+.draft-card .dc-amounts .lbl{color:#94a3b8;margin-right:4px}
+.draft-card .dc-wage{color:#0f172a;font-weight:600}
+.draft-card .dc-comm{color:#6d28d9;font-weight:600}
+.draft-card.row-adv .dc-amounts{border-top-color:#fde68a}
+.draft-card .dc-adv-amt{color:#b45309;font-weight:700}
+
 @media(max-width:640px){
   .stats-bar{grid-template-columns:1fr 1fr}
   .sal-tab{padding:8px 12px;font-size:13px}
+  #btnToggleStats{display:inline-flex;align-items:center;gap:4px}
+
+  /* Bo full-height lock tren mobile: rule .main .content{overflow:hidden;
+     display:flex;flex-direction:column} o tren (dung cho desktop 2 cot
+     song song + tbody tu cuon) khoa cung chieu cao va an het noi dung
+     tran ra ngoai. Tren mobile can content la block binh thuong, cuon
+     theo trang (window), khong cuon rieng trong 1 khung co dinh. */
+  .main .content{overflow-y:auto;overflow-x:hidden;display:block}
+  #paneWork.sal-pane.active{display:block;flex:none;overflow:visible;min-height:0}
+  .draft-grid{overflow:visible;display:block}
+  .draft-grid>div:first-child{overflow:visible}
+  .draft-grid>div:last-child{overflow:visible;margin-top:14px}
+
+  /* Draft ctrl row: gon lai — ngay Tu/Den 2 cot, filter rieng 1 hang, nut full-width */
+  .draft-ctrl-row{display:flex;flex-direction:column;gap:8px;padding:10px}
+  .pr-date-edit{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;background:transparent;border:0;padding:0;width:100%}
+  .pr-date-edit label{grid-row:1;font-size:11px}
+  .pr-date-edit input[type=date]{grid-row:2;width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;background:#fff}
+  .pr-date-edit span{display:none}
+  #btnDraftReload{grid-column:1/-1;grid-row:3;margin-left:0;width:100%;padding:8px}
+  .filter-in-main{width:100%}
+  #draftCountTag{text-align:center}
+
+  /* Bang draft: an bang ngang, hien card list thay the */
+  .pl-table-wrap{display:none}
+  .draft-cards{display:block}
 }
 </style>
 </head>
@@ -146,7 +192,12 @@
 <div class="shell">
   <aside class="sidebar" id="sidebar"></aside>
   <main class="main">
-    <div class="topnav"><h2 class="topnav-title">Lương thưởng</h2></div>
+    <div class="topnav">
+      <h2 class="topnav-title">Lương thưởng</h2>
+      <button class="btn ghost sm" id="btnToggleStats" style="font-size:12px;padding:5px 10px;flex-shrink:0">
+        <span id="toggleStatsIcon">▲</span> <span id="toggleStatsLabel">Ẩn tổng quan</span>
+      </button>
+    </div>
     <div class="content">
 
       <!-- ===== STATS BAR ===== -->
@@ -209,6 +260,8 @@
                 <tfoot id="draftTfoot"></tfoot>
               </table>
             </div>
+            <!-- Card list thay the bang tren mobile -->
+            <div class="draft-cards" id="draftCards"></div>
           </div>
 
           <!-- Tổng kết (read-only) -->

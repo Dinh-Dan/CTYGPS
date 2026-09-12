@@ -219,6 +219,49 @@
     }
     $('draftTbody').innerHTML = tbodyHtml;
 
+    // Card list (mobile) — cung du lieu voi bang, chi khac layout
+    let cardsHtml = '';
+    if (!allRows.length) {
+      cardsHtml = '<div class="empty-msg">Không có dữ liệu trong kỳ này</div>';
+    } else {
+      for (const item of allRows) {
+        if (item._kind === 'order') {
+          const r = item._data;
+          const device = [r.bien_so, r.imei].filter(Boolean).join(' / ');
+          const infoParts = [];
+          if (r.tai_khoan) infoParts.push(esc(r.tai_khoan));
+          if (device)      infoParts.push(esc(device));
+          const wageAmt = r.row_type === 'commission' ? 0 : (r.wage || 0);
+          const commAmt = r.commission || 0;
+          cardsHtml += `<div class="draft-card">
+            <div class="dc-top">
+              <span class="dc-code">${esc(r.code || '—')}</span>
+              <span class="dc-date">${fmtDateS(r.date)}</span>
+            </div>
+            <div class="dc-service">${esc(r.service || '—')}</div>
+            ${infoParts.length ? `<div class="dc-info">${infoParts.join(' · ')}</div>` : ''}
+            <div class="dc-amounts">
+              <div><span class="lbl">Tiền công</span><span class="dc-wage">${wageAmt > 0 ? fmtM(wageAmt)+'đ' : '—'}</span></div>
+              <div><span class="lbl">Hoa hồng</span><span class="dc-comm">${commAmt > 0 ? fmtM(commAmt)+'đ' : '—'}</span></div>
+            </div>
+          </div>`;
+        } else {
+          const a = item._data;
+          cardsHtml += `<div class="draft-card row-adv">
+            <div class="dc-top">
+              <span class="dc-code" style="color:#92400e">↓ Ứng lương</span>
+              <span class="dc-date">${fmtDateS(a.created_at)}</span>
+            </div>
+            ${a.note ? `<div class="dc-info">${esc(a.note)}</div>` : ''}
+            <div class="dc-amounts">
+              <div><span class="dc-adv-amt">− ${fmtM(a.amount)}đ</span></div>
+            </div>
+          </div>`;
+        }
+      }
+    }
+    $('draftCards').innerHTML = cardsHtml;
+
     const wageTotal = merged.reduce((s, r) => s + (r.wage || 0), 0);
     const commTotal = merged.reduce((s, r) => s + (r.commission || 0), 0);
     let tfootHtml = `<tr style="background:#f0fdf4;font-weight:700">
@@ -507,6 +550,23 @@
   // ================================================================
   function init() {
     techShell.init('salary');
+
+    // Toggle an/hien stats-bar (chu yeu dung tren mobile de nhuong cho draft-grid)
+    const STATS_COLLAPSE_KEY = 'gpsviet_salary_stats_collapsed';
+    const statsBar = $('statsBar');
+    const btnToggleStats = $('btnToggleStats');
+    function applyStatsCollapsed(collapsed) {
+      statsBar.classList.toggle('collapsed', collapsed);
+      $('toggleStatsIcon').textContent = collapsed ? '▼' : '▲';
+      $('toggleStatsLabel').textContent = collapsed ? 'Hiện tổng quan' : 'Ẩn tổng quan';
+    }
+    applyStatsCollapsed(localStorage.getItem(STATS_COLLAPSE_KEY) === '1');
+    btnToggleStats.addEventListener('click', () => {
+      const collapsed = !statsBar.classList.contains('collapsed');
+      applyStatsCollapsed(collapsed);
+      localStorage.setItem(STATS_COLLAPSE_KEY, collapsed ? '1' : '0');
+    });
+
     const monthRange = getCurrentMonthRange();
     W.from = monthRange.from;
     W.to = monthRange.to;

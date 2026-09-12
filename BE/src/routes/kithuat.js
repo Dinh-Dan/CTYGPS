@@ -224,6 +224,8 @@ router.get('/orders', async (req, res, next) => {
     const dateFrom = req.query.date_from || null;
     const dateTo   = req.query.date_to   || null;
     const q        = (req.query.q || '').trim();
+    const limit    = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const offset   = Math.max(0, parseInt(req.query.offset) || 0);
 
     const where = ['o.assigned_staff_id = ?', 'o.is_deleted = 0'];
     const args = [req.user.sub];
@@ -256,6 +258,16 @@ router.get('/orders', async (req, res, next) => {
 
     const whereSql = 'WHERE ' + where.join(' AND ');
 
+    const [countRows] = await db.query(
+      `SELECT COUNT(*) AS total
+         FROM orders o
+         LEFT JOIN customers c ON c.id = o.customer_id
+         LEFT JOIN collections col ON col.order_id = o.id AND col.is_deleted = 0
+         ${whereSql}`,
+      args
+    );
+    const total = countRows[0] ? Number(countRows[0].total) : 0;
+
     const [rows] = await db.query(
       `SELECT o.id, o.code, o.status, o.payment_status, o.service_kind,
               o.due_at, o.started_at, o.completed_at,
@@ -281,10 +293,11 @@ router.get('/orders', async (req, res, next) => {
          ORDER BY
            CASE WHEN o.completed_at IS NULL THEN 0 ELSE 1 END,
            COALESCE(o.due_at, o.completed_at, '9999-12-31') DESC,
-           o.id DESC`,
-      args
+           o.id DESC
+         LIMIT ? OFFSET ?`,
+      [...args, limit, offset]
     );
-    res.json({ items: rows });
+    res.json({ items: rows, total, limit, offset, has_more: offset + rows.length < total });
   } catch (err) { next(err); }
 });
 

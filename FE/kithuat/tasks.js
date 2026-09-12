@@ -14,7 +14,7 @@
   function fmtDate(d) { return d ? new Date(d).toLocaleString('vi-VN') : '—'; }
   const DEFAULT_ITEM_FIELDS = ['Biển số xe', 'IMEI', 'Tên tài khoản', 'Số SIM'];
 
-  let state = { bucket: 'active', items: [], detail: null, photosExpanded: false };
+  let state = { bucket: 'active', items: [], detail: null, photosExpanded: false, offset: 0, limit: 50, total: 0, hasMore: false, loadingMore: false };
 
   const STATUS_LABELS = {
     pending: 'Đang chờ',
@@ -193,9 +193,28 @@
   }
 
   async function loadList() {
-    const res = await api.get('/kithuat/orders?bucket=' + encodeURIComponent(state.bucket)).catch(() => null);
+    state.offset = 0;
+    const res = await api.get('/kithuat/orders?bucket=' + encodeURIComponent(state.bucket) +
+      '&limit=' + state.limit + '&offset=0').catch(() => null);
     if (!res) return;
     state.items = res.items || [];
+    state.total = res.total || 0;
+    state.hasMore = !!res.has_more;
+    render();
+  }
+
+  async function loadMore() {
+    if (state.loadingMore || !state.hasMore) return;
+    state.loadingMore = true;
+    render();
+    const nextOffset = state.items.length;
+    const res = await api.get('/kithuat/orders?bucket=' + encodeURIComponent(state.bucket) +
+      '&limit=' + state.limit + '&offset=' + nextOffset).catch(() => null);
+    state.loadingMore = false;
+    if (!res) { render(); return; }
+    state.items = state.items.concat(res.items || []);
+    state.total = res.total || 0;
+    state.hasMore = !!res.has_more;
     render();
   }
 
@@ -205,7 +224,7 @@
       $box.innerHTML = '<p class="text-muted" style="text-align:center;padding:40px">Không có việc nào</p>';
       return;
     }
-    $box.innerHTML = state.items.map(o => {
+    const cardsHtml = state.items.map(o => {
       const s = pillForStatus(o);
       const remain = Math.max(0, Number(o.total_amount) - Number(o.paid_amount));
       return `
@@ -223,9 +242,18 @@
         </div>
       `;
     }).join('');
+    const moreHtml = state.hasMore
+      ? `<div style="text-align:center;padding:16px">
+           <button class="btn ghost sm" id="btnLoadMoreTasks" ${state.loadingMore ? 'disabled' : ''}>
+             ${state.loadingMore ? 'Đang tải…' : `Xem thêm (${state.items.length}/${state.total})`}
+           </button>
+         </div>`
+      : (state.total > state.items.length ? '' : `<div style="text-align:center;padding:12px;color:#94a3b8;font-size:12.5px">Đã hiển thị tất cả ${state.total} đơn</div>`);
+    $box.innerHTML = cardsHtml + moreHtml;
     $box.querySelectorAll('.task-card').forEach(el => {
       el.addEventListener('click', () => openDetail(Number(el.dataset.id)));
     });
+    if ($('btnLoadMoreTasks')) $('btnLoadMoreTasks').addEventListener('click', loadMore);
   }
 
   async function openDetail(id) {
